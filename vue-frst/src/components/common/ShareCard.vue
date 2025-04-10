@@ -1,181 +1,173 @@
 <template>
-  <el-card shadow="hover" class="share-card" @click="handleCardClick">
-    <template #header>
-      <div class="share-header">
-        <el-avatar :size="40" :src="getAvatarUrl(post.author?.avatarUrl)" @click.stop="handleAvatarClick" class="clickable-avatar" />
-        <span class="username">{{ post.author?.name || '匿名用户' }}</span>
-        <span class="time">{{ formatTime(post.createdAt) }}</span>
-      </div>
-    </template>
+  <el-card :body-style="{ padding: '0px' }" class="share-card">
+    
+    <!-- Post Image (if available) -->
+    <el-image 
+        v-if="post.imageUrl" 
+        :src="resolveStaticAssetUrl(post.imageUrl)" 
+        fit="cover" 
+        class="post-image"
+        lazy
+        @click="goToPostDetail"
+    >
+         <template #placeholder>
+            <div class="image-slot">加载中...</div>
+         </template>
+         <template #error>
+            <div class="image-slot">
+                <el-icon><Picture /></el-icon>
+            </div>
+         </template>
+    </el-image>
 
-    <!-- Remove click handler from title container -->
-    <div class="title-container">
-        <h3 class="post-title" v-if="post.title">{{ post.title }}</h3>
-    </div>
+    <div class="card-content">
+       <!-- Author Info -->
+       <div class="author-info">
+         <el-avatar :size="40" :src="resolveStaticAssetUrl(post.author?.avatarUrl)" @error="true">
+              <img src="@/assets/images/default-food.png" />
+         </el-avatar>
+         <div class="author-details">
+           <span class="author-name">{{ post.author?.name || '匿名用户' }}</span>
+           <span class="post-time">{{ formatTimeAgo(post.createdAt) }}</span>
+         </div>
+       </div>
 
-    <!-- Card body now mainly contains content -->
-    <div class="card-body">
-      <div class="post-content">
-        <p class="truncated-content">{{ post.content }}</p>
-        <!-- 暂时移除图片，因为后端 Post 模型没有 imageUrl -->
-        <!--
-        <el-image
-          v-if="post.imageUrl"
-          :src="post.imageUrl"
-          fit="cover"
-          class="post-image"
-          lazy
-          :preview-src-list="[post.imageUrl]"
-          preview-teleported
-         ></el-image>
-         -->
-      </div>
-    </div>
+       <!-- Post Title and Content -->
+       <div class="post-body">
+         <h3 class="post-title" @click="goToPostDetail">{{ post.title }}</h3>
+         <p class="post-text">{{ truncateText(post.content, 100) }}</p>
+       </div>
 
-    <div class="post-actions">
-      <!-- Like Button -->
-      <el-button text :icon="post.isLiked ? StarFilled : Star" :type="post.isLiked ? 'primary' : ''" @click.stop="handleLike" :loading="isLiking">
-        {{ post.likesCount || 0 }} 点赞
-      </el-button>
-      <!-- Comment Button -->
-      <el-button text :icon="ChatDotSquare" @click.stop="handleComment">{{ post.commentsCount || 0 }} 评论</el-button>
-      <!-- Favorite Button -->
-      <el-button 
-        text 
-        :icon="post.isFavorited ? StarFilled : Star" 
-        :type="post.isFavorited ? 'warning' : ''"  
-        @click.stop="handleFavorite" 
-        :loading="isFavoriting"
-      >
-        {{ post.favoritesCount || 0 }} 收藏
-      </el-button>
-      <el-button text :icon="MoreFilled" class="more-options" @click.stop></el-button>
+       <!-- Actions (Like, Comment, Favorite) -->
+       <div class="actions">
+         <el-button 
+            :type="post.isLiked ? 'primary' : ''" 
+            :icon="Star" 
+            text 
+            bg 
+            @click="toggleLike"
+            :loading="isLiking"
+         >
+            {{ post.likesCount || 0 }} 点赞
+         </el-button>
+         <el-button :icon="ChatDotSquare" text bg @click="goToPostDetail">
+            {{ post.commentsCount || 0 }} 评论
+         </el-button>
+         <el-button 
+            :type="post.isFavorited ? 'warning' : ''" 
+            :icon="CollectionTag" 
+            text 
+            bg 
+            @click="toggleFavorite"
+            :loading="isFavoriting"
+         >
+             {{ post.favoritesCount || 0 }} 收藏
+         </el-button>
+          <el-tooltip content="更多操作" placement="top">
+             <el-button :icon="MoreFilled" text circle class="more-options" @click.stop="() => {}" />
+          </el-tooltip>
+       </div>
     </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'; // Import ref for loading state
-import { ElCard, ElAvatar, ElImage, ElButton, ElMessage } from 'element-plus' // Import ElMessage
-import { Pointer, ChatDotSquare, Star, StarFilled, MoreFilled } from '@element-plus/icons-vue'
+import { defineProps, defineEmits, ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { ElCard, ElAvatar, ElButton, ElMessage, ElIcon, ElImage, ElTooltip } from 'element-plus'; // Added ElImage
+import { Star, ChatDotSquare, CollectionTag, MoreFilled, Picture } from '@element-plus/icons-vue'; // Added Picture
 import type { Post } from '@/types/models';
-import { PostService } from '@/services/PostService';
 import { useUserStore } from '@/stores/modules/user';
-import { useRouter } from 'vue-router'; // Import router for navigation
-import { resolveStaticAssetUrl } from '@/utils/urlUtils'; // Import the utility function
+import { PostService } from '@/services/PostService'; 
+import { formatTimeAgo, truncateText } from '@/utils/formatters'; // Assuming you have these helpers
+import { resolveStaticAssetUrl } from '@/utils/urlUtils'; // Import the new util
 
-const props = defineProps<{ post: Post }>()
-const emit = defineEmits(['like', 'comment', 'favorite', 'update:post']) // Add update:post emit
+// ... (rest of the script setup remains largely the same)
 
-const isLiking = ref(false);
-const isFavoriting = ref(false); // Add loading state for favorite
+interface Props {
+  post: Post;
+}
+const props = defineProps<Props>();
+
+const emit = defineEmits<{ (e: 'update:post', post: Post): void }>();
+
+const router = useRouter();
 const userStore = useUserStore();
-const router = useRouter(); // Get router instance
+const isLiking = ref(false);
+const isFavoriting = ref(false);
 
-// Wrapper function to be used in the template
-const getAvatarUrl = (url: string | null | undefined): string => {
-  // You can add a default path specific to the card context if needed
-  // e.g., const defaultCardAvatar = '/path/to/card/default.png';
-  return resolveStaticAssetUrl(url /*, defaultCardAvatar */);
+const goToPostDetail = () => {
+  router.push({ name: 'PostDetail', params: { id: props.post.id } });
 };
 
-const formatTime = (isoString: string): string => {
-  if (!isoString) return '未知时间';
-  const date = new Date(isoString);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + date.toLocaleDateString();
-}
-
-const handleLike = async () => {
-  if (!userStore.isLoggedIn) {
-    ElMessage.warning('请先登录');
-    return;
-  }
-  
-  if (isLiking.value) return;
-  isLiking.value = true;
-
-  const updatedPostData: Partial<Post> = { 
-      likesCount: props.post.likesCount || 0, 
-      isLiked: props.post.isLiked 
-  };
-
-  try {
-    if (props.post.isLiked) {
-      await PostService.unlikePost(props.post.id);
-      updatedPostData.likesCount = (updatedPostData.likesCount ?? 1) - 1;
-      updatedPostData.isLiked = false;
-    } else {
-      await PostService.likePost(props.post.id);
-      updatedPostData.likesCount = (updatedPostData.likesCount ?? 0) + 1;
-      updatedPostData.isLiked = true;
+// Toggle Like Functionality
+const toggleLike = async () => {
+    if (!userStore.isLoggedIn) {
+        ElMessage.warning('请先登录');
+        router.push('/login');
+        return;
     }
-    emit('update:post', { ...props.post, ...updatedPostData });
-    
-  } catch (error: any) {
-    console.error('Failed to update like status:', error);
-    ElMessage.error(error.response?.data?.message || '操作失败');
-  } finally {
-    isLiking.value = false;
-  }
-}
+    isLiking.value = true;
+    try {
+        if (props.post.isLiked) {
+            await PostService.unlikePost(props.post.id);
+        } else {
+            await PostService.likePost(props.post.id);
+        }
 
-const handleComment = () => {
-  console.log('Comment button clicked for post:', props.post.id);
-  // Navigate to the detail page and perhaps add a query/hash to focus comments
-  router.push(`/posts/${props.post.id}?focus=comments`); 
-  // emit('comment', props.post.id) // No longer emit to open modal
-}
+        // Fetch the updated post data from the backend
+        const response = await PostService.getPostById(props.post.id);
+        const updatedPostData = response.post; // Assuming getPostById returns { post: Post }
+        
+        // Emit the fully updated post data
+        emit('update:post', { 
+            ...props.post, // Keep existing fields not returned by getPostById if any
+            isLiked: updatedPostData.isLiked, 
+            likesCount: updatedPostData.likesCount 
+        });
 
-const handleCardClick = () => {
-    console.log('Card click event triggered for post:', props.post.id);
-    // Navigate to the detail page
-    router.push(`/posts/${props.post.id}`);
-    // emit('comment', props.post.id); // No longer emit to open modal
+    } catch (error: any) {
+        console.error("Toggle like error:", error);
+        ElMessage.error(error.response?.data?.message || '操作失败');
+        // No rollback needed as we fetch fresh data
+    } finally {
+        isLiking.value = false;
+    }
 };
 
-const handleFavorite = async () => {
-  if (!userStore.isLoggedIn) {
-    ElMessage.warning('请先登录');
-    return;
-  }
-  if (isFavoriting.value) return;
-  isFavoriting.value = true;
-
-  const currentIsFavorited = props.post.isFavorited;
-  const currentFavoritesCount = props.post.favoritesCount || 0;
-  const updatedPostData: Partial<Post> = { 
-      favoritesCount: currentFavoritesCount,
-      isFavorited: currentIsFavorited 
-  };
-
-  // Optimistic Update
-  updatedPostData.isFavorited = !currentIsFavorited;
-  updatedPostData.favoritesCount = currentIsFavorited ? currentFavoritesCount - 1 : currentFavoritesCount + 1;
-  emit('update:post', { ...props.post, ...updatedPostData });
-
-  try {
-    if (currentIsFavorited) {
-      await PostService.unfavoritePost(props.post.id);
-    } else {
-      await PostService.favoritePost(props.post.id);
+// Toggle Favorite Functionality
+const toggleFavorite = async () => {
+    if (!userStore.isLoggedIn) {
+        ElMessage.warning('请先登录');
+        router.push('/login');
+        return;
     }
-    // API call successful, optimistic update is confirmed
-  } catch (error: any) {
-    console.error('Failed to update favorite status:', error);
-    ElMessage.error(error.response?.data?.message || '收藏操作失败');
-    // Rollback optimistic update on error
-    emit('update:post', { ...props.post, isFavorited: currentIsFavorited, favoritesCount: currentFavoritesCount });
-  } finally {
-    isFavoriting.value = false;
-  }
-}
+    isFavoriting.value = true;
+    try {
+        if (props.post.isFavorited) {
+             await PostService.unfavoritePost(props.post.id); 
+        } else {
+             await PostService.favoritePost(props.post.id);
+        }
 
-// Placeholder function for future avatar click logic
-const handleAvatarClick = () => {
-    console.log('Avatar clicked for author:', props.post.author?.id);
-    // TODO: Implement navigation to user profile page in the future
-    // Example: router.push(`/user/${props.post.author?.id}`);
-    ElMessage.info('查看用户详情功能待实现'); // Temporary feedback
+        // Fetch the updated post data from the backend
+        const response = await PostService.getPostById(props.post.id);
+        const updatedPostData = response.post;
+
+        // Emit the fully updated post data
+        emit('update:post', { 
+             ...props.post,
+             isFavorited: updatedPostData.isFavorited,
+             favoritesCount: updatedPostData.favoritesCount
+        });
+        
+    } catch (error: any) {
+        console.error("Toggle favorite error:", error);
+        ElMessage.error(error.response?.data?.message || '操作失败');
+        // No rollback needed
+    } finally {
+        isFavoriting.value = false;
+    }
 };
 
 </script>
@@ -183,97 +175,105 @@ const handleAvatarClick = () => {
 <style scoped lang="scss">
 .share-card {
   margin-bottom: 20px;
-  cursor: pointer;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.06);
+}
 
-  .share-header {
+.post-image {
+    width: 100%;
+    height: 200px; /* Adjust height as needed */
+    display: block; /* Remove extra space below image */
+    background-color: #f0f2f5; /* Placeholder background */
+    cursor: pointer; /* Add pointer cursor on hover */
+}
+
+.image-slot {
     display: flex;
+    justify-content: center;
     align-items: center;
-    cursor: default;
-    
-    // Style for the clickable avatar
-    .clickable-avatar {
-        cursor: pointer; // Indicate it's clickable
-        // Optional: add slight visual feedback on hover
-        transition: opacity 0.2s ease;
-        &:hover {
-            opacity: 0.85;
-        }
+    width: 100%;
+    height: 100%;
+    background: var(--el-fill-color-light);
+    color: var(--el-text-color-secondary);
+    font-size: 14px;
+    .el-icon {
+        font-size: 30px;
     }
+}
 
-    .username {
-      margin-left: 10px; 
-      font-weight: 500;
+.card-content {
+  padding: 15px 20px;
+}
+
+.author-info {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+
+  .el-avatar {
+    margin-right: 12px;
+    flex-shrink: 0;
+     img { // Ensure fallback image displays correctly
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
-    .time {
-      margin-left: auto; 
-      font-size: 0.85rem;
+  }
+
+  .author-details {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+    overflow: hidden; // Prevent long names from breaking layout
+
+    .author-name {
+      font-weight: 500;
+      color: #303133;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .post-time {
+      font-size: 0.8rem;
       color: #909399;
     }
   }
+}
 
-  .title-container {
-      padding: 15px 20px 10px 20px; 
-      margin-bottom: 10px; 
-      border-left: 4px solid var(--el-color-primary-light-5); 
-      cursor: default;
-      transition: background-color 0.2s ease;
+.post-body {
+  margin-bottom: 15px;
 
-      &:hover {
-         border-left-color: var(--el-color-primary); 
-      }
-
-      .post-title {
-        margin: 0;
-        font-size: 1.25rem; 
-        font-weight: 600;
-        line-height: 1.4;
-        color: #303133;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2; 
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
+  .post-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #303133;
+    margin-bottom: 8px;
+    cursor: pointer;
+    &:hover {
+      color: var(--el-color-primary);
+    }
   }
-
-  .card-body {
-     padding: 0 20px 15px 20px; 
-     cursor: default;
-  }
-
-  .post-content {
-     .truncated-content {
-         margin: 0 0 15px 0; 
-         line-height: 1.6;
-         display: -webkit-box;
-         -webkit-box-orient: vertical;
-         -webkit-line-clamp: 3;
-         overflow: hidden;
-         text-overflow: ellipsis;
-         white-space: pre-wrap;
-         color: var(--el-text-color-regular);
-         min-height: calc(1.6em * 3);
-     }
-  }
-
-  .post-actions {
-      padding: 10px 20px 15px 20px;
-      border-top: 1px solid var(--el-border-color-lighter); 
-      display: flex;
-      align-items: center;
-      cursor: default;
-      .el-button {
-          margin-right: 15px;
-          color: #606266;
-          cursor: pointer;
-          &:hover {
-             color: var(--el-color-primary);
-          }
-      }
-      .more-options {
-          margin-left: auto; 
-          margin-right: 0;
-      }
+  .post-text {
+    font-size: 0.9rem;
+    color: #606266;
+    line-height: 1.5;
+    // Style for truncated text if needed
   }
 }
-</style> 
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--el-border-color-lighter);
+  padding-top: 10px;
+  margin-top: 15px;
+
+  .el-button {
+    padding: 8px 10px; // Adjust button padding if needed
+  }
+  .more-options {
+     margin-left: auto; // Push more options button to the far right
+  }
+}
+</style>

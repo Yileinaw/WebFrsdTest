@@ -1,6 +1,6 @@
 <template>
-  <div class="my-posts-view">
-    <h2>
+  <div class="personal-center-view">
+    <h2 class="view-title">
       <el-icon><Document /></el-icon> 我的帖子
     </h2>
 
@@ -44,20 +44,56 @@
       </section>
     </div>
 
-    <!-- Add Edit Post Modal -->
-     <el-dialog 
+    <!-- Edit Post Modal -->
+    <el-dialog 
         v-model="isEditModalVisible"
         title="编辑帖子"
         width="60%"
         :close-on-click-modal="false"
      >
-        <el-form v-if="editingPost" :model="editForm" label-width="80px">
-            <el-form-item label="标题">
+        <el-form v-if="editingPost" :model="editForm" label-width="80px" ref="editFormRef">
+            <el-form-item label="标题" prop="title" :rules="[{ required: true, message: '标题不能为空', trigger: 'blur' }]">
                 <el-input v-model="editForm.title"></el-input>
             </el-form-item>
-            <el-form-item label="内容">
+            <el-form-item label="内容" prop="content">
                 <el-input type="textarea" :rows="5" v-model="editForm.content"></el-input>
             </el-form-item>
+            
+            <!-- Image Upload Section -->
+            <el-form-item label="图片">
+                 <!-- Display current image -->
+                 <div v-if="editForm.imageUrl" class="current-image-preview">
+                     <el-image 
+                         :src="resolveStaticAssetUrl(editForm.imageUrl)" 
+                         fit="contain" 
+                         style="width: 100px; height: 100px; margin-bottom: 10px; border: 1px solid #eee;"
+                         :preview-src-list="[resolveStaticAssetUrl(editForm.imageUrl)]"
+                         preview-teleported
+                         hide-on-click-modal
+                     />
+                     <el-button type="danger" link @click="removeEditImage">移除图片</el-button>
+                 </div>
+                 <!-- Upload component -->
+                 <el-upload
+                    v-else
+                    class="image-uploader"
+                    action="" 
+                    :show-file-list="false"
+                    :http-request="handleEditUpload"
+                    :before-upload="beforeImageUpload"
+                    name="postImage" 
+                  >
+                     <el-button type="primary">上传图片</el-button>
+                     <template #tip>
+                       <div class="el-upload__tip">
+                         仅限jpg/png格式，大小不超过5MB
+                       </div>
+                     </template>
+                  </el-upload>
+                  <!-- Upload progress/error display if needed -->
+                  <div v-if="uploadError" style="color: red; font-size: 12px; margin-top: 5px;">{{ uploadError }}</div>
+            </el-form-item>
+
         </el-form>
         <template #footer>
             <span class="dialog-footer">
@@ -74,12 +110,17 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue';
-import { Document, Edit, Delete } from '@element-plus/icons-vue';
-import { ElEmpty, ElSkeleton, ElAlert, ElPagination, ElButton, ElPopconfirm, ElDialog, ElForm, ElFormItem, ElInput, ElMessage, ElIcon } from 'element-plus';
+import { Document, Edit, Delete, Picture } from '@element-plus/icons-vue';
+import { ElEmpty, ElSkeleton, ElAlert, ElPagination, ElButton, ElPopconfirm, ElDialog, ElForm, ElFormItem, ElInput, ElMessage, ElIcon, ElUpload, ElImage } from 'element-plus';
 import { PostService } from '@/services/PostService';
-import type { Post } from '@/types/models';
+import type { Post, PaginatedResponse } from '@/types/models';
 import ShareCard from '@/components/common/ShareCard.vue'; // Ensure ShareCard is imported
+import { useUserStore } from '@/stores/modules/user'; // For auth token
+import http from '@/http'; // For base URL
+import { resolveStaticAssetUrl } from '@/utils/urlUtils'; // For image URL
+import type { UploadProps, UploadRequestOptions, FormInstance } from 'element-plus'; // Added types
 
+const userStore = useUserStore();
 const myPosts = ref<Post[]>([]);
 const isLoading = ref(true);
 const error = ref<string | null>(null);
@@ -92,8 +133,15 @@ const pagination = reactive({
 // --- Modal States --- 
 const isEditModalVisible = ref(false);
 const editingPost = ref<Post | null>(null);
+const editFormRef = ref<FormInstance>();
+const editForm = reactive({
+  id: 0,
+  title: '',
+  content: '',
+  imageUrl: null as string | null // Add imageUrl to form
+});
 const isSavingEdit = ref(false);
-const editForm = reactive({ title: '', content: '' });
+const uploadError = ref<string | null>(null); // To show upload errors
 // --- End Modal States ---
 
 const fetchMyPosts = async (page: number = 1) => {
@@ -141,28 +189,88 @@ const handleDeletePost = async (postId: number) => {
 // --- Edit Logic --- 
 const openEditModal = (post: Post) => {
     editingPost.value = post;
+    editForm.id = post.id;
     editForm.title = post.title;
     editForm.content = post.content || '';
+    editForm.imageUrl = post.imageUrl || null; // Populate image URL
+    uploadError.value = null; // Clear previous upload errors
     isEditModalVisible.value = true;
 };
 
-const handleSaveEdit = async () => {
-    if (!editingPost.value) return;
-    isSavingEdit.value = true;
+const beforeImageUpload: UploadProps['beforeUpload'] = (rawFile) => {
+  const isImage = rawFile.type.startsWith('image/');
+  const isLt5M = rawFile.size / 1024 / 1024 < 5;
+  if (!isImage) {
+    ElMessage.error('请上传图片格式文件!');
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!');
+  }
+  uploadError.value = null; // Clear errors before new upload attempt
+  return isImage && isLt5M;
+};
+
+const handleEditUpload = async (options: UploadRequestOptions) => {
+    const formData = new FormData();
+    formData.append('image', options.file); // Use generic 'image' field name
+    uploadError.value = null; 
+    
     try {
-        const updatedData = { title: editForm.title, content: editForm.content };
-        await PostService.updatePost(editingPost.value.id, updatedData);
-        ElMessage.success('帖子更新成功');
-        isEditModalVisible.value = false;
-        fetchMyPosts(pagination.currentPage);
+        // Define a separate upload endpoint URL (modify if needed)
+        const uploadUrl = `${http.defaults.baseURL}/posts/upload-image`; 
+        const response = await http.post<{ message: string; imageUrl: string }>(uploadUrl, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+                 Authorization: `Bearer ${userStore.token}`
+            }
+        });
+        editForm.imageUrl = response.data.imageUrl; // Set the received URL to the form
+        ElMessage.success('图片上传成功');
     } catch (err: any) {
-        console.error('Error updating post:', err);
-        ElMessage.error(err.response?.data?.message || '更新帖子失败');
-    } finally {
-        isSavingEdit.value = false;
+        console.error("Upload error:", err);
+        const errorMsg = err.response?.data?.message || '图片上传失败';
+        uploadError.value = errorMsg;
+        ElMessage.error(errorMsg); // Use the non-null errorMsg string
+        // Manually call onError if el-upload expects it
+        // options.onError?.(err);
     }
 };
-// --- End Edit Logic ---
+
+const removeEditImage = () => {
+    editForm.imageUrl = null;
+    // Optionally, call backend to delete the actual file if needed upon saving
+};
+
+const handleSaveEdit = async () => {
+    if (!editFormRef.value) return;
+    await editFormRef.value.validate(async (valid) => {
+        if (valid) {
+            isSavingEdit.value = true;
+            try {
+                const updateData = {
+                    title: editForm.title,
+                    content: editForm.content,
+                    imageUrl: editForm.imageUrl // Send null if image was removed
+                };
+                const response = await PostService.updatePost(editForm.id, updateData);
+                
+                // Find the post in the local list and update it
+                const index = myPosts.value.findIndex(p => p.id === editForm.id);
+                if (index !== -1) {
+                    myPosts.value[index] = { ...myPosts.value[index], ...response.post };
+                }
+                
+                ElMessage.success('帖子更新成功');
+                isEditModalVisible.value = false;
+            } catch (error: any) {
+                console.error('Save edit error:', error);
+                ElMessage.error(error.response?.data?.message || '更新失败');
+            } finally {
+                isSavingEdit.value = false;
+            }
+        }
+    });
+};
 
 // This function might still be needed if ShareCard emits update even on navigation
 // Or if updates happen *within* this view (unlikely now)
@@ -187,62 +295,93 @@ export default {
 </script>
 
 <style scoped lang="scss">
-.my-posts-view {
-  padding: 20px;
-  h2 {
-    display: flex;
-    align-items: center;
-    margin-bottom: 20px;
-    .el-icon {
-      margin-right: 8px;
-    }
+/* Add styles for the unified view container */
+.personal-center-view {
+  padding: 25px;
+  background-color: #fff; 
+  border-radius: 4px; 
+  min-height: 400px; 
+}
+
+/* Styles for the unified view title */
+.view-title {
+  display: flex;
+  align-items: center;
+  font-size: 1.4rem;
+  color: #303133;
+  margin-bottom: 25px;
+  .el-icon {
+    margin-right: 10px;
+    // Optional: Specific icon color
+     color: var(--el-color-primary); 
   }
+}
+
+.loading-state, .error-state, .el-alert, .el-empty {
+  padding: 20px;
+  margin-top: 20px; 
 }
 
 .posts-grid {
   display: grid;
-  // Adjust columns based on desired layout and screen size (e.g., using media queries)
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); 
-  gap: 20px; // Spacing between cards
+  gap: 20px; 
 }
 
 .post-card-item {
-  // Container for the card and its management buttons
   position: relative; 
-  border: 1px solid var(--el-border-color-lighter); // Optional: add border to item container
-  border-radius: 8px; // Optional: round corners
-  overflow: hidden; // Ensure content stays within bounds
-  display: flex; // Use flexbox for internal layout
-  flex-direction: column; // Stack card content and buttons vertically
+  border: 1px solid var(--el-border-color-lighter); 
+  border-radius: 8px; 
+  overflow: hidden; 
+  display: flex; 
+  flex-direction: column; 
 
-  .share-card { // Target the ShareCard component if needed
-      flex-grow: 1; // Allow card to take up available space
-      border: none; // Remove ShareCard's own border if it has one and we added one to item
+  .share-card { 
+      flex-grow: 1; 
+      border: none; 
   }
 
   .post-actions-manage {
-      padding: 5px 15px; // Adjust padding
-      background-color: #f8f9fa; // Optional: background for button area
-      border-top: 1px solid var(--el-border-color-lighter); // Separator line
+      padding: 5px 15px; 
+      background-color: #f8f9fa; 
+      border-top: 1px solid var(--el-border-color-lighter); 
       display: flex;
-      justify-content: flex-end; // Align buttons to the right
-      gap: 10px; // Space between buttons
-      flex-shrink: 0; // Prevent buttons area from shrinking
+      justify-content: flex-end; 
+      gap: 10px; 
+      flex-shrink: 0; 
 
       .el-button {
-          // Reset link button padding if needed
+         // Reset styles if needed
       }
   }
-}
-
-.loading-state, .el-alert, .el-empty {
-    margin-top: 20px;
 }
 
 .pagination-section {
     margin-top: 30px;
     display: flex;
     justify-content: center;
+}
+
+.image-uploader .el-upload {
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: var(--el-transition-duration-fast);
+}
+.image-uploader .el-upload:hover {
+  border-color: var(--el-color-primary);
+}
+.el-upload__tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 7px;
+}
+.current-image-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 </style> 

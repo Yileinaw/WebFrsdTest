@@ -1,36 +1,53 @@
 // src/routes/PostRoutes.ts
-import { Router } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { PostController } from '../controllers/PostController';
-import { LikeController } from '../controllers/LikeController'; // Import LikeController
-import { CommentController } from '../controllers/CommentController'; // Import CommentController
-import { AuthMiddleware } from '../middleware/AuthMiddleware'; // 导入认证中间件
-import { OptionalAuthMiddleware } from '../middleware/OptionalAuthMiddleware'; // Import optional auth
-import { FavoriteController } from '../controllers/FavoriteController'; // Import FavoriteController
+import { CommentController } from '../controllers/CommentController';
+import { LikeController } from '../controllers/LikeController'; // Keep LikeController
+import { FavoriteController } from '../controllers/FavoriteController'; // Keep FavoriteController
+import { AuthMiddleware, AuthenticatedRequest } from '../middleware/AuthMiddleware';
+import { OptionalAuthMiddleware } from '../middleware/OptionalAuthMiddleware';
+import upload from '../config/multerConfig'; // Ensure custom config is imported
+import path from 'path';
+import multer from 'multer';
 
-const postRouter = Router();
+// --- Remove Basic Multer Config ---
+// const basicUpload = multer({ dest: 'uploads/' }); 
+// --- End Remove ---
+
+// console.log('[PostRoutes.ts] File loaded'); // Remove log
+
+const postRouter = express.Router();
+const commentRouter = express.Router({ mergeParams: true }); // mergeParams allows access to postId from parent router
 
 // --- Comment Routes (nested under posts) ---
 // POST /api/posts/:postId/comments - Create a comment (requires auth)
-postRouter.post('/:postId/comments', AuthMiddleware, CommentController.createComment);
+commentRouter.post('/', AuthMiddleware, CommentController.createComment);
 
 // GET /api/posts/:postId/comments - Get comments for a post (public, optional auth for future use)
-postRouter.get('/:postId/comments', OptionalAuthMiddleware, CommentController.getCommentsByPostId);
+commentRouter.get('/', CommentController.getCommentsByPostId);
 
-// --- Existing post routes ---
+// --- Define specific routes BEFORE routes with parameters ---
+
+// --- Existing post routes --- (Now after /upload-image)
 // GET /api/posts - Use Optional Auth
 postRouter.get('/', OptionalAuthMiddleware, PostController.getAllPosts);
 
-// POST /api/posts - Requires Auth
-postRouter.post('/', AuthMiddleware, PostController.createPost);
+// POST /api/posts - Restore custom upload config
+postRouter.post(
+    '/', 
+    AuthMiddleware,
+    upload.single('image'), // Use custom upload config
+    PostController.createPost
+);
 
 // GET /api/posts/:id - Use Optional Auth
-postRouter.get('/:id', OptionalAuthMiddleware, PostController.getPostById);
+postRouter.get('/:postId', OptionalAuthMiddleware, PostController.getPostById);
 
 // PUT /api/posts/:id - Requires Auth
-postRouter.put('/:id', AuthMiddleware, PostController.updatePost);
+postRouter.put('/:postId', AuthMiddleware, PostController.updatePost);
 
 // DELETE /api/posts/:id - Requires Auth
-postRouter.delete('/:id', AuthMiddleware, PostController.deletePost);
+postRouter.delete('/:postId', AuthMiddleware, PostController.deletePost);
 
 // --- Like routes ---
 // POST /api/posts/:postId/like - Requires Auth
@@ -48,9 +65,14 @@ postRouter.delete('/:postId/favorite', AuthMiddleware, FavoriteController.unfavo
 // --- End Favorite Routes ---
 
 // --- Separate Comment Deletion Route ---
-const commentRouter = Router();
 // DELETE /api/comments/:commentId - Delete a comment (requires auth)
 commentRouter.delete('/:commentId', AuthMiddleware, CommentController.deleteComment);
 
+// Mount comment router under post router
+postRouter.use('/:postId/comments', commentRouter);
+
+// --- Remove Catch-all --- 
+
 // Export both routers
-export { postRouter, commentRouter }; 
+export { postRouter, commentRouter };
+// console.log('[PostRoutes.ts] Exporting routers (Refactored upload)...'); // Remove log 

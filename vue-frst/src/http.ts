@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useUserStore } from './stores/modules/user';
 
 // 创建 Axios 实例
 const http = axios.create({

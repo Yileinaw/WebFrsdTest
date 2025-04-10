@@ -1,6 +1,8 @@
 <template>
-  <div class="profile-settings-view">
-    <h2>个人资料设置</h2>
+  <div class="personal-center-view">
+    <h2 class="view-title">
+       <el-icon><User /></el-icon> 个人资料
+    </h2>
     <div v-if="userStore.currentUser" class="settings-content">
       
       <!-- Current Avatar - Make it clickable -->
@@ -54,19 +56,20 @@
                 <el-avatar :size="120" :src="resolveStaticAssetUrl(pendingAvatarUrl)" />
             </div>
 
-            <!-- Default Avatars Selection - Moved inside dialog -->
+            <!-- Default Avatars Selection - Use presetAvatarUrls -->
             <div class="setting-item default-avatars">
                 <label>选择预设头像</label>
                 <div class="avatar-options">
                     <el-avatar 
-                    v-for="preset in defaultAvatars" 
-                    :key="preset" 
+                    v-for="presetUrl in presetAvatarUrls" 
+                    :key="presetUrl" 
                     :size="60" 
-                    :src="resolveStaticAssetUrl(preset)" 
-                    @click="pendingAvatarUrl = preset"  
+                    :src="resolveStaticAssetUrl(presetUrl)" 
+                    @click="pendingAvatarUrl = presetUrl"  
                     class="preset-avatar"
-                    :class="{ 'selected': pendingAvatarUrl === preset }"
+                    :class="{ 'selected': pendingAvatarUrl === presetUrl }"
                     />
+                    <!-- Button to select removing avatar -->
                     <el-button text @click="pendingAvatarUrl = null" class="preset-avatar remove-avatar-btn" :class="{ 'selected': pendingAvatarUrl === null }">移除头像</el-button>
                 </div>
             </div>
@@ -85,11 +88,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { useUserStore } from '@/stores/modules/user';
-import { ElAvatar, ElUpload, ElButton, ElInput, ElMessage, ElEmpty, ElDialog } from 'element-plus';
+import { ElAvatar, ElUpload, ElButton, ElInput, ElMessage, ElEmpty, ElDialog, ElIcon } from 'element-plus';
 import type { UploadProps, UploadRawFile } from 'element-plus'
 import { UserService } from '@/services/UserService';
 import http from '@/http'; // 导入 http 实例以获取 baseUrl
-import { Edit, EditPen } from '@element-plus/icons-vue';
+import { EditPen, User } from '@element-plus/icons-vue';
 
 const userStore = useUserStore();
 
@@ -98,16 +101,22 @@ const isUpdatingName = ref(false);
 const avatarDialogVisible = ref(false);
 const pendingAvatarUrl = ref<string | null>(null);
 
-// --- 使用您截图中的实际文件名 --- 
-const defaultAvatars = ref([
-    '/avatars/defaults/1.jpg', 
-    '/avatars/defaults/2.jpg',
-    '/avatars/defaults/3.jpg',
-    '/avatars/defaults/4.jpg',
-    '/avatars/defaults/5.jpg',
-    // ... 根据您实际拥有的文件添加更多 ...
-]);
-// --- 结束修改 ---
+// --- Remove hardcoded defaultAvatars ---
+// const defaultAvatars = ref([...]); 
+
+// --- Add ref for dynamically loaded preset avatars ---
+const presetAvatarUrls = ref<string[]>([]);
+
+// --- Fetch preset avatars on mount ---
+const fetchPresetAvatars = async () => {
+    try {
+        presetAvatarUrls.value = await UserService.getDefaultAvatars();
+        console.log('[ProfileSettingsView] Fetched preset avatars:', presetAvatarUrls.value);
+    } catch (error) {
+        console.error('[ProfileSettingsView] Failed to fetch preset avatars:', error);
+        ElMessage.error('加载预设头像失败');
+    }
+};
 
 // 计算上传 URL
 const uploadUrl = computed(() => UserService.getUploadAvatarUrl());
@@ -144,7 +153,10 @@ const syncName = () => {
     }
 };
 
-onMounted(syncName);
+onMounted(() => {
+    syncName();
+    fetchPresetAvatars(); // Fetch presets when component mounts
+});
 watch(() => userStore.currentUser?.name, syncName); // Watch for changes in user name
 
 // Watch the resolved avatar URL from the store for debugging
@@ -183,6 +195,11 @@ const beforeAvatarUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile)
 // Open avatar dialog
 const openAvatarDialog = () => {
   pendingAvatarUrl.value = userStore.currentUser?.avatarUrl || null;
+  // Ensure presets are loaded before opening, or show loading state
+  if (presetAvatarUrls.value.length === 0) {
+      // Optionally fetch again or show loading inside dialog
+      // fetchPresetAvatars(); 
+  }
   avatarDialogVisible.value = true;
 };
 
@@ -190,21 +207,23 @@ const openAvatarDialog = () => {
 const saveAvatarSelection = async () => {
   const currentStoredUrl = userStore.currentUser?.avatarUrl || null;
   
-  if (pendingAvatarUrl.value === currentStoredUrl) {
+  // Use null to represent removing the avatar if pendingAvatarUrl is null
+  const urlToSave = pendingAvatarUrl.value;
+
+  if (urlToSave === currentStoredUrl) {
     avatarDialogVisible.value = false;
-    return;
+    return; // No change
   }
   
-  console.log('[ProfileSettingsView] Saving avatar selection:', pendingAvatarUrl.value);
+  console.log('[ProfileSettingsView] Saving avatar selection with URL:', urlToSave);
   try {
-    const response = await UserService.updateUserProfile({ avatarUrl: pendingAvatarUrl.value });
-    console.log('[ProfileSettingsView] Update Profile Response (Dialog Save):', response);
-    userStore.updateUserInfo(response.user);
-    avatarDialogVisible.value = false;
-    ElMessage.success('头像更新成功!');
+      const { user: updatedUser } = await UserService.updateUserProfile({ avatarUrl: urlToSave ?? undefined }); // Send null if pending is null, otherwise the URL
+      userStore.setUser(updatedUser); // Update user store with the complete updated user object
+      ElMessage.success('头像更新成功!');
+      avatarDialogVisible.value = false;
   } catch (error: any) {
-     console.error('[ProfileSettingsView] Error saving avatar selection:', error);
-     ElMessage.error(error.response?.data?.message || '头像更新失败');
+      console.error('Failed to update avatar:', error);
+      ElMessage.error(error.response?.data?.message || '头像更新失败');
   }
 };
 
@@ -229,15 +248,27 @@ const updateName = async () => {
 
 </script>
 
-<style scoped>
-.profile-settings-view {
-  padding: 20px;
+<style scoped lang="scss">
+/* Add styles for the unified view container */
+.personal-center-view {
+  padding: 25px;
+  background-color: #fff; 
+  border-radius: 4px; 
+  min-height: 400px; 
 }
 
-h2 {
-    margin-bottom: 30px;
-    text-align: center;
-    color: #303133;
+/* Styles for the unified view title */
+.view-title {
+  display: flex;
+  align-items: center;
+  font-size: 1.4rem;
+  color: #303133;
+  margin-bottom: 25px;
+  .el-icon {
+    margin-right: 10px;
+    // You might want a specific icon color here, e.g.:
+    // color: var(--el-color-primary);
+  }
 }
 
 .settings-content {
@@ -249,168 +280,132 @@ h2 {
 }
 
 .setting-item {
-    display: flex;
-    flex-direction: column; /* Stack label and control vertically */
-    gap: 10px; /* Spacing between label and control */
-}
-
-.setting-item label {
-    font-weight: bold;
-    color: #606266;
-    margin-bottom: 5px; /* Space below label */
-}
-
-.current-avatar .el-avatar {
-    border: 1px solid #dcdfe6;
-}
-
-.avatar-options {
-  display: flex;
-  flex-wrap: wrap; 
-  gap: 15px; 
-  align-items: center;
-}
-
-.preset-avatar {
-  cursor: pointer;
-  border: 2px solid transparent;
-  border-radius: 50%;
-  transition: border-color 0.3s, box-shadow 0.3s;
-}
-
-.preset-avatar:hover {
-  border-color: #a0cfff; /* Lighter blue on hover */
-}
-
- .preset-avatar.selected {
-     border-color: #409eff;
-     box-shadow: 0 0 5px rgba(64, 158, 255, 0.5);
- }
-
- /* Style for the remove button */
- .remove-avatar-btn {
-    border-radius: 4px;
-    height: 64px; 
-    width: 64px;
-    border: 1px dashed #dcdfe6;
-    display: flex;
+    display: grid;
+    grid-template-columns: 120px 1fr; /* Label and control */
     align-items: center;
-    justify-content: center;
-    color: #909399;
-    font-size: 12px;
-    background-color: #f9f9f9;
- }
+    gap: 15px;
 
- .remove-avatar-btn:hover {
-     border-color: #c0c4cc;
-     color: #606266;
-     background-color: #f4f4f5;
- }
-
-
- .profile-form .el-input {
-    margin-bottom: 10px;
-    /* max-width: 300px; Keep it full width within the container */
- }
-
- .avatar-uploader .el-upload {
-  border: 1px dashed var(--el-border-color);
-  border-radius: 6px;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  transition: var(--el-transition-duration-fast);
+    label {
+        font-weight: 500;
+        color: #606266;
+        text-align: right;
+    }
 }
 
-.avatar-uploader .el-upload:hover {
-  border-color: var(--el-color-primary);
+.current-avatar {
+   .avatar-container {
+        position: relative;
+        cursor: pointer;
+        width: 100px; // Match avatar size
+        height: 100px;
+        border-radius: 50%; // Ensure container is also round for overlay
+        overflow: hidden;
+
+        .el-avatar {
+            display: block; // Remove extra space below avatar
+        }
+        
+        .edit-icon-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.3);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            border-radius: 50%;
+            font-size: 24px;
+        }
+
+        &:hover .edit-icon-overlay {
+            opacity: 1;
+        }
+   }
 }
 
-.el-upload__tip {
-    font-size: 12px;
-    color: #909399;
-    margin-top: 7px;
+.avatar-upload {
+   .avatar-uploader {
+     // Style the uploader if needed
+   }
+   .el-upload__tip {
+     color: #909399;
+     font-size: 12px;
+     margin-top: 5px;
+   }
 }
 
-/* Ensure button is next to input */
 .profile-form {
-    display: flex;
-    flex-direction: column; /* Stack label, input, button */
+    grid-template-columns: 120px auto auto; /* Label, Input, Button */
+    align-items: center; /* Align items vertically */
+    .el-input {
+        // Input width can be adjusted if needed
+    }
+    .el-button {
+        // Button style if needed
+    }
 }
 
-.profile-form .el-input + .el-button {
-    margin-top: 10px; /* Add space between input and button */
-    align-self: flex-start; /* Align button to the start */
-}
-
-.avatar-container {
-  position: relative;
-  display: inline-block;
-  cursor: pointer;
-  width: 100px;
-  height: 100px;
-}
-
-/* New Edit Icon Overlay */
-.edit-icon-overlay {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  background-color: rgba(0, 0, 0, 0.6); /* Darker background for icon visibility */
-  color: white;
-  border-radius: 50%;
-  padding: 5px; /* Adjust padding */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0; /* Hidden by default */
-  transition: opacity 0.3s ease;
-  pointer-events: none; /* Pass clicks through by default */
-  line-height: 1; /* Prevent extra space */
-}
-
-.avatar-container:hover .edit-icon-overlay {
-  opacity: 1; /* Show on hover */
-  pointer-events: auto; /* Make clickable on hover */
-}
-
-.edit-icon-overlay .el-icon {
-  font-size: 16px; /* Adjust icon size */
-}
-
+/* Dialog Styles */
 .avatar-dialog {
-  /* Add any necessary styles for the dialog */
-}
+    .dialog-content {
+        display: flex;
+        flex-direction: column;
+        gap: 25px;
+    }
 
-.dialog-content {
-  /* Add any necessary styles for the dialog content */
-}
+    .preview-section {
+        text-align: center;
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+    }
 
-.preview-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 20px;
-  min-height: 150px;
-}
+    .setting-item {
+        display: block; // Override grid for dialog items
+        label {
+           display: block;
+           margin-bottom: 10px;
+           font-weight: 500;
+           text-align: left;
+        }
+    }
+    
+    .avatar-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center; // Align button with avatars
 
-.preview-section label {
-  font-weight: bold;
-  color: #606266;
-  margin-bottom: 10px;
-}
+        .preset-avatar {
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+            border-radius: 50%; // Make sure border follows shape
 
-.avatar-dialog .default-avatars label {
-  text-align: center;
-  width: 100%;
-  margin-bottom: 15px;
-}
-
-.avatar-dialog .avatar-options {
-  justify-content: center;
-}
-
-.dialog-footer {
-  margin-top: 10px;
+            &.selected {
+                border-color: var(--el-color-primary);
+            }
+            &:hover {
+                border-color: var(--el-color-primary-light-3);
+            }
+        }
+        .remove-avatar-btn {
+            // Specific styles for remove button if needed
+            border: 1px dashed var(--el-border-color);
+            padding: 5px 10px;
+             &.selected {
+                 border-style: solid;
+                 border-color: var(--el-color-primary);
+                 background-color: var(--el-color-primary-light-9);
+             }
+        }
+    }
 }
 </style> 

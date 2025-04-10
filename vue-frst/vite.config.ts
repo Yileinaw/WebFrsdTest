@@ -17,6 +17,11 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  optimizeDeps: {
+    // Remove or comment out 'marked'
+    // include: ['marked'] 
+    include: [] // Or keep it empty if no other deps need explicit inclusion
+  },
   // Add server config to disable HMR overlay
   server: {
     hmr: {

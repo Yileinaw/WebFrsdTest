@@ -1,5 +1,5 @@
 // Restore original server.ts structure
-import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response, NextFunction, ErrorRequestHandler } from 'express';
 import dotenv from 'dotenv';
 import * as cors from 'cors';
 import path from 'path';
@@ -8,12 +8,14 @@ import { userRouter } from './routes/UserRoutes';
 import { postRouter, commentRouter } from './routes/PostRoutes';
 import feedRouter from './routes/FeedRoutes'; 
 import notificationRouter from './routes/NotificationRoutes'; 
+import { errorHandler } from './middleware/ErrorHandlingMiddleware';
 // --- Remove direct imports, rely on userRoutes ---
 // import { UserController } from './controllers/UserController'; 
 // import { AuthMiddleware } from './middleware/AuthMiddleware';
 // --- End Remove ---
 
-console.log("--- RUNNING FULL SERVER.TS ---");
+// Remove server startup log, keep only the final listening log
+// console.log("--- RUNNING FULL SERVER.TS ---");
 
 // --- Remove Log Database URL --- 
 // console.log('[server.ts] DATABASE_URL used by this process:', process.env.DATABASE_URL);
@@ -48,44 +50,57 @@ const corsOptions: cors.CorsOptions = {
   credentials: true // If you need to handle cookies or authorization headers
 };
 app.use(cors.default(corsOptions));
+
+// --- Ensure Body Parsers are Active ---
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
+// --- End Ensure ---
 
-// --- Static Files Middleware (Moved Before API Routes) ---
+// --- Remove EARLY Mount / Restore Original Order ---
+// app.use('/api/posts', postRouter); // Remove potential early mount
+
+// --- Restore Static Files --- 
 // console.log('[server.ts] Mounting static file server for public directory...');
-app.use(express.static(path.join(__dirname, '../public'))); 
-// --- End Static Files Middleware ---
+// app.use(express.static(path.join(__dirname, '../public'))); 
+// Add a URL prefix for general static files from public directory
+const publicDirectory = path.join(__dirname, '../public');
+app.use('/static', express.static(publicDirectory)); 
+// Keep this log for static file serving confirmation
+console.log(`[Server] Serving general static files from: ${publicDirectory} at /static`);
 
-// --- Base Route (Keep) ---
+// --- 静态文件服务中间件 (Keep for user uploads) ---
+// const uploadsDirectory = path.join(process.cwd(), 'uploads');
+// console.log(`[Server] Serving user uploads from: ${uploadsDirectory} at /uploads`);
+// app.use('/uploads', express.static(uploadsDirectory));
+// --- End Restore Static Files ---
+
+// --- Base Route --- 
 app.get('/', (req: Request, res: Response) => {
     res.send('TDFRS Backend API is running!');
 });
 
-// --- API Routes ---
-// console.log('[server.ts] Mounting /api/auth routes...');
+// --- Restore Original API Route Order ---
 app.use('/api/auth', authRoutes);
-
-// console.log('[server.ts] Mounting /api/users routes...');
 app.use('/api/users', (req, res, next) => {
     // console.log(`[server.ts] Request to /api/users path: ${req.originalUrl}`);
     next();
-}, userRouter); // Restore mounting userRoutes
+}, userRouter);
 
-// console.log('[server.ts] Mounting /api/posts routes...'); 
+// --- Restore original /api/posts mount position ---
 app.use('/api/posts', postRouter);
 
-// console.log('[server.ts] Mounting /api/comments routes...');
 app.use('/api/comments', commentRouter);
-
-// console.log('[server.ts] Mounting /api/feed routes...');
 app.use('/api/feed', feedRouter);
-
-// console.log('[server.ts] Mounting /api/notifications routes...');
 app.use('/api/notifications', notificationRouter);
+
+// --- 全局错误处理中间件 ---
+app.use(errorHandler as ErrorRequestHandler);
+
 // --- End API Routes ---
 
 app.listen(port, () => {
-    console.log(`[server]: Server is running at http://localhost:${port}`);
+     // Keep this log
+    console.log(`[Server]: Server is running at http://localhost:${port}`); 
 });
 
 export default app; 

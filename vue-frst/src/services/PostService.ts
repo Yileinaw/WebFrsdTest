@@ -6,12 +6,14 @@ import type { Post, User, Comment } from '../types/models';
 interface CreatePostData {
     title: string;
     content?: string;
+    imageUrl?: string | null;
 }
 
 // 定义更新帖子请求的数据类型
 interface UpdatePostData {
     title?: string;
     content?: string;
+    imageUrl?: string | null;
 }
 
 // 定义获取帖子列表的响应类型 (根据后端返回)
@@ -49,15 +51,21 @@ interface PaginatedPostsResponse {
     totalCount: number;
 }
 
+// Type for createPost response (adjust if backend response changed)
+interface CreatePostResponse {
+    message: string;
+    post: Post;
+}
+
 export const PostService = {
     // 创建帖子 (需要认证)
-    async createPost(data: CreatePostData): Promise<PostMutationResponse> {
-        const response = await http.post<PostMutationResponse>('/posts', data);
+    async createPost(data: FormData): Promise<CreatePostResponse> {
+        const response = await http.post<CreatePostResponse>('/posts', data);
         return response.data;
     },
 
     // 获取帖子列表 (公开，支持分页)
-    async getAllPosts(params?: { page?: number; limit?: number; sortBy?: string }): Promise<GetPostsResponse> {
+    async getAllPosts(params?: { page?: number; limit?: number; sortBy?: string; search?: string }): Promise<GetPostsResponse> {
         const response = await http.get<GetPostsResponse>('/posts', { params });
         return response.data;
     },

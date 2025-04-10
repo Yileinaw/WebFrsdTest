@@ -24,19 +24,22 @@ export class UserService {
         userId: number, 
         profileData: { name?: string; avatarUrl?: string | null }
     ): Promise<Omit<User, 'password'> | null> {
-        console.log(`[UserService.updateUserProfile] User ${userId} updating profile with:`, profileData);
+        // Optional: Log only when there is data to update
+        // console.log(`[UserService.updateUserProfile] User ${userId} updating profile with:`, profileData);
         
         const dataToUpdate: Prisma.UserUpdateInput = {};
         if (profileData.name !== undefined) { dataToUpdate.name = profileData.name; }
         if (profileData.avatarUrl !== undefined) { dataToUpdate.avatarUrl = profileData.avatarUrl; }
 
         if (Object.keys(dataToUpdate).length === 0) {
-             console.log(`[UserService.updateUserProfile] No data provided for user ${userId}, returning current profile.`);
+             // Optional: Log this case if needed
+             // console.log(`[UserService.updateUserProfile] No data provided for user ${userId}, returning current profile.`);
              return await this.getUserById(userId);
         }
 
         try {
-            console.log(`[UserService.updateUserProfile] Updating user ${userId} in DB with:`, dataToUpdate);
+            // Optional: Log before database call
+            // console.log(`[UserService.updateUserProfile] Updating user ${userId} in DB with:`, dataToUpdate);
             const updatedUser = await prisma.user.update({
                 where: { id: userId },
                 data: dataToUpdate,
@@ -46,9 +49,11 @@ export class UserService {
                     createdAt: true, updatedAt: true,
                 }
             });
-            console.log(`[UserService.updateUserProfile] User ${userId} updated successfully. New avatarUrl:`, updatedUser.avatarUrl);
+             // Optional: Log successful update details
+            // console.log(`[UserService.updateUserProfile] User ${userId} updated successfully. New avatarUrl:`, updatedUser.avatarUrl);
             return updatedUser;
         } catch (error: any) {
+             // Keep this error log
             console.error(`[UserService.updateUserProfile] Error updating user ${userId}:`, error);
             throw new Error("Failed to update user profile");
         }

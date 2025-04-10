@@ -1,6 +1,6 @@
 // backend/src/services/CommentService.ts
 import prisma from '../db';
-import { Comment, Post, Prisma, User, NotificationType } from '@prisma/client';
+import { Comment, Post, Prisma, User } from '@prisma/client';
 
 // Define AuthorInfo locally for this service
 interface AuthorInfo {
@@ -52,9 +52,8 @@ export class CommentService {
         const [newComment, post, parentAuthorId] = await prisma.$transaction(async (tx) => {
             const createdComment = await tx.comment.create({ data: commentData });
 
-            const updatedPost = await tx.post.update({
+            const updatedPost = await tx.post.findUnique({
                 where: { id: postId },
-                data: { commentsCount: { increment: 1 } },
                 select: { authorId: true }
             });
             
@@ -74,10 +73,10 @@ export class CommentService {
                 await prisma.notification.create({
                     data: {
                         recipientId: post.authorId,
-                        actorId: userId,
+                        senderId: userId,
                         postId: postId,
                         commentId: newComment.id, 
-                        type: parentId ? NotificationType.REPLY : NotificationType.COMMENT
+                        type: parentId ? 'REPLY' : 'COMMENT'
                     }
                 });
                  console.log(`[Notification] ${parentId ? 'REPLY' : 'COMMENT'} notification created for post ${postId}, recipient ${post.authorId}`);
@@ -91,10 +90,10 @@ export class CommentService {
                  await prisma.notification.create({
                      data: {
                          recipientId: parentAuthorId,
-                         actorId: userId,
+                         senderId: userId,
                          postId: postId, // Include post context
                          commentId: newComment.id, // Link to the new reply comment
-                         type: NotificationType.REPLY
+                         type: 'REPLY'
                      }
                  });
                  console.log(`[Notification] REPLY notification created for comment ${parentId}, recipient ${parentAuthorId}`);
@@ -177,11 +176,6 @@ export class CommentService {
         const deletedComment = await prisma.$transaction(async (tx) => {
             const comment = await tx.comment.delete({
                 where: { id: commentId },
-            });
-
-            await tx.post.update({
-                where: { id: commentToDelete.postId }, // Use postId from the fetched comment
-                data: { commentsCount: { decrement: 1 } },
             });
 
             return comment;

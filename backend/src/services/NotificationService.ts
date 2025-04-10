@@ -1,17 +1,28 @@
 import prisma from '../db';
 import { Notification, Prisma } from '@prisma/client';
 
-// Define the structure for the response, including related data
-interface NotificationWithRelations extends Notification {
-  actor: { id: number; name: string | null }; // Include actor's name
-  post: { id: number; title: string };       // Include post's title
-  comment?: { id: number; text: string };    // Include comment text if applicable
+// Define the structure for the response, explicitly listing needed fields
+interface BasicNotification {
+  id: number;
+  type: string; // Use the directly imported enum type
+  isRead: boolean;
+  createdAt: Date;
+  // senderId: number | null; // Keep senderId for filtering/logic if needed, but add sender object
+  postId?: number | null;
+  commentId?: number | null;
+  // Add sender object (adjust structure based on User model)
+  sender: {
+      id: number;
+      name: string | null;
+      avatarUrl?: string | null;
+  } | null; // Allow sender to be null if senderId is null
 }
 
+// Update response interface
 interface PaginatedNotificationsResponse {
-  notifications: NotificationWithRelations[];
+  notifications: BasicNotification[]; // Use corrected BasicNotification
   totalCount: number;
-  unreadCount?: number; // Optional: Add unread count later if needed
+  unreadCount?: number;
 }
 
 export class NotificationService {
@@ -30,8 +41,11 @@ export class NotificationService {
       recipientId: recipientId,
     };
     if (unreadOnly) {
-      whereClause.read = false;
+      whereClause.isRead = false;
     }
+
+    // Add debug log
+    console.log('[DEBUG] getNotifications called with simplified query (no includes).');
 
     const [notificationsData, totalCount] = await prisma.$transaction([
       prisma.notification.findMany({
@@ -39,17 +53,43 @@ export class NotificationService {
         skip: skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: {
-          actor: { select: { id: true, name: true, avatarUrl: true } },
-          post: { select: { id: true, title: true } },
-          comment: { select: { id: true, text: true } } // Include comment if present
+        // Select necessary fields and include sender info
+        select: {
+            id: true,
+            type: true,
+            isRead: true,
+            createdAt: true,
+            senderId: true, // Keep senderId if useful elsewhere
+            postId: true,
+            commentId: true,
+            // Include sender details
+            sender: {
+                select: {
+                    id: true,
+                    name: true,
+                    avatarUrl: true
+                }
+            }
         }
       }),
       prisma.notification.count({ where: whereClause })
     ]);
 
-    // Cast to the extended type (assuming includes are always present as requested)
-    const notifications = notificationsData as NotificationWithRelations[];
+    // Map to the BasicNotification structure, ensure type compatibility
+    const notifications: BasicNotification[] = notificationsData.map(n => ({
+        id: n.id,
+        type: n.type, // Type is already NotificationType from select
+        isRead: n.isRead,
+        createdAt: n.createdAt,
+        // senderId: n.senderId, // Keep if needed
+        postId: n.postId,
+        commentId: n.commentId,
+        sender: n.sender ? { // Map the sender object
+            id: n.sender.id,
+            name: n.sender.name,
+            avatarUrl: n.sender.avatarUrl
+        } : null // Handle case where sender might be null
+    }));
 
     return { notifications, totalCount };
   }
@@ -63,9 +103,9 @@ export class NotificationService {
         where: {
             id: notificationId,
             recipientId: recipientId,
-            read: false // Only update if it's currently unread
+            isRead: false // Only update if it's currently unread
         },
-        data: { read: true }
+        data: { isRead: true }
     });
     
      if (updatedNotification.count > 0) {
@@ -82,9 +122,9 @@ export class NotificationService {
     const result = await prisma.notification.updateMany({
       where: {
         recipientId: recipientId,
-        read: false,
+        isRead: false,
       },
-      data: { read: true },
+      data: { isRead: true },
     });
     return result; 
   }

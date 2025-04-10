@@ -5,7 +5,7 @@ export interface User {
     id: number;
     email: string; // Using email as the primary identifier field shown
     name: string | null; // Prisma String? maps to string | null
-    avatarUrl: string | null; // Prisma String? maps to string | null
+    avatarUrl?: string | null; // 头像 URL (可选)
     createdAt: string; // Prisma DateTime maps to string
     updatedAt: string;
     // posts?: Post[]; // Keep optional, only include if an API endpoint actually populates this
@@ -16,6 +16,7 @@ export interface Post {
     id: number;
     title: string;
     content: string | null; // Prisma String? maps to string | null
+    imageUrl?: string | null; // 新增：帖子图片 URL (可选)
     createdAt: string;
     updatedAt: string;
     authorId: number;
@@ -41,19 +42,34 @@ export interface Comment {
     parentId?: number | null; // For identifying replies
 }
 
-// Consistent Notification model
+// Like 信息 (通常不需要在前端直接使用完整模型)
+// export interface Like { ... }
+
+// Favorite 信息
+export interface Favorite {
+    id: number;
+    userId: number;
+    postId: number;
+    createdAt: string; // Or Date
+    post?: Post; // 收藏的帖子详情 (可选)
+}
+
+// 定义通知类型枚举或联合类型
+export type NotificationType = 'LIKE' | 'COMMENT' | 'FAVORITE' | 'REPLY' | 'FOLLOW'; // Added FOLLOW as example
+
+// Notification 信息 (统一版本)
 export interface Notification {
     id: number;
+    type: NotificationType; // 使用定义的类型
+    isRead: boolean;
+    createdAt: string; 
     recipientId: number;
-    actorId: number;
+    senderId?: number | null;
+    sender?: User | null; 
     postId?: number | null;
+    post?: { id: number; title: string; } | null; // Keep null possibility if backend might return it
     commentId?: number | null;
-    type: 'LIKE' | 'COMMENT' | 'FAVORITE' | 'FOLLOW';
-    read: boolean;
-    createdAt: string;
-    actor?: { id: number; name: string | null; avatarUrl: string | null };
-    post?: { id: number; title: string };
-    comment?: { id: number; text: string };
+    comment?: { id: number; text: string; } | null; // Keep null possibility
 }
 
 // Structure for the response when fetching comments for a post.
@@ -62,4 +78,27 @@ export interface Notification {
 export interface GetCommentsResponse {
     comments: Comment[];
     totalCount: number;
+}
+
+// 通用的分页响应结构
+export interface PaginatedResponse<T> {
+    items: T[]; // 当前页的数据项
+    totalCount: number; // 总记录数
+    page: number; // 当前页码
+    limit: number; // 每页数量
+    totalPages: number; // 总页数
+}
+
+// Add PostPreview interface here and export it
+export interface PostPreview {
+  id: number; 
+  title: string;
+  imageUrl: string | null;
+  content?: string | null; // Keep content optional if not always needed for preview
+  author?: {
+      id: number;
+      name: string | null;
+      avatarUrl?: string | null;
+  } | null; // Allow author to be null
+  isShowcase?: boolean; // Add this optional field
 }

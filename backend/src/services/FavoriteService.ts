@@ -1,5 +1,5 @@
 import prisma from '../db';
-import { Favorite, Post, Prisma, User } from '@prisma/client';
+import { Favorite, Post, Prisma, User, Notification } from '@prisma/client';
 
 // console.log('[FavoriteService.ts] File loaded by Node.js process.'); // Remove log
 
@@ -12,10 +12,14 @@ interface AuthorInfo {
 
 // Define a type for Post that includes the AuthorInfo
 // This helps ensure type safety throughout the process
-interface PostWithAuthor extends Omit<Post, 'authorId'> { // Omit authorId if author object is present
-    isLiked?: boolean;
-    isFavorited?: boolean;
-    author: AuthorInfo | null; // Use the AuthorInfo interface
+interface PostWithAuthor extends Omit<Post, 'authorId'> { 
+    author: AuthorInfo | null; 
+    likesCount?: number;
+    commentsCount?: number;
+    favoritesCount?: number; // Ensure this is defined
+    isLiked?: boolean; 
+    isFavorited?: boolean; 
+    isShowcase: boolean; // Add isShowcase here
 }
 
 // Define the Paginated response type using PostWithAuthor
@@ -30,179 +34,134 @@ export class FavoriteService {
      * Add a post to user's favorites.
      */
     public static async favoritePost(userId: number, postId: number): Promise<Favorite> {
-        // Check if already favorited
-        const existingFavorite = await prisma.favorite.findUnique({
-            where: { userId_postId: { userId, postId } }
-        });
-        if (existingFavorite) {
-            return existingFavorite; 
-        }
+        const existingFavorite = await prisma.favorite.findUnique({ where: { userId_postId: { userId, postId } } });
+        if (existingFavorite) return existingFavorite;
 
-        // Use transaction to create favorite, increment count, and create notification
-        const [newFavorite, post] = await prisma.$transaction(async (tx) => {
-            const favorite = await tx.favorite.create({
-                data: { userId, postId }
+        // Transaction: Create favorite & notification (No count update needed)
+        try {
+            const [newFavorite, post] = await prisma.$transaction(async (tx) => {
+                const favorite = await tx.favorite.create({ data: { userId, postId } });
+                // Fetch post author for notification
+                const postData = await tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
+                return [favorite, postData];
             });
-            const updatedPost = await tx.post.update({
-                where: { id: postId },
-                data: { favoritesCount: { increment: 1 } },
-                select: { authorId: true } // Select authorId for notification
-            });
-            return [favorite, updatedPost];
-        });
-        
-        // --- Create Notification --- 
-        if (post && post.authorId !== userId) { // Don't notify self
-             try {
-                await prisma.notification.create({
-                    data: {
-                        recipientId: post.authorId,
-                        actorId: userId,
-                        postId: postId,
-                        type: 'FAVORITE' // Correct type
-                    }
-                });
-                 // console.log(`[Notification] FAVORITE notification created for post ${postId}, recipient ${post.authorId}`);
-            } catch (error) {
-                // console.error(`[Notification Error] Failed to create FAVORITE notification for post ${postId}:`, error);
+            
+            // Create Notification (Use senderId)
+            if (post && post.authorId !== userId) {
+                try {
+                    await prisma.notification.create({
+                        data: { recipientId: post.authorId, senderId: userId, postId, type: 'FAVORITE' }
+                    });
+                } catch (error) { /* Log notification error */ }
             }
+            return newFavorite;
+        } catch (error) {
+            console.error(`[FavoriteService.favoritePost] Error:`, error);
+            throw error; // Re-throw
         }
-        // --- End Create Notification ---
-
-        return newFavorite;
     }
 
     /**
      * Remove a post from user's favorites.
      */
     public static async unfavoritePost(userId: number, postId: number): Promise<Favorite | null> {
-         // Check if it exists before trying to delete
-        const favoriteToDelete = await prisma.favorite.findUnique({
-            where: { userId_postId: { userId, postId } }
-        });
-
-        if (!favoriteToDelete) {
-            return null; // Not favorited, nothing to delete
+        // Transaction: Delete favorite (No count update needed)
+        try {
+            return await prisma.favorite.delete({ where: { userId_postId: { userId, postId } } });
+        } catch (error) {
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null; 
+            console.error(`[FavoriteService.unfavoritePost] Error:`, error);
+            throw error; // Re-throw other errors
         }
-        
-        // Use transaction to delete favorite and decrement count
-        const deletedFavorite = await prisma.$transaction(async (tx) => {
-            const favorite = await tx.favorite.delete({
-                where: { userId_postId: { userId, postId } }
-            });
-
-            await tx.post.update({
-                where: { id: postId },
-                // Prevent count from going below zero, though theoretically shouldn't happen with checks
-                data: { favoritesCount: { decrement: 1 } }
-            });
-
-            return favorite;
-        });
-
-        return deletedFavorite;
-    }
-
-    /**
-     * NEW method to get posts favorited by a specific user with pagination.
-     */
-    public static async fetchUserFavoritesPage(
-        userId: number,
-        options: { page?: number, limit?: number } = {}
-    ): Promise<PaginatedFavoritePostsResponse> {
-        // console.log(`[FavoriteService.fetchUserFavoritesPage] Fetching favorites for userId: ${userId}, options: ${JSON.stringify(options)}`); // Remove log
-        const { page = 1, limit = 10 } = options;
-        const skip = (page - 1) * limit;
-
-        // 1. Get total count
-        const totalCount = await prisma.favorite.count({ where: { userId } });
-
-        // 2. Get paginated favorite records (just post IDs)
-        const favoriteRecords = await prisma.favorite.findMany({
-            where: { userId },
-            select: { postId: true },
-            orderBy: { createdAt: 'desc' },
-            skip,
-            take: limit,
-        });
-
-        const postIds = favoriteRecords.map(fav => fav.postId);
-        if (postIds.length === 0) {
-            // console.log(`[FavoriteService.fetchUserFavoritesPage] No favorite post IDs found for userId: ${userId}`); // Remove log
-            return { posts: [], totalCount: 0 };
-        }
-        // console.log(`[FavoriteService.fetchUserFavoritesPage] Found favorite post IDs: ${postIds}`); // Remove log
-
-        // 3. Fetch post details for these IDs
-        const postsData = await prisma.post.findMany({
-            where: { id: { in: postIds } },
-            select: {
-                id: true,
-                title: true,
-                content: true,
-                createdAt: true,
-                updatedAt: true,
-                authorId: true, // Keep authorId for potential reference if needed
-                author: { 
-                    select: {
-                        id: true,
-                        name: true,
-                        avatarUrl: true
-                    }
-                },
-                likesCount: true,
-                commentsCount: true,
-                favoritesCount: true,
-                // Need relations to determine isLiked/isFavorited for the *requesting user*
-                likedBy: { where: { userId }, select: { userId: true } },
-                favoritedBy: { where: { userId }, select: { userId: true } }
-            }
-        });
-        
-        // --- Remove Debug Log --- 
-        // console.log('[FavoriteService.fetchUserFavoritesPage] Raw postsData fetched:', JSON.stringify(postsData, null, 2));
-        // --- End Remove Debug Log ---
-        
-        // 4. Map data to the stricter PostWithAuthor type
-        const processedPosts: PostWithAuthor[] = postsData.map(post => {
-            const isLiked = !!post.likedBy?.length;
-            // Since we are fetching *this user's* favorites, isFavorited should be true
-            const isFavorited = true; // Simplification: posts fetched via this method are always favorited by the user
-            // const isFavorited = !!post.favoritedBy?.length; // Original check retained for consistency if needed elsewhere
-            
-            // Create the author object explicitly matching AuthorInfo
-            const authorInfo: AuthorInfo | null = post.author ? {
-                id: post.author.id,
-                name: post.author.name,
-                avatarUrl: post.author.avatarUrl // Directly use the selected value
-            } : null;
-
-            return {
-                id: post.id,
-                title: post.title,
-                content: post.content,
-                createdAt: post.createdAt,
-                updatedAt: post.updatedAt,
-                author: authorInfo,
-                likesCount: post.likesCount,
-                commentsCount: post.commentsCount,
-                favoritesCount: post.favoritesCount,
-                isLiked,
-                isFavorited
-            };
-        });
-
-        // 5. Re-order based on favoriteRecords order
-        const orderedPosts = postIds
-            .map(id => processedPosts.find(p => p.id === id))
-            .filter((p): p is PostWithAuthor => p !== undefined);
-
-        // console.log(`[FavoriteService.fetchUserFavoritesPage] Returning ${orderedPosts.length} ordered posts.`); // Remove log
-        return { posts: orderedPosts, totalCount };
     }
 
     /**
      * Get posts favorited by a specific user with pagination.
      */
-   
+    public static async fetchUserFavoritesPage(
+        userId: number,
+        options: { page?: number, limit?: number } = {}
+    ): Promise<PaginatedFavoritePostsResponse> {
+        const { page = 1, limit = 10 } = options;
+        const skip = (page - 1) * limit;
+
+        // Fetch total count of favorites for the user
+        const totalCount = await prisma.favorite.count({
+            where: { userId },
+        });
+
+        // Fetch paginated favorite records using SELECT to ensure all needed fields are present
+        const favoriteRecords = await prisma.favorite.findMany({
+            where: { userId },
+            select: { // Use select at the top level
+                // Select necessary fields from Favorite itself if needed (e.g., createdAt)
+                // createdAt: true, 
+                post: { // Select the related post data
+                   select: { // Explicitly select all fields needed for PostWithAuthor
+                       id: true,
+                       title: true,
+                       content: true,
+                       imageUrl: true,
+                       createdAt: true,
+                       updatedAt: true,
+                       isShowcase: true, // Ensure isShowcase is selected
+                       author: { // Select author details
+                           select: { id: true, name: true, avatarUrl: true }
+                       },
+                       likes: { // Select likes for the current user
+                           where: { userId: userId },
+                           select: { id: true } 
+                       },
+                       _count: { // Select counts
+                           select: { likes: true, comments: true, favoritedBy: true }
+                       }
+                   } // End of post select
+                } // End of post relation select
+            }, // End of top-level select
+            orderBy: { createdAt: 'desc' }, // Need to order by a field selected or available (e.g., post.createdAt)
+            // orderBy: { post: { createdAt: 'desc' } }, // Example: Order by post creation date
+            skip,
+            take: limit,
+        });
+
+        // Process data and explicitly build PostWithAuthor objects
+        const posts: PostWithAuthor[] = favoriteRecords
+            .map(favRecord => {
+                // favRecord now only contains the 'post' object based on the select
+                const postData = favRecord.post; 
+                if (!postData) return null; 
+
+                const authorInfo: AuthorInfo | null = postData.author ? {
+                    id: postData.author.id,
+                    name: postData.author.name,
+                    avatarUrl: postData.author.avatarUrl
+                } : null;
+                
+                // Construct the PostWithAuthor object
+                const processedPost: PostWithAuthor = {
+                    id: postData.id,
+                    title: postData.title,
+                    content: postData.content,
+                    imageUrl: postData.imageUrl,
+                    createdAt: postData.createdAt,
+                    updatedAt: postData.updatedAt,
+                    author: authorInfo,
+                    likesCount: postData._count?.likes ?? 0,
+                    commentsCount: postData._count?.comments ?? 0,
+                    favoritesCount: postData._count?.favoritedBy ?? 0,
+                    isLiked: !!(postData.likes && postData.likes.length > 0),
+                    isFavorited: true,
+                    isShowcase: postData.isShowcase // This should now be available
+                };
+                return processedPost;
+            })
+            .filter((p): p is PostWithAuthor => p !== null);
+
+        return { posts, totalCount };
+    }
+
+    // Wrapper method (remains the same)
+     public static async getMyFavorites(userId: number, options: { page?: number, limit?: number } = {}): Promise<PaginatedFavoritePostsResponse> {
+         return this.fetchUserFavoritesPage(userId, options);
+     }
 } 

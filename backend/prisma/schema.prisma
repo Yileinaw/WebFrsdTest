@@ -14,47 +14,49 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String?
-  avatarUrl String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  posts     Post[]
-  likes     Like[]
-  comments  Comment[]
-  favorites Favorite[]
-  receivedNotifications Notification[] @relation("ReceivedNotifications")
-  sentNotifications     Notification[] @relation("SentNotifications")
+  id         Int      @id @default(autoincrement())
+  email      String   @unique
+  name       String?
+  password   String
+  avatarUrl  String? // 可选，用于存储头像路径
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  posts      Post[]   // 用户发布的所有帖子
+  comments   Comment[] // 用户的所有评论
+  likes      Like[]    // 用户收到的赞
+  notifications Notification[] @relation("UserNotifications") // 用户收到的通知
+  sentNotifications Notification[] @relation("UserNotificationSender") // 用户发出的通知
+  favorites  Favorite[] // 用户的收藏
 }
 
 model Post {
-  id        Int      @id @default(autoincrement())
-  title     String
-  content   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  author    User     @relation(fields: [authorId], references: [id])
-  authorId  Int
-  likedBy   Like[]
-  likesCount Int @default(0)
-  comments   Comment[]
-  commentsCount Int @default(0)
-  favoritedBy Favorite[]
-  favoritesCount Int @default(0)
-  notifications   Notification[]
+  id          Int        @id @default(autoincrement())
+  title       String
+  content     String?    // Made content optional for consistency
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  author      User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId    Int
+  comments    Comment[]  // 帖子的所有评论
+  likes       Like[]     // 帖子收到的赞
+  imageUrl    String?    @unique // Correctly add @unique to the existing field
+  tags        Tag[]      @relation // Implicit M2M: Removed references: [id]
+  favoritedBy Favorite[] // 帖子被哪些用户收藏
+  notifications Notification[] // Added inverse relation for Notification.post
+  isShowcase  Boolean    @default(false)
+
+  @@index([authorId])
 }
 
 model Like {
-  userId Int
-  postId Int
+  id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@id([userId, postId])
+  @@unique([postId, userId]) // 一个用户只能对一个帖子点赞一次
 }
 
 model Comment {
@@ -62,49 +64,50 @@ model Comment {
   text      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  authorId  Int
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
   postId    Int
-  notification Notification?
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  Int
+  notification Notification? 
 
+  // Add parent/reply relation
   parentId  Int?      // Optional ID of the parent comment
-  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade, map: "comment_parentId_fkey") // Added explicit map name for clarity
   replies   Comment[] @relation("CommentReplies") // List of replies to this comment
 }
 
-model Favorite {
-  userId Int
-  postId Int
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@id([userId, postId])
-}
-
-enum NotificationType {
-  LIKE
-  COMMENT
-  FAVORITE
-  REPLY
-}
-
 model Notification {
-  id          Int              @id @default(autoincrement())
-  recipient   User             @relation("ReceivedNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
-  recipientId Int
-  actor       User             @relation("SentNotifications", fields: [actorId], references: [id], onDelete: Cascade)
-  actorId     Int
-  type        NotificationType
-  post        Post             @relation(fields: [postId], references: [id], onDelete: Cascade)
-  postId      Int
-  comment     Comment?         @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  commentId   Int?             @unique
-  read        Boolean          @default(false)
-  createdAt   DateTime         @default(now())
+  id           Int       @id @default(autoincrement())
+  type         String    // e.g., 'LIKE', 'COMMENT', 'FAVORITE'
+  isRead       Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  recipient    User      @relation("UserNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientId  Int       // 通知接收者 (通常是帖子作者)
+  sender       User?     @relation("UserNotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
+  senderId     Int?      // 触发通知的用户 (点赞者、评论者、收藏者)
+  postId       Int?      // 关联的帖子ID (可选)
+  post         Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId    Int?      @unique // 关联的评论ID (仅用于评论通知) - Added @unique for one-to-one
+  comment      Comment?  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  message      String?   // Pre-generated message if needed
 
-  @@index([recipientId, createdAt])
+  @@index([recipientId]) // Index for querying user's notifications
+  @@index([postId])      // Index for notifications related to a post
+}
+
+model Tag {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  posts Post[] @relation // Implicit M2M: Removed references: [id]
+}
+
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  userId    Int
+  postId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId]) // 确保用户对同一帖子的收藏是唯一的
 }

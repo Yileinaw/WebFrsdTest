@@ -2,95 +2,61 @@ import http from '@/http';
 import type { User, Post, Notification } from '@/types/models';
 import type { PaginatedResponse } from '@/types/api';
 
-// Define the type for the data expected by the update endpoint
-interface UpdateProfileData {
-  nickname?: string;
-  name?: string;
-  // Add other updatable fields here if needed
-  // e.g., bio?: string;
-}
-
 // Define specific response types based on backend controllers
 interface UserProfileResponse {
     message?: string;
     user: Omit<User, 'password'>;
 }
 
-interface AvatarUploadResponse {
-    message: string;
-    avatarUrl: string;
-    user?: Omit<User, 'password'>; // Backend might return updated user
+// Define the response type for getting default avatars
+interface DefaultAvatarsResponse {
+    avatarUrls: string[];
 }
 
-// Define Paginated response types for user-specific data
-interface PaginatedFavoritesResponse extends PaginatedResponse {
-     // From FavoriteService.getFavoritePostsByUserId response
-    posts: (Post & { isLiked?: boolean; isFavorited?: boolean; author?: { id: number, name: string | null } })[];
-}
+// Keep as an exported class with static methods
+export class UserService { 
 
-interface PaginatedUserPostsResponse extends PaginatedResponse {
-    // From PostService.getAllPosts response
-    posts: (Post & { isLiked?: boolean; isFavorited?: boolean; commentsCount?: number; favoritesCount?: number })[]; 
-}
+    // 获取当前用户信息 (需要认证)
+    static async getMe(): Promise<User> {
+        // Using /users/me endpoint which returns the User object directly
+        const response = await http.get<UserProfileResponse>('/users/me');
+        return response.data.user;
+    }
 
-// Assume NotificationWithRelations structure from backend NotificationService
-interface PaginatedNotificationsResponse extends PaginatedResponse {
-  notifications: (Notification & {
-      actor?: { id: number; name: string | null };
-      post?: { id: number; title: string };
-      comment?: { id: number; text: string };
-  })[];
-}
+    // 更新用户信息 (名字或预设头像) - Calls PUT /users/me/profile
+    static async updateUserProfile(data: { name?: string; avatarUrl?: string | null }): Promise<UserProfileResponse> {
+        const payload: { name?: string; avatarUrl?: string | null } = {};
+        if (data.name !== undefined) payload.name = data.name;
+        // Handle null explicitly for avatar removal
+        if (data.avatarUrl !== undefined) payload.avatarUrl = data.avatarUrl; 
+        
+        // Ensure this matches the backend route /users/me/profile
+        const response = await http.put<UserProfileResponse>('/users/me/profile', payload);
+        return response.data;
+    }
+    
+    // 获取头像上传URL (辅助函数) - Points to POST /api/users/me/avatar
+    static getUploadAvatarUrl(): string {
+        const relativePath = '/users/me/avatar';
+        // Construct the full URL using the Axios instance's baseURL
+        const baseUrl = (http.defaults.baseURL || '').replace(/\/?$/, ''); // Ensure no trailing slash
+        const fullUrl = `${baseUrl}${relativePath}`;
+        console.log(`[UserService.getUploadAvatarUrl] Constructed full URL: ${fullUrl}`);
+        return fullUrl;
+    }
 
-export class UserService {
-  /**
-   * Update the current user's profile information.
-   */
-  async updateProfile(data: UpdateProfileData): Promise<User> {
-    // Use PUT request to /users/profile endpoint
-    const response = await http.put<User>('/users/profile', data);
-    return response.data; // Return the updated user data from the backend
-  }
+    // 获取预设头像列表 (公开) - Calls GET /users/avatars/defaults
+    static async getDefaultAvatars(): Promise<string[]> { 
+        try {
+            const response = await http.get<DefaultAvatarsResponse>('/users/avatars/defaults');
+            return response.data.avatarUrls || [];
+        } catch (error) {
+            console.error("Failed to fetch default avatars:", error);
+            return [];
+        }
+    }
 
-  // 获取当前用户信息
-  static async getCurrentUserProfile(): Promise<UserProfileResponse> {
-    const response = await http.get<UserProfileResponse>('/users/me');
-    return response.data;
-  }
-
-  // 更新用户信息 (名字或预设头像)
-  static async updateUserProfile(data: { name?: string; avatarUrl?: string | null }): Promise<UserProfileResponse> {
-    const response = await http.put<UserProfileResponse>('/users/me/profile', data);
-    return response.data;
-  }
-
-  // 获取上传头像的 URL
-  static getUploadAvatarUrl(): string {
-    // Ensure http.defaults.baseURL is correctly configured in your http instance setup
-    const baseUrl = http.defaults.baseURL || ''; 
-    return `${baseUrl.replace(/\/$/, '')}/users/me/avatar`;
-  }
-  
-  // --- 添加获取收藏、帖子、通知的服务方法 ---
-  static async getFavorites(page: number = 1, limit: number = 10): Promise<PaginatedFavoritesResponse> {
-    const response = await http.get<PaginatedFavoritesResponse>('/users/me/favorites', {
-      params: { page, limit }
-    });
-    return response.data;
-  }
-
-  static async getMyPosts(page: number = 1, limit: number = 10): Promise<PaginatedUserPostsResponse> {
-    const response = await http.get<PaginatedUserPostsResponse>('/users/me/posts', {
-      params: { page, limit }
-    });
-    return response.data;
-  }
-
-  static async getNotifications(page: number = 1, limit: number = 10): Promise<PaginatedNotificationsResponse> {
-    const response = await http.get<PaginatedNotificationsResponse>('/users/me/notifications', {
-      params: { page, limit }
-    });
-    return response.data;
-  }
-  // --- 结束 --- 
+    // --- Removed duplicate methods and other unused service methods --- 
+    // If getFavorites, getMyPosts, getNotifications are needed later,
+    // they can be added back based on the previous correct implementations.
 } 

@@ -19,8 +19,8 @@
       <section class="content-section">
         <h2><el-icon><Star /></el-icon> 热门推荐</h2>
         <el-row :gutter="20">
-          <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in recommendedItems" :key="item.id">
-            <FoodCard :item="item" @view-details="handleViewDetails" />
+          <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in processedRecommendedItems" :key="item.id">
+            <FoodCard :post="item" />
           </el-col>
         </el-row>
         <div class="more-link">
@@ -39,13 +39,7 @@
          <el-alert v-else-if="sharesError" :title="sharesError" type="error" show-icon :closable="false" />
          <el-row v-else :gutter="20">
           <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="share in latestShares" :key="share.id">
-            <ShareCard
-              :post="share"
-              @like="handleLike"
-              @comment="openPostDetailModal"
-              @favorite="handleFavorite"
-              @update:post="handlePostUpdate"
-            />
+            <FoodCard :post="{ ...share, imageUrl: share.imageUrl ?? null }" />
           </el-col>
            <el-empty v-if="!isLoadingShares && !sharesError && latestShares.length === 0" description="暂无分享内容" />
         </el-row>
@@ -55,24 +49,17 @@
       </section>
     </div>
 
-    <!-- Add Post Detail Modal -->
-    <PostDetailModal 
-        :post-id="selectedPostId" 
-        v-model:visible="isModalVisible"
-        @postUpdated="handlePostUpdate" 
-    />
-
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, Star, ChatLineSquare } from '@element-plus/icons-vue' // 引入图标
 // 引入通用组件
 import FoodCard from '@/components/common/FoodCard.vue'
-import ShareCard from '@/components/common/ShareCard.vue'
-import PostDetailModal from '@/components/common/PostDetailModal.vue'; // Import the modal component
+// import ShareCard from '@/components/common/ShareCard.vue' // Remove ShareCard import
+// import PostDetailModal from '@/components/common/PostDetailModal.vue'; // Remove Modal import for now
 // --- 新增导入 ---
 import { PostService } from '@/services/PostService'
 import type { Post } from '@/types/models' // 导入 Post 类型
@@ -84,17 +71,17 @@ const latestShares = ref<Post[]>([]) // 存储从 API 获取的帖子
 const isLoadingShares = ref(false)
 const sharesError = ref<string | null>(null)
 
-// --- Add Modal State --- 
-const selectedPostId = ref<number | null>(null);
-const isModalVisible = ref(false);
-// --- End Modal State ---
+// --- Remove Modal State --- 
+// const selectedPostId = ref<number | null>(null);
+// const isModalVisible = ref(false);
+// --- End Remove Modal State ---
 
-// --- 模拟数据 --- 
+// --- 模拟数据 (Add author field) --- 
 const recommendedItems = ref([
-  { id: 1, title: '麻婆豆腐', description: '经典川菜，麻辣鲜香。' , imageUrl: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png', rating: 4.5 }, // 替换为真实图片 URL
-  { id: 2, title: '意式肉酱面', description: '浓郁番茄与肉末的完美结合。' , imageUrl: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png', rating: 4.0 },
-  { id: 3, title: '抹茶千层蛋糕', description: '层层叠加的细腻口感。' , imageUrl: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png', rating: 5.0 },
-  { id: 4, title: '日式豚骨拉面', description: '浓厚醇香的骨汤体验。' , imageUrl: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png', rating: 4.8 },
+  { id: 1, title: '麻婆豆腐', description: '经典川菜，麻辣鲜香。' , imageUrl: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png', rating: 4.5, author: { id: 101, name: '美食家A', avatarUrl: '/uploads/avatars/default/1.jpg' } }, 
+  { id: 2, title: '意式肉酱面', description: '浓郁番茄与肉末的完美结合。' , imageUrl: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png', rating: 4.0, author: { id: 102, name: '西餐控', avatarUrl: null } },
+  { id: 3, title: '抹茶千层蛋糕', description: '层层叠加的细腻口感。' , imageUrl: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png', rating: 5.0, author: { id: 103, name: '甜点师', avatarUrl: '/uploads/avatars/default/3.jpg' } },
+  { id: 4, title: '日式豚骨拉面', description: '浓厚醇香的骨汤体验。' , imageUrl: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png', rating: 4.8, author: { id: 104, name: '拉面达人', avatarUrl: undefined } }, // Test undefined avatar
 ]);
 
 // --- 新增获取最新分享的函数 ---
@@ -120,37 +107,13 @@ onMounted(() => {
   // 如果 recommendedItems 也需要从 API 加载，在这里调用相应函数
 })
 
-// --- 添加处理 ShareCard 更新的函数 ---
-const handlePostUpdate = (updatedPost: Post) => {
-  const index = latestShares.value.findIndex(p => p.id === updatedPost.id);
-  if (index !== -1) {
-    latestShares.value[index] = { ...latestShares.value[index], ...updatedPost }; // Merge updates
-  }
-};
-
-// --- 事件处理 (占位) ---
-const handleViewDetails = (id: number | string) => {
-  console.log('View details for food item:', id)
-  // router.push(`/food/${id}`)
-}
-const handleLike = (id: number | string) => {
-  console.log('HomeView received like event for post:', id) // 可以移除，因为 ShareCard 处理了
-}
-const handleFavorite = (id: number | string) => {
-  console.log('HomeView received favorite event for post:', id)
-}
-
-// --- Modify handleComment to open modal --- 
-const openPostDetailModal = (postId: number) => {
-    console.log('Opening modal for post:', postId);
-    if (typeof postId === 'number') {
-        selectedPostId.value = postId;
-        isModalVisible.value = true;
-    } else {
-        console.error('Invalid postId received from ShareCard:', postId);
-    }
-}
-// --- End modify handleComment ---
+// --- Remove unused event handlers or update them for FoodCard if needed later ---
+// const handlePostUpdate = (updatedPost: Post) => { ... };
+// const handleViewDetails = (id: number | string) => { ... };
+// const handleLike = (id: number | string) => { ... };
+// const handleFavorite = (id: number | string) => { ... };
+// const openPostDetailModal = (postId: number) => { ... };
+// --- End Remove --- 
 
 // --- 导航方法 --- 
 const goToDiscover = () => {
@@ -159,6 +122,19 @@ const goToDiscover = () => {
 const goToCommunity = () => {
   router.push('/community')
 }
+
+// Handle recommended items (ensure author and imageUrl conversion)
+const processedRecommendedItems = computed(() => recommendedItems.value.map(item => ({
+    id: item.id,
+    title: item.title,
+    imageUrl: item.imageUrl ?? null,
+    content: item.description ?? null,
+    author: item.author ? { // Ensure author object structure and null avatarUrl
+        id: item.author.id,
+        name: item.author.name ?? '匿名用户',
+        avatarUrl: item.author.avatarUrl ?? null
+    } : null // Handle case where author might be missing
+})));
 
 </script>
 

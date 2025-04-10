@@ -1,36 +1,36 @@
-import http from '@/http'; // 导入 http 实例以获取 baseURL
+import http from '@/http'; // Import the configured axios instance
 // import defaultAvatarPlaceholder from '@/assets/images/default-avatar.png'; // <-- 移除导入
 
 /**
- * Resolves a potentially relative backend asset URL (like avatar or image uploads)
- * into a full URL, handling the base URL and removing '/api' if present.
- * If the input url is invalid, returns an empty string.
+ * Resolves a relative static asset URL from the backend to a full URL.
+ * Handles cases where the input URL might be null, undefined, or already absolute.
  * 
- * @param url The relative URL path from the backend (e.g., /uploads/avatars/...) or an absolute URL.
- * @returns The fully resolved URL or an empty string.
+ * @param relativeUrl - The relative URL path from the backend (e.g., /uploads/avatars/...) or null/undefined.
+ * @returns The full absolute URL or an empty string if the input is invalid.
  */
-// export const resolveStaticAssetUrl = (url: string | null | undefined, defaultPath: string = '/avatars/default/default.png'): string => {
-export const resolveStaticAssetUrl = (url: string | null | undefined): string => { // <-- 移除 defaultPath 参数
-    // Use default avatar placeholder if url is null or undefined or an empty string
-    if (!url) {
-        // return defaultAvatarPlaceholder; // <-- 不再返回导入的占位符
-        return ''; // <-- 返回空字符串，让 el-avatar 显示默认占位符
+export const resolveStaticAssetUrl = (relativeUrl: string | null | undefined): string => {
+    if (!relativeUrl) {
+        return ''; // Return empty string for null, undefined, or empty input
     }
-    const urlToProcess = url; // url is guaranteed to be truthy here
 
-    // If it's already an absolute URL, return it directly
-    if (urlToProcess.startsWith('http://') || urlToProcess.startsWith('https://')) {
-        return urlToProcess;
+    // If the URL is already absolute, return it directly
+    if (relativeUrl.startsWith('http://') || relativeUrl.startsWith('https://')) {
+        return relativeUrl;
     }
-    
-    // Construct the base URL for static files (remove /api if present)
+
+    // Get the API base URL from the http instance
     const apiBaseUrl = http.defaults.baseURL || '';
-    const staticBaseUrl = apiBaseUrl.replace(/\/api\/?$/, ''); // Remove trailing /api or /api/
     
+    // Assume the static assets are served from the root of the backend server
+    // Remove trailing '/api' or '/api/' if present to get the server root
+    const serverRootUrl = apiBaseUrl.replace(/\/api\/?$/, '');
+
     // Ensure the relative URL starts with a slash
-    const relativeUrl = urlToProcess.startsWith('/') ? urlToProcess : '/' + urlToProcess;
+    const path = relativeUrl.startsWith('/') ? relativeUrl : '/' + relativeUrl;
+
+    // Combine server root and path
+    const fullUrl = `${serverRootUrl}${path}`;
     
-    const finalUrl = `${staticBaseUrl}${relativeUrl}`;
-    // console.log(`[resolveStaticAssetUrl] Resolved ${url} to ${finalUrl}`); // Optional debug log
-    return finalUrl;
+    // console.log(`[resolveStaticAssetUrl] Resolved ${relativeUrl} to ${fullUrl}`);
+    return fullUrl;
 }; 

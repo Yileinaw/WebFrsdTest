@@ -1,80 +1,64 @@
 import prisma from '../db';
-import { Prisma } from '@prisma/client';
+import { Like, Prisma } from '@prisma/client';
 
 export class LikeService {
     /**
-     * Like a post. Creates a Like record and increments likesCount.
-     * Throws an error if the user has already liked the post.
+     * Like a post.
      */
-    public static async likePost(userId: number, postId: number): Promise<void> {
-        try {
-            await prisma.$transaction(async (tx) => {
-                // 1. Create the Like record
-                await tx.like.create({
-                    data: {
-                        userId: userId,
-                        postId: postId,
-                    },
-                });
+    public static async likePost(userId: number, postId: number): Promise<Like | null> {
+        const existingLike = await prisma.like.findUnique({
+            where: { postId_userId: { postId, userId } } // Correct composite key
+        });
+        if (existingLike) {
+            return existingLike;
+        }
 
-                // 2. Increment the likesCount on the Post
-                await tx.post.update({
-                    where: { id: postId },
-                    data: {
-                        likesCount: { increment: 1 },
-                    },
-                });
+        // Transaction: Create Like & Notification (No count update on Post)
+        try {
+            const [newLike, post] = await prisma.$transaction(async (tx) => {
+                const like = await tx.like.create({ data: { userId, postId } });
+                // Fetch post author for notification
+                const postData = await tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
+                return [like, postData];
             });
-        } catch (error: any) {
-            // Handle potential errors, e.g., unique constraint violation if already liked (P2002)
-            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-                // This means the like already exists, which might be okay or indicate a client-side issue.
-                // We could choose to do nothing or re-throw a specific error.
-                console.warn(`User ${userId} already liked post ${postId}.`);
-                // Or: throw new Error('Post already liked'); 
-            } else {
-                console.error(`Error liking post ${postId} by user ${userId}:`, error);
-                throw new Error('Failed to like post');
+
+            // Create Notification
+            if (post && post.authorId !== userId) {
+                try {
+                    await prisma.notification.create({
+                        data: { recipientId: post.authorId, senderId: userId, postId, type: 'LIKE' }
+                    });
+                } catch (error) {
+                    console.error(`[LikeService] Failed to create LIKE notification:`, error);
+                }
             }
+            return newLike;
+        } catch (error) {
+            console.error(`[LikeService] Error liking post:`, error);
+            // Handle potential transaction errors (e.g., post deleted mid-transaction)
+             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                 throw new Error('Post not found'); 
+            }
+            throw error; // Re-throw other errors
         }
     }
 
     /**
-     * Unlike a post. Deletes the Like record and decrements likesCount.
-     * Does nothing if the user hasn't liked the post.
+     * Unlike a post.
      */
-    public static async unlikePost(userId: number, postId: number): Promise<void> {
+    public static async unlikePost(userId: number, postId: number): Promise<Like | null> {
+        // Transaction: Delete Like (No count update on Post)
         try {
-            await prisma.$transaction(async (tx) => {
-                // 1. Attempt to delete the Like record
-                const deletedLike = await tx.like.delete({
-                    where: {
-                        userId_postId: {
-                            userId: userId,
-                            postId: postId,
-                        },
-                    },
-                }).catch((error: any) => {
-                    // Handle case where the like doesn't exist (P2025)
-                    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-                        return null; // Indicate that no like was found/deleted
-                    }
-                    throw error; // Re-throw other errors
-                });
-
-                // 2. Only decrement if a like was actually deleted
-                if (deletedLike) {
-                    await tx.post.update({
-                        where: { id: postId },
-                        data: {
-                            likesCount: { decrement: 1 },
-                        },
-                    });
-                }
+            return await prisma.like.delete({
+                where: { postId_userId: { postId, userId } } // Correct composite key
             });
-        } catch (error: any) {
-            console.error(`Error unliking post ${postId} by user ${userId}:`, error);
-            throw new Error('Failed to unlike post');
+        } catch (error) {
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                // Record not found - it wasn't liked anyway
+                return null; 
+            }
+            console.error(`[LikeService] Error unliking post:`, error);
+            throw error; // Re-throw other errors
         }
     }
 } 

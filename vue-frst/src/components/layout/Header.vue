@@ -135,6 +135,7 @@ const handleLogout = () => {
 .user-section {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   .el-dropdown-link {
     cursor: pointer;
     display: flex;
@@ -146,10 +147,6 @@ const handleLogout = () => {
     }
     .username {
         margin-right: 5px; // 用户名和下拉图标间距
-        max-width: 100px; // 限制最大宽度防止过长
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
   }
 }

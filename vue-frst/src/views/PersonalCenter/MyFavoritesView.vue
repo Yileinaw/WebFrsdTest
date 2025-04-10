@@ -11,25 +11,24 @@
     <el-alert v-else-if="error" :title="error" type="error" show-icon :closable="false" class="error-alert" />
 
     <div v-else-if="favoritePosts.length > 0" class="posts-list">
-      <el-row :gutter="20">
-        <el-col :span="24" v-for="post in favoritePosts" :key="post.id">
-          <ShareCard
-              :post="post" 
-              @update:post="handlePostUpdate"
-           />
-        </el-col>
-      </el-row>
+       <!-- 注意这里不再嵌套el-row/el-col，ShareCard本身会处理布局 -->
+       <ShareCard
+           v-for="post in favoritePosts"
+           :key="post.id"
+           :post="post"
+           @update:post="handlePostUpdate"
+        />
 
       <section class="pagination-section" v-if="pagination.total > pagination.pageSize">
          <el-pagination
-              background
-              layout="prev, pager, next"
-              :total="pagination.total"
-              :page-size="pagination.pageSize"
-              v-model:current-page="pagination.currentPage"
-              @current-change="handlePageChange"
-          />
-      </section>
+             background
+             layout="prev, pager, next"
+             :total="pagination.total"
+             :page-size="pagination.pageSize"
+             v-model:current-page="pagination.currentPage"
+             @current-change="handlePageChange"
+         />
+     </section>
     </div>
 
     <el-empty description="你还没有收藏任何帖子" v-else class="empty-state" />
@@ -145,9 +144,9 @@ export default {
 }
 
 .posts-list {
-    .el-col {
-        margin-bottom: 20px; // Add space between cards
-    }
+   display: flex;
+   flex-direction: column;
+   gap: 20px; /* 控制卡片之间的间距 */
 }
 
 .pagination-section {
@@ -155,4 +154,5 @@ export default {
   display: flex;
   justify-content: center;
 }
+
 </style> 

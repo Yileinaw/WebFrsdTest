@@ -39,6 +39,21 @@
         </div>
       </div>
 
+      <!-- *** ADD IMAGE DISPLAY HERE *** -->
+      <div v-if="post.imageUrl" class="post-image-container">
+        <el-image
+          :src="resolveStaticAssetUrl(post.imageUrl)"
+          :alt="post.title"
+          fit="contain" 
+          class="post-detail-image"
+          lazy
+          :preview-src-list="[resolveStaticAssetUrl(post.imageUrl)]"
+          preview-teleported
+          hide-on-click-modal
+        />
+      </div>
+      <!-- *** END ADD IMAGE DISPLAY *** -->
+
       <!-- Post Body -->
       <div class="post-body" v-html="renderedContent"></div>
 
@@ -113,11 +128,14 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElSkeleton, ElAlert, ElEmpty, ElAvatar, ElButton, ElInput, ElMessage, ElDivider } from 'element-plus';
 import { Star, StarFilled, ChatLineSquare, Delete, Back } from '@element-plus/icons-vue';
 import { PostService } from '@/services/PostService';
-import type { Post, Comment, User } from '@/types/models'; // Import Comment type
-import { marked } from 'marked'; // Import marked library
-import { resolveStaticAssetUrl } from '@/utils/urlUtils'; // Correct import path
+import type { Post, Comment, User } from '@/types/models';
+import MarkdownIt from 'markdown-it';
+import { resolveStaticAssetUrl } from '@/utils/urlUtils';
 import { useUserStore } from '@/stores/modules/user';
-import CommentItem from '@/components/comments/CommentItem.vue'; 
+import CommentItem from '@/components/comments/CommentItem.vue';
+
+// --- Initialize markdown-it ---
+const md = new MarkdownIt();
 
 const route = useRoute();
 const router = useRouter();
@@ -132,7 +150,6 @@ const error = ref<string | null>(null);
 const comments = ref<Comment[]>([]);
 const isCommentsLoading = ref(false);
 const commentsError = ref<string | null>(null);
-// --- End Comment State ---
 
 // --- Action States ---
 const isLiking = ref(false);
@@ -142,8 +159,6 @@ const newCommentText = ref('');
 
 // --- Reply State ---
 const replyingToCommentId = ref<number | null>(null);
-const replyText = ref('');
-const replyInputRef = ref<InstanceType<typeof ElInput> | null>(null);
 
 // 使用 provide 提供状态
 provide('replyingToCommentId', replyingToCommentId);
@@ -158,20 +173,23 @@ const nestedComments = computed((): NestedComment[] => {
     const rootComments: NestedComment[] = [];
 
     // Create a map of comments by their ID and add a children array
-    comments.value.forEach(comment => {
+    (comments.value || []).forEach(comment => {
         commentsMap[comment.id] = { ...comment, children: [] };
     });
 
     // Build the nested structure
-    comments.value.forEach(comment => {
+    (comments.value || []).forEach(comment => {
         const nestedComment = commentsMap[comment.id];
         if (comment.parentId && commentsMap[comment.parentId]) {
             // Ensure children array exists before pushing
             if (!commentsMap[comment.parentId].children) {
                 commentsMap[comment.parentId].children = [];
             }
-            commentsMap[comment.parentId].children!.push(nestedComment);
-        } else {
+            // Prevent adding self as child if data is inconsistent
+            if (commentsMap[comment.parentId].id !== nestedComment.id) {
+                commentsMap[comment.parentId].children!.push(nestedComment);
+            }
+        } else if (nestedComment) { // Ensure nestedComment exists before pushing to root
             rootComments.push(nestedComment);
         }
     });
@@ -187,34 +205,30 @@ const nestedComments = computed((): NestedComment[] => {
 
     return rootComments;
 });
-// --- End Computed property for nested comments ---
 
-// --- Computed property for rendered Markdown content ---
+// --- Computed property for rendered Markdown content using markdown-it ---
 const renderedContent = computed(() => {
-    if (post.value?.content) {
-        // Configure marked (optional, enable GFM for tables, strikethrough etc.)
-        // marked.use({ gfm: true }); 
-        try {
-            // Use DOMPurify here if content comes from untrusted sources EVEN AFTER marked
-            // import DOMPurify from 'dompurify';
-            // return DOMPurify.sanitize(marked.parse(post.value.content));
-            return marked.parse(post.value.content); // Assuming marked output is safe enough for now
-        } catch (e) {
-            console.error("Error parsing markdown:", e);
-            return '<p>内容解析错误</p>'; // Fallback content
-        }
-    } 
-    return ''; // Return empty string if no content
+  if (post.value?.content) {
+    try {
+      return md.render(post.value.content); // 使用 markdown-it 渲染
+    } catch (e) {
+      console.error("Error parsing markdown:", e);
+      error.value = '内容解析错误'; // Set error state
+      return '<p>内容解析错误</p>'; // Fallback content
+    }
+  }
+  return ''; // Return empty string if no content
 });
-// --- End Computed property ---
 
+// --- Data Fetching ---
 const fetchComments = async () => {
     if (!postId.value) return;
     isCommentsLoading.value = true;
     commentsError.value = null;
     try {
+        // Ensure PostService.getCommentsByPostId returns an array or handle null/undefined
         const response = await PostService.getCommentsByPostId(postId.value);
-        comments.value = response || []; 
+        comments.value = Array.isArray(response) ? response : []; 
     } catch (err: any) {
         console.error('Error fetching comments:', err);
         commentsError.value = err.response?.data?.message || '加载评论失败';
@@ -225,67 +239,96 @@ const fetchComments = async () => {
 };
 
 const fetchPostDetails = async () => {
-  const id = parseInt(route.params.id as string, 10);
-  if (isNaN(id)) {
+  const idString = route.params.id as string; // Get id as string first
+  // Check if idString is actually a valid number string before parsing
+  if (!idString || isNaN(Number(idString))) { 
     error.value = '无效的帖子 ID';
     isLoading.value = false;
+    post.value = null; // Ensure post is null on invalid ID
+    comments.value = []; // Clear comments as well
     return;
   }
+  const id = parseInt(idString, 10);
+  
   postId.value = id;
   isLoading.value = true;
   error.value = null;
+  post.value = null; // Reset post before fetching
+  comments.value = []; // Reset comments before fetching
+
   try {
     const responseWrapper = await PostService.getPostById(id);
     console.log('[fetchPostDetails] API Response Wrapper:', responseWrapper);
     
-    const fetchedPost = responseWrapper.post; 
+    const fetchedPost = responseWrapper?.post; // Safe access
 
     if (fetchedPost) { 
       post.value = fetchedPost;
       console.log('[fetchPostDetails] Assigned post.value.author:', JSON.stringify(post.value.author)); 
+      // Fetch comments only after successfully fetching post
       await fetchComments(); 
     } else {
-      post.value = null;
+      // Keep post.value as null
       error.value = '帖子未找到或数据格式错误'; 
     }
   } catch (err: any) {
      console.error('Error fetching post details:', err);
-     post.value = null;
+     // Keep post.value as null
      error.value = err.response?.data?.message || '加载帖子详情失败';
   } finally {
     isLoading.value = false;
   }
 };
 
-const formatTime = (isoString: string | undefined): string => {
+// --- Formatting ---
+const formatTime = (isoString: string | undefined | Date): string => { // Accept Date object too
   if (!isoString) return '未知时间';
-  const date = new Date(isoString);
-  // Use a more detailed format for the post page
-  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  try {
+      const date = new Date(isoString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+          return '无效日期';
+      }
+      // Use a more detailed format for the post page
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  } catch (e) {
+      console.error("Error formatting time:", e);
+      return "时间格式错误";
+  }
 };
 
-// --- Action Handlers (Basic Placeholders/Logic) ---
-
+// --- Action Handlers ---
 const handleLike = async () => {
-  if (!post.value) return;
+  if (!post.value || !post.value.id) return; // Check post and post.id
   if (!userStore.isLoggedIn) return ElMessage.warning('请先登录');
   if (isLiking.value) return;
   isLiking.value = true;
 
   try {
-    const currentPost = post.value; // Work on a local copy
-    if (currentPost.isLiked) {
-      await PostService.unlikePost(currentPost.id);
-      currentPost.likesCount = (currentPost.likesCount ?? 1) - 1;
-      currentPost.isLiked = false;
+    // Create a non-reactive copy to avoid potential direct mutation issues if needed
+    // const currentPostData = { ...post.value }; 
+    const postIdValue = post.value.id; // Store id in case post.value changes unexpectedly
+
+    if (post.value.isLiked) {
+      await PostService.unlikePost(postIdValue);
+      // Update reactive state AFTER successful API call
+      if (post.value && post.value.id === postIdValue) { // Check if post still exists and is the same one
+        post.value.likesCount = Math.max(0, (post.value.likesCount ?? 1) - 1);
+        post.value.isLiked = false;
+      }
     } else {
-      await PostService.likePost(currentPost.id);
-      currentPost.likesCount = (currentPost.likesCount ?? 0) + 1;
-      currentPost.isLiked = true;
+      await PostService.likePost(postIdValue);
+      // Update reactive state AFTER successful API call
+      if (post.value && post.value.id === postIdValue) {
+        post.value.likesCount = (post.value.likesCount ?? 0) + 1;
+        post.value.isLiked = true;
+      }
     }
-    // Update the reactive post ref - might need adjustments if backend returns updated post
-    post.value = { ...currentPost }; 
+    // No need for post.value = { ...currentPostData } unless backend returns the whole object
+    // and you want to ensure full reactivity update. If backend only confirms success,
+    // updating the specific fields is sufficient.
   } catch (err: any) {
+     console.error("Like/Unlike error:", err);
      ElMessage.error(err.response?.data?.message || '点赞操作失败');
   } finally {
     isLiking.value = false;
@@ -293,24 +336,29 @@ const handleLike = async () => {
 };
 
 const handleFavorite = async () => {
-  if (!post.value) return;
+  if (!post.value || !post.value.id) return;
   if (!userStore.isLoggedIn) return ElMessage.warning('请先登录');
   if (isFavoriting.value) return;
   isFavoriting.value = true;
   
   try {
-    const currentPost = post.value;
-    if (currentPost.isFavorited) {
-      await PostService.unfavoritePost(currentPost.id);
-      currentPost.favoritesCount = (currentPost.favoritesCount ?? 1) - 1;
-      currentPost.isFavorited = false;
+    const postIdValue = post.value.id;
+
+    if (post.value.isFavorited) {
+      await PostService.unfavoritePost(postIdValue);
+       if (post.value && post.value.id === postIdValue) {
+         post.value.favoritesCount = Math.max(0, (post.value.favoritesCount ?? 1) - 1);
+         post.value.isFavorited = false;
+       }
     } else {
-      await PostService.favoritePost(currentPost.id);
-      currentPost.favoritesCount = (currentPost.favoritesCount ?? 0) + 1;
-      currentPost.isFavorited = true;
+      await PostService.favoritePost(postIdValue);
+      if (post.value && post.value.id === postIdValue) {
+        post.value.favoritesCount = (post.value.favoritesCount ?? 0) + 1;
+        post.value.isFavorited = true;
+      }
     }
-     post.value = { ...currentPost }; 
   } catch (err: any) {
+     console.error("Favorite/Unfavorite error:", err);
      ElMessage.error(err.response?.data?.message || '收藏操作失败');
   } finally {
     isFavoriting.value = false;
@@ -318,10 +366,11 @@ const handleFavorite = async () => {
 };
 
 const submitComment = async (payload: { parentId: number | null; text: string }) => {
-    if (!post.value) return;
+    if (!post.value || !post.value.id) return; // Check post and post.id
     const { parentId, text } = payload;
 
-    if (!text || !text.trim()) {
+    const trimmedText = text ? text.trim() : ''; // Trim safely
+    if (!trimmedText) {
         ElMessage.warning('评论内容不能为空');
         return;
     }
@@ -330,144 +379,149 @@ const submitComment = async (payload: { parentId: number | null; text: string })
         return;
     }
     
-    // Determine which loading state to use
-    const setLoading = (loading: boolean) => {
-      if (parentId === null) {
-        isSubmittingComment.value = loading; // Top-level comment loading
-      } else {
-        // For replies, CommentItem has its own loading state, 
-        // but we might need a general loading state or handle it differently
-        isSubmittingComment.value = loading; // Use general one for now
-      }
-    };
+    // Determine which loading state to use based on parentId ONLY
+    const isLoadingTopLevel = parentId === null;
+    
+    // Prevent double submission
+    if ((isLoadingTopLevel && isSubmittingComment.value) /* || (check specific reply loading state if implemented) */) {
+        return;
+    }
 
-    setLoading(true);
+    if (isLoadingTopLevel) {
+        isSubmittingComment.value = true; // Set loading state for top-level
+    } else {
+        // Handle reply loading state if needed (e.g., passed via event or managed in CommentItem)
+    }
 
     try {
-        // Prepare the payload for the service
         const servicePayload: { text: string; parentId?: number } = {
-            text: text.trim(),
+            text: trimmedText,
         };
         if (parentId !== null) {
             servicePayload.parentId = parentId;
         }
 
+        // Assuming createComment doesn't return the new comment or updated post
         await PostService.createComment(post.value.id, servicePayload);
         ElMessage.success(parentId ? '回复发表成功' : '评论发表成功');
 
-        // Clear the correct input and close reply box
+        // Clear input and close reply box
         if (parentId !== null) {
-            // Clear replyText in CommentItem? - No, CommentItem clears its own input on emit
             replyingToCommentId.value = null; // Close the reply input box globally
+            // CommentItem should clear its own input via v-model or on successful emit
         } else {
             newCommentText.value = ''; // Clear top-level comment input
         }
 
-        await fetchComments(); // Refresh comments list
+        // Refresh comments AND potentially the post count from server
+        // Option 1: Just fetch comments (if post count isn't critical or backend updates it reliably)
+         await fetchComments(); 
+        // Option 2: Fetch both post details and comments (safer for count)
+        // await fetchPostDetails(); // This will also call fetchComments
+
+        // Simple local count update (can be slightly off if fetch fails)
         if (post.value) {
-            // Update count (consider potential race conditions if backend doesn't return updated count)
-            post.value.commentsCount = (post.value.commentsCount || 0) + 1;
+             post.value.commentsCount = (post.value.commentsCount || 0) + 1;
         }
+
     } catch (err: any) {
         console.error("Error submitting comment/reply:", err);
         ElMessage.error(err.response?.data?.message || (parentId ? '回复发表失败' : '评论发表失败'));
     } finally {
-        setLoading(false);
+         if (isLoadingTopLevel) {
+             isSubmittingComment.value = false; // Reset loading state
+         } else {
+              // Reset reply loading state if needed
+         }
     }
 };
 
-const handleToggleReply = (id: number) => {
+const handleToggleReply = (id: number | null) => { // Allow null to close all
   console.log('[PostDetailView] handleToggleReply called with id:', id);
-  console.log('[PostDetailView] Current replyingToCommentId before change:', replyingToCommentId.value);
-  if (replyingToCommentId.value === id) {
+  if (id === null) { // Explicitly handle closing all/clearing
+      replyingToCommentId.value = null;
+  } else if (replyingToCommentId.value === id) {
     replyingToCommentId.value = null; // Close if already open
-    console.log('[PostDetailView] Closing reply input for comment id:', id);
   } else {
     replyingToCommentId.value = id; // Open for this comment
-    console.log('[PostDetailView] Opening reply input for comment id:', id);
   }
   console.log('[PostDetailView] Current replyingToCommentId after change:', replyingToCommentId.value);
 };
 
 const deleteComment = async (id: number) => {
-    if (!post.value || !userStore.isLoggedIn) return;
-    // Optional: Confirmation dialog
+    if (!post.value || !post.value.id || !userStore.isLoggedIn) return;
+
+    // Optional: Confirmation dialog here
+    // ElMessageBox.confirm(...) 
+
     try {
         await PostService.deleteComment(id);
         ElMessage.success('评论删除成功');
-        // Update comments count locally (consider race conditions)
-        if (post.value && post.value.commentsCount) {
-            // Find the comment and its children to adjust count accurately
-            let countToRemove = 1;
-            // Helper function to find a comment in the nested structure
-            const findComment = (commentId: number, list: NestedComment[]): NestedComment | null => {
-                for (const c of list) {
-                    if (c.id === commentId) return c;
-                    if (c.children) {
-                        const found = findComment(commentId, c.children);
-                        if (found) return found;
-                    }
-                }
-                return null;
-            };
-            // Helper function to count all children recursively
-            const countChildren = (comment: NestedComment | null): number => {
-                if (!comment || !comment.children || comment.children.length === 0) return 0;
-                let count = comment.children.length;
-                comment.children.forEach((child: NestedComment) => { 
-                    count += countChildren(child);
-                });
-                return count;
-            };
-            const commentToDelete = findComment(id, nestedComments.value); // Search in nested structure
-            if (commentToDelete) {
-                countToRemove += countChildren(commentToDelete);
-            }
-            // Ensure count doesn't go below zero
-            post.value.commentsCount = Math.max(0, post.value.commentsCount - countToRemove);
+
+        // Simplify: Remove complex local count calculation.
+        // Rely on fetching fresh data from the server.
+
+        // Refresh comments list from the server
+        await fetchComments(); 
+        
+        // OPTIONAL: Fetch post details if comment count is crucial and needs server verification
+        // await fetchPostDetails(); // This also refetches comments
+
+        // Fallback local count decrement (less reliable)
+        if(post.value && post.value.commentsCount) {
+             post.value.commentsCount = Math.max(0, post.value.commentsCount - 1); 
+             // Note: This doesn't account for deleted replies reducing the count more.
         }
-        await fetchComments(); // Refresh the comments list from the server
+
     } catch (err: any) {
         console.error('Error deleting comment:', err);
         ElMessage.error(err.response?.data?.message || '评论删除失败');
     }
 };
 
-// --- Helper function to flatten descendants and get parent author name ---
+// --- Helper function to flatten descendants ---
 interface FlattenedComment extends Comment {
     replyToAuthorName?: string | null;
 }
 
+// REMOVED DUPLICATE PLACEHOLDER
 const flattenDescendants = (comment: NestedComment): FlattenedComment[] => {
     let descendants: FlattenedComment[] = [];
-    const parentAuthorName = comment.author?.name || '匿名用户'; // Get the name of the comment being replied to
+    const parentAuthorName = comment.author?.name || '匿名用户'; 
 
-    const traverse = (children: NestedComment[], currentParentAuthorName: string | null) => {
-        if (!children) return;
+    // Recursive function to traverse children
+    const traverse = (children: NestedComment[] | undefined, currentParentAuthorName: string | null) => {
+        if (!Array.isArray(children)) return; // Ensure children is an array
+
         children.forEach(child => {
-            // Add the current child with the name of the author it directly replies to
-            descendants.push({ ...child, replyToAuthorName: currentParentAuthorName });
-            // Recursively traverse its children, passing the current child's author name
-            traverse(child.children || [], child.author?.name || '匿名用户');
+            // Add the current child, noting who it replies to
+            descendants.push({ 
+                ...child, 
+                replyToAuthorName: currentParentAuthorName // Author of the parent comment in the current context
+            });
+            // Continue traversal with the child's children, passing the child's author name
+            traverse(child.children, child.author?.name || '匿名用户');
         });
     };
 
-    // Start traversal with the direct children, passing the top-level comment's author name
-    traverse(comment.children || [], parentAuthorName);
+    // Start traversal with the direct children of the initial comment
+    traverse(comment.children, parentAuthorName);
     return descendants;
 };
-// --- End Helper Function ---
 
-onMounted(() => {
-  fetchPostDetails();
+// --- Lifecycle Hook --- MERGED onMounted
+onMounted(async () => {
+  await fetchPostDetails();
 });
 
-// Optional: Watch for route changes if user navigates between posts directly
-// watch(() => route.params.id, fetchPostDetails);
-
-// Function to go back
+// --- Navigation --- REMOVED DUPLICATE PLACEHOLDER
 const goBack = () => {
-  router.back(); // Use router.back() to navigate to the previous page
+  // Check if there's history to go back to, otherwise navigate to a default route (e.g., home)
+  if (window.history.length > 1) {
+     router.back(); 
+  } else {
+     router.push('/'); // Navigate to home or another default page
+  }
 };
 
 </script>
@@ -697,4 +751,18 @@ const goBack = () => {
   padding-bottom: 10px; // Optional: Extra space
   // border-bottom: 1px solid var(--el-border-color-lighter); // Optional: Separator line
 }
+
+/* --- ADD STYLES FOR POST IMAGE --- */
+.post-image-container {
+  margin-bottom: 25px; // Space below image
+  text-align: center; // Center image if needed
+}
+
+.post-detail-image {
+  max-width: 100%; // Ensure image doesn't overflow
+  max-height: 500px; // Limit max height (optional)
+  border-radius: 6px;
+  background-color: #f0f2f5; // Placeholder background
+}
+/* --- END ADD STYLES --- */
 </style> 
