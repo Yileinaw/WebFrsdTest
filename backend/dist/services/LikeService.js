@@ -17,81 +17,65 @@ const db_1 = __importDefault(require("../db"));
 const client_1 = require("@prisma/client");
 class LikeService {
     /**
-     * Like a post. Creates a Like record and increments likesCount.
-     * Throws an error if the user has already liked the post.
+     * Like a post.
      */
     static likePost(userId, postId) {
         return __awaiter(this, void 0, void 0, function* () {
+            const existingLike = yield db_1.default.like.findUnique({
+                where: { postId_userId: { postId, userId } } // Correct composite key
+            });
+            if (existingLike) {
+                return existingLike;
+            }
+            // Transaction: Create Like & Notification (No count update on Post)
             try {
-                yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
-                    // 1. Create the Like record
-                    yield tx.like.create({
-                        data: {
-                            userId: userId,
-                            postId: postId,
-                        },
-                    });
-                    // 2. Increment the likesCount on the Post
-                    yield tx.post.update({
-                        where: { id: postId },
-                        data: {
-                            likesCount: { increment: 1 },
-                        },
-                    });
+                const [newLike, post] = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
+                    const like = yield tx.like.create({ data: { userId, postId } });
+                    // Fetch post author for notification
+                    const postData = yield tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
+                    return [like, postData];
                 }));
+                // Create Notification
+                if (post && post.authorId !== userId) {
+                    try {
+                        yield db_1.default.notification.create({
+                            data: { recipientId: post.authorId, senderId: userId, postId, type: 'LIKE' }
+                        });
+                    }
+                    catch (error) {
+                        console.error(`[LikeService] Failed to create LIKE notification:`, error);
+                    }
+                }
+                return newLike;
             }
             catch (error) {
-                // Handle potential errors, e.g., unique constraint violation if already liked (P2002)
-                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-                    // This means the like already exists, which might be okay or indicate a client-side issue.
-                    // We could choose to do nothing or re-throw a specific error.
-                    console.warn(`User ${userId} already liked post ${postId}.`);
-                    // Or: throw new Error('Post already liked'); 
+                console.error(`[LikeService] Error liking post:`, error);
+                // Handle potential transaction errors (e.g., post deleted mid-transaction)
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                    throw new Error('Post not found');
                 }
-                else {
-                    console.error(`Error liking post ${postId} by user ${userId}:`, error);
-                    throw new Error('Failed to like post');
-                }
+                throw error; // Re-throw other errors
             }
         });
     }
     /**
-     * Unlike a post. Deletes the Like record and decrements likesCount.
-     * Does nothing if the user hasn't liked the post.
+     * Unlike a post.
      */
     static unlikePost(userId, postId) {
         return __awaiter(this, void 0, void 0, function* () {
+            // Transaction: Delete Like (No count update on Post)
             try {
-                yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
-                    // 1. Attempt to delete the Like record
-                    const deletedLike = yield tx.like.delete({
-                        where: {
-                            userId_postId: {
-                                userId: userId,
-                                postId: postId,
-                            },
-                        },
-                    }).catch((error) => {
-                        // Handle case where the like doesn't exist (P2025)
-                        if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-                            return null; // Indicate that no like was found/deleted
-                        }
-                        throw error; // Re-throw other errors
-                    });
-                    // 2. Only decrement if a like was actually deleted
-                    if (deletedLike) {
-                        yield tx.post.update({
-                            where: { id: postId },
-                            data: {
-                                likesCount: { decrement: 1 },
-                            },
-                        });
-                    }
-                }));
+                return yield db_1.default.like.delete({
+                    where: { postId_userId: { postId, userId } } // Correct composite key
+                });
             }
             catch (error) {
-                console.error(`Error unliking post ${postId} by user ${userId}:`, error);
-                throw new Error('Failed to unlike post');
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                    // Record not found - it wasn't liked anyway
+                    return null;
+                }
+                console.error(`[LikeService] Error unliking post:`, error);
+                throw error; // Re-throw other errors
             }
         });
     }

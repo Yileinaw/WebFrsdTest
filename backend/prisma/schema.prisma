@@ -18,6 +18,7 @@ model User {
   email      String   @unique
   name       String?
   password   String
+  role       String   @default("user") // Add role field, default to user
   avatarUrl  String? // 可选，用于存储头像路径
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -96,9 +97,11 @@ model Notification {
 }
 
 model Tag {
-  id    Int    @id @default(autoincrement())
-  name  String @unique
-  posts Post[] @relation // Implicit M2M: Removed references: [id]
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  isFixed       Boolean        @default(false)
+  posts         Post[]         @relation // Existing relation
+  foodShowcases FoodShowcase[] @relation // Add relation to FoodShowcase
 }
 
 model Favorite {
@@ -110,4 +113,18 @@ model Favorite {
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([userId, postId]) // 确保用户对同一帖子的收藏是唯一的
+}
+
+// 新增：用于纯粹展示美食图片，与帖子系统分离
+model FoodShowcase {
+  id          Int      @id @default(autoincrement())
+  imageUrl    String
+  title       String?  
+  description String?
+  createdAt   DateTime @default(now())
+  tags        Tag[]    @relation // Add relation field to Tag
+
+  @@index([createdAt])
+  @@index([title])
+  @@index([description])
 }

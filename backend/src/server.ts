@@ -8,6 +8,8 @@ import { userRouter } from './routes/UserRoutes';
 import { postRouter, commentRouter } from './routes/PostRoutes';
 import feedRouter from './routes/FeedRoutes'; 
 import notificationRouter from './routes/NotificationRoutes'; 
+import foodShowcaseRouter from './routes/foodShowcaseRoutes';
+import tagRouter from './routes/TagRoutes'; // Import tag routes
 import { errorHandler } from './middleware/ErrorHandlingMiddleware';
 // --- Remove direct imports, rely on userRoutes ---
 // import { UserController } from './controllers/UserController'; 
@@ -59,19 +61,25 @@ app.use(express.urlencoded({ extended: true }));
 // --- Remove EARLY Mount / Restore Original Order ---
 // app.use('/api/posts', postRouter); // Remove potential early mount
 
-// --- Restore Static Files --- 
-// console.log('[server.ts] Mounting static file server for public directory...');
-// app.use(express.static(path.join(__dirname, '../public'))); 
-// Add a URL prefix for general static files from public directory
-const publicDirectory = path.join(__dirname, '../public');
+// --- Static Files for Public Assets ---
+// Calculate public dir based on project root (assuming cwd is project root)
+// const publicDirectory = path.resolve(process.cwd(), 'backend', 'public'); // Old incorrect path
+const publicDirectory = path.resolve(__dirname, '..', 'public'); // Correct path relative to src
 app.use('/static', express.static(publicDirectory)); 
-// Keep this log for static file serving confirmation
-console.log(`[Server] Serving general static files from: ${publicDirectory} at /static`);
+// console.log(`[Server] Serving general static files from: ${publicDirectory} at /static`);
+
+// --- Static Files for User Uploads - Based on project root (cwd) ---
+// const uploadsRootDirectory = path.resolve(process.cwd(), 'backend', 'storage', 'uploads'); // Old incorrect path
+const uploadsRootDirectory = path.resolve(__dirname, '..', 'storage', 'uploads'); // Correct path relative to src
+
+app.use('/uploads', express.static(uploadsRootDirectory));
+// Log the final absolute path being served
+// console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /uploads`);
 
 // --- 静态文件服务中间件 (Keep for user uploads) ---
-// const uploadsDirectory = path.join(process.cwd(), 'uploads');
+// const uploadsDirectory = path.join(process.cwd(), 'uploads'); // Old version removed
 // console.log(`[Server] Serving user uploads from: ${uploadsDirectory} at /uploads`);
-// app.use('/uploads', express.static(uploadsDirectory));
+// app.use('/uploads', express.static(uploadsDirectory)); // Old version removed
 // --- End Restore Static Files ---
 
 // --- Base Route --- 
@@ -92,6 +100,8 @@ app.use('/api/posts', postRouter);
 app.use('/api/comments', commentRouter);
 app.use('/api/feed', feedRouter);
 app.use('/api/notifications', notificationRouter);
+app.use('/api/food-showcase', foodShowcaseRouter);
+app.use('/api/tags', tagRouter); // Mount tag routes
 
 // --- 全局错误处理中间件 ---
 app.use(errorHandler as ErrorRequestHandler);

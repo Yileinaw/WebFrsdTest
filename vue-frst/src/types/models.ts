@@ -2,44 +2,45 @@
 
 // Consistent User model based on common properties and Prisma schema
 export interface User {
-    id: number;
-    email: string; // Using email as the primary identifier field shown
-    name: string | null; // Prisma String? maps to string | null
-    avatarUrl?: string | null; // 头像 URL (可选)
-    createdAt: string; // Prisma DateTime maps to string
-    updatedAt: string;
-    // posts?: Post[]; // Keep optional, only include if an API endpoint actually populates this
+  id: number;
+  email: string; // Using email as the primary identifier field shown
+  name: string | null; // Prisma String? maps to string | null
+  role?: string; // Add role field, make optional for flexibility
+  avatarUrl?: string | null; // 头像 URL (可选)
+  createdAt: string; // Prisma DateTime maps to string
+  updatedAt: string;
+  // posts?: Post[]; // Keep optional, only include if an API endpoint actually populates this
 }
 
 // Consistent Post model, aligning with Prisma and common usage
 export interface Post {
-    id: number;
-    title: string;
-    content: string | null; // Prisma String? maps to string | null
-    imageUrl?: string | null; // 新增：帖子图片 URL (可选)
-    createdAt: string;
-    updatedAt: string;
-    authorId: number;
-    // Use Pick for consistency, selecting fields commonly needed for display
-    author?: Pick<User, 'id' | 'name' | 'avatarUrl'>;
-    likesCount?: number; // Optional count fields
-    commentsCount?: number;
-    favoritesCount?: number;
-    isLiked?: boolean;   // Optional status flags based on current user context
-    isFavorited?: boolean;
+  id: number;
+  title: string;
+  content: string | null; // Prisma String? maps to string | null
+  imageUrl?: string | null; // 新增：帖子图片 URL (可选)
+  createdAt: string;
+  updatedAt: string;
+  authorId: number;
+  // Use Pick for consistency, selecting fields commonly needed for display
+  author?: Pick<User, 'id' | 'name' | 'avatarUrl'>;
+  likesCount?: number; // Optional count fields
+  commentsCount?: number;
+  favoritesCount?: number;
+  isLiked?: boolean;   // Optional status flags based on current user context
+  isFavorited?: boolean;
 }
 
 // Consistent Comment model, including author details and parent ID
 export interface Comment {
-    id: number;
-    text: string;
-    createdAt: string;
-    updatedAt: string;
-    authorId: number;
-    postId: number;
-    // Use Pick for author details needed in the UI
-    author?: Pick<User, 'id' | 'name' | 'avatarUrl'>;
-    parentId?: number | null; // For identifying replies
+  id: number;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+  authorId: number;
+  postId: number;
+  // Use Pick for author details needed in the UI
+  author?: Pick<User, 'id' | 'name' | 'avatarUrl'>;
+  parentId?: number | null; // For identifying replies
 }
 
 // Like 信息 (通常不需要在前端直接使用完整模型)
@@ -47,11 +48,11 @@ export interface Comment {
 
 // Favorite 信息
 export interface Favorite {
-    id: number;
-    userId: number;
-    postId: number;
-    createdAt: string; // Or Date
-    post?: Post; // 收藏的帖子详情 (可选)
+  id: number;
+  userId: number;
+  postId: number;
+  createdAt: string; // Or Date
+  post?: Post; // 收藏的帖子详情 (可选)
 }
 
 // 定义通知类型枚举或联合类型
@@ -59,46 +60,68 @@ export type NotificationType = 'LIKE' | 'COMMENT' | 'FAVORITE' | 'REPLY' | 'FOLL
 
 // Notification 信息 (统一版本)
 export interface Notification {
-    id: number;
-    type: NotificationType; // 使用定义的类型
-    isRead: boolean;
-    createdAt: string; 
-    recipientId: number;
-    senderId?: number | null;
-    sender?: User | null; 
-    postId?: number | null;
-    post?: { id: number; title: string; } | null; // Keep null possibility if backend might return it
-    commentId?: number | null;
-    comment?: { id: number; text: string; } | null; // Keep null possibility
+  id: number;
+  type: NotificationType; // 使用定义的类型
+  isRead: boolean;
+  createdAt: string;
+  recipientId: number;
+  senderId?: number | null;
+  sender?: User | null;
+  postId?: number | null;
+  post?: { id: number; title: string; } | null; // Keep null possibility if backend might return it
+  commentId?: number | null;
+  comment?: { id: number; text: string; } | null; // Keep null possibility
 }
 
 // Structure for the response when fetching comments for a post.
 // Note: This might need adjustment if PostService.getCommentsByPostId
 // is updated to return only the Comment[] array.
 export interface GetCommentsResponse {
-    comments: Comment[];
-    totalCount: number;
+  comments: Comment[];
+  totalCount: number;
 }
 
 // 通用的分页响应结构
 export interface PaginatedResponse<T> {
-    items: T[]; // 当前页的数据项
-    totalCount: number; // 总记录数
-    page: number; // 当前页码
-    limit: number; // 每页数量
-    totalPages: number; // 总页数
+  items: T[]; // 当前页的数据项
+  totalCount: number; // 总记录数
+  page: number; // 当前页码
+  limit: number; // 每页数量
+  totalPages: number; // 总页数
 }
 
-// Add PostPreview interface here and export it
+// Update PostPreview to match required fields and backend structure
 export interface PostPreview {
-  id: number; 
+  id: number;
   title: string;
-  imageUrl: string | null;
-  content?: string | null; // Keep content optional if not always needed for preview
-  author?: {
-      id: number;
-      name: string | null;
-      avatarUrl?: string | null;
-  } | null; // Allow author to be null
-  isShowcase?: boolean; // Add this optional field
+  imageUrl: string | null; // Keep as string | null
+  content?: string | null; // Optional, depends if card needs it
+  createdAt?: string | Date; // Allow both string (from JSON) and Date
+  author?: {               // Add author object
+    id: number;
+    name: string | null;
+    avatarUrl?: string | null;
+  } | null; // Author can be null
+  isShowcase?: boolean; // Add isShowcase field
+  // Add other fields if FoodCard or other components need them (e.g., counts)
+  likesCount?: number;
+  commentsCount?: number;
+  isLiked?: boolean;
+  isFavorited?: boolean;
+}
+
+// Add Tag interface
+export interface Tag {
+  id?: number; // Optional ID
+  name: string;
+}
+
+// Update FoodShowcasePreview to include tags
+export interface FoodShowcasePreview {
+  id: number;
+  imageUrl: string;
+  title?: string | null;
+  description?: string | null;
+  createdAt: string;
+  tags?: Tag[]; // Add tags relation
 }

@@ -1,8 +1,9 @@
 <template>
-  <!-- Make card clickable and add relative positioning -->
+  <!-- TEMPORARY DEBUG LOGGING -->
+  <!-- {{ console.log(`[FoodCard ID: ${props.post.id}] Input URL: ${props.post.imageUrl}, Output URL: ${getImageUrl(props.post.imageUrl)}`) }} -->
   <el-card shadow="hover" class="food-card" @click="handleCardClick" :body-style="{ padding: '0px' }">
     <el-image 
-      :src="resolveStaticAssetUrl(props.post.imageUrl) || defaultPlaceholderImage" 
+      :src="getImageUrl(props.post.imageUrl) || defaultPlaceholderImage" 
       :alt="props.post.title" 
       fit="cover" 
       class="food-image"
@@ -20,14 +21,14 @@
     <!-- Info Overlay - Hidden by default, shown on hover -->
     <div class="info-overlay">
       <h4>{{ props.post.title }}</h4>
-      <!-- Only show author info if it's NOT a showcase post AND author exists -->
-      <div class="author-info" v-if="!props.post?.isShowcase && props.post.author"> 
+      <!-- Conditionally show author info only if 'author' property exists -->
+      <div class="author-info" v-if="'author' in props.post && props.post.author">
         <el-avatar 
           :size="20" 
-          :src="resolveStaticAssetUrl(props.post.author.avatarUrl) || defaultAvatarPlaceholder" 
+          :src="getImageUrl((props.post as PostPreview).author?.avatarUrl) || defaultAvatarPlaceholder" 
           class="author-avatar-overlay"
         />
-        <span class="author-name-overlay">{{ props.post.author.name || '匿名用户' }}</span>
+        <span class="author-name-overlay">{{ (props.post as PostPreview).author?.name || '匿名用户' }}</span>
       </div>
     </div>
   </el-card>
@@ -40,22 +41,27 @@ import { Picture } from '@element-plus/icons-vue'
 import defaultPlaceholderImage from '@/assets/images/default-food.png'; 
 // Also use the same default image for the avatar placeholder (CORRECTED PATH)
 import defaultAvatarPlaceholder from '@/assets/images/default-food.png'; 
-import { resolveStaticAssetUrl } from '@/utils/urlUtils'; // Restore the import
+// Import getImageUrl instead of resolveStaticAssetUrl
+// import { resolveStaticAssetUrl } from '@/utils/urlUtils';
+import { getImageUrl } from '@/utils/imageUrl'; // Import the correct utility
 import { useRouter } from 'vue-router'; // Import router for navigation
-import type { PostPreview } from '@/types/models'; // Import from models.ts
-// import { watchEffect } from 'vue'; // Temporarily remove debugging
+// import type { FoodShowcasePreview } from '@/types/models'; // Use FoodShowcasePreview instead
+import type { PostPreview, FoodShowcasePreview } from '@/types/models'; // Import both types
+import { watchEffect } from 'vue'; // Re-enable watchEffect for logging
 
-// Define props using the imported PostPreview interface
-const props = defineProps<{ post: PostPreview }>()
+// --- Define a union type for the post prop --- 
+type CardData = PostPreview | FoodShowcasePreview;
 
-// REMOVE DEBUGGING LATER
-// --- DEBUGGING: Log image URLs ---
-/* watchEffect(() => {
+// Define props using the union type
+// const props = defineProps<{ post: FoodShowcasePreview }>()
+const props = defineProps<{ post: CardData }>()
+
+// Also log within setup for comparison
+watchEffect(() => {
     const originalUrl = props.post.imageUrl;
-    // const resolvedUrl = resolveStaticAssetUrl(originalUrl); // Bypassed
-    // console.log(`[FoodCard DEBUG] Post ID: ${props.post.id}, Original URL: ${originalUrl}, Resolved URL: ${resolvedUrl}`);
-}); */
-// --- END DEBUGGING ---
+    const resolvedUrl = getImageUrl(originalUrl);
+    // console.log(`[FoodCard Setup ID: ${props.post.id}] Input URL: ${originalUrl}, Output URL: ${resolvedUrl}`); // Comment out log
+});
 
 const router = useRouter();
 
@@ -64,8 +70,9 @@ const router = useRouter();
 
 // Handle card click to navigate to post detail
 const handleCardClick = () => {
-    console.log(`Card clicked, navigating to post ID: ${props.post.id}`);
-    router.push(`/posts/${props.post.id}`);
+    // console.log(`Card clicked, navigating to post ID: ${props.post.id}`); // Comment out log
+    // Consider changing the route if FoodShowcase has a different detail view
+    router.push(`/posts/${props.post.id}`); 
 };
 
 // Keep viewDetails separate if needed for a specific button later

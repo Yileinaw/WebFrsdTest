@@ -26,7 +26,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CommentService = void 0;
 // backend/src/services/CommentService.ts
 const db_1 = __importDefault(require("../db"));
-const client_1 = require("@prisma/client");
 class CommentService {
     /**
      * Create a new comment, optionally replying to another comment.
@@ -55,9 +54,8 @@ class CommentService {
             const [newComment, post, parentAuthorId] = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
                 var _a;
                 const createdComment = yield tx.comment.create({ data: commentData });
-                const updatedPost = yield tx.post.update({
+                const updatedPost = yield tx.post.findUnique({
                     where: { id: postId },
-                    data: { commentsCount: { increment: 1 } },
                     select: { authorId: true }
                 });
                 let parentCommentAuthorId = null;
@@ -74,10 +72,10 @@ class CommentService {
                     yield db_1.default.notification.create({
                         data: {
                             recipientId: post.authorId,
-                            actorId: userId,
+                            senderId: userId,
                             postId: postId,
                             commentId: newComment.id,
-                            type: parentId ? client_1.NotificationType.REPLY : client_1.NotificationType.COMMENT
+                            type: parentId ? 'REPLY' : 'COMMENT'
                         }
                     });
                     console.log(`[Notification] ${parentId ? 'REPLY' : 'COMMENT'} notification created for post ${postId}, recipient ${post.authorId}`);
@@ -92,10 +90,10 @@ class CommentService {
                     yield db_1.default.notification.create({
                         data: {
                             recipientId: parentAuthorId,
-                            actorId: userId,
+                            senderId: userId,
                             postId: postId, // Include post context
                             commentId: newComment.id, // Link to the new reply comment
-                            type: client_1.NotificationType.REPLY
+                            type: 'REPLY'
                         }
                     });
                     console.log(`[Notification] REPLY notification created for comment ${parentId}, recipient ${parentAuthorId}`);
@@ -165,10 +163,6 @@ class CommentService {
             const deletedComment = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
                 const comment = yield tx.comment.delete({
                     where: { id: commentId },
-                });
-                yield tx.post.update({
-                    where: { id: commentToDelete.postId }, // Use postId from the fetched comment
-                    data: { commentsCount: { decrement: 1 } },
                 });
                 return comment;
             }));

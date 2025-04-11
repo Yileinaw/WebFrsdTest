@@ -24,6 +24,7 @@ class UserService {
                     id: true,
                     email: true,
                     name: true,
+                    role: true,
                     avatarUrl: true,
                     createdAt: true,
                     updatedAt: true,
@@ -35,7 +36,8 @@ class UserService {
     // 更新用户个人资料
     static updateUserProfile(userId, profileData) {
         return __awaiter(this, void 0, void 0, function* () {
-            console.log(`[UserService.updateUserProfile] User ${userId} updating profile with:`, profileData);
+            // Optional: Log only when there is data to update
+            // console.log(`[UserService.updateUserProfile] User ${userId} updating profile with:`, profileData);
             const dataToUpdate = {};
             if (profileData.name !== undefined) {
                 dataToUpdate.name = profileData.name;
@@ -44,24 +46,29 @@ class UserService {
                 dataToUpdate.avatarUrl = profileData.avatarUrl;
             }
             if (Object.keys(dataToUpdate).length === 0) {
-                console.log(`[UserService.updateUserProfile] No data provided for user ${userId}, returning current profile.`);
+                // Optional: Log this case if needed
+                // console.log(`[UserService.updateUserProfile] No data provided for user ${userId}, returning current profile.`);
                 return yield this.getUserById(userId);
             }
             try {
-                console.log(`[UserService.updateUserProfile] Updating user ${userId} in DB with:`, dataToUpdate);
+                // Optional: Log before database call
+                // console.log(`[UserService.updateUserProfile] Updating user ${userId} in DB with:`, dataToUpdate);
                 const updatedUser = yield db_1.default.user.update({
                     where: { id: userId },
                     data: dataToUpdate,
                     select: {
                         id: true, email: true, name: true,
-                        avatarUrl: true, // Ensure avatarUrl is selected back
+                        role: true,
+                        avatarUrl: true,
                         createdAt: true, updatedAt: true,
                     }
                 });
-                console.log(`[UserService.updateUserProfile] User ${userId} updated successfully. New avatarUrl:`, updatedUser.avatarUrl);
+                // Optional: Log successful update details
+                // console.log(`[UserService.updateUserProfile] User ${userId} updated successfully. New avatarUrl:`, updatedUser.avatarUrl);
                 return updatedUser;
             }
             catch (error) {
+                // Keep this error log
                 console.error(`[UserService.updateUserProfile] Error updating user ${userId}:`, error);
                 throw new Error("Failed to update user profile");
             }

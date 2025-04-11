@@ -1,6 +1,6 @@
 // src/services/PostService.ts
 import http from '../http';
-import type { Post, User, Comment } from '../types/models';
+import type { Post, User, Comment, PostPreview, Favorite, Notification } from '../types/models';
 
 // 定义创建帖子请求的数据类型
 interface CreatePostData {
@@ -18,7 +18,7 @@ interface UpdatePostData {
 
 // 定义获取帖子列表的响应类型 (根据后端返回)
 interface GetPostsResponse {
-    posts: Post[];
+    posts: PostPreview[];
     totalCount: number;
 }
 
@@ -65,7 +65,14 @@ export const PostService = {
     },
 
     // 获取帖子列表 (公开，支持分页)
-    async getAllPosts(params?: { page?: number; limit?: number; sortBy?: string; search?: string }): Promise<GetPostsResponse> {
+    async getAllPosts(params?: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      search?: string;
+      showcase?: boolean;
+      currentUserId?: number | null;
+    }): Promise<GetPostsResponse> {
         const response = await http.get<GetPostsResponse>('/posts', { params });
         return response.data;
     },

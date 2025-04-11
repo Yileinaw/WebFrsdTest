@@ -17,352 +17,314 @@ exports.PostService = void 0;
 const db_1 = __importDefault(require("../db"));
 const client_1 = require("@prisma/client");
 class PostService {
+    // Helper function to process Prisma query result into PostWithRelations
+    static processPostResult(postData, currentUserId) {
+        var _a, _b;
+        const isLiked = !!(currentUserId && ((_a = postData.likes) === null || _a === void 0 ? void 0 : _a.length));
+        const isFavorited = !!(currentUserId && ((_b = postData.favoritedBy) === null || _b === void 0 ? void 0 : _b.length));
+        // Create the final object, removing internal fields
+        const result = {
+            id: postData.id,
+            title: postData.title,
+            content: postData.content,
+            imageUrl: postData.imageUrl,
+            createdAt: postData.createdAt,
+            updatedAt: postData.updatedAt,
+            authorId: postData.authorId,
+            author: postData.author,
+            likesCount: postData._count.likes,
+            commentsCount: postData._count.comments,
+            favoritesCount: postData._count.favoritedBy,
+            isLiked,
+            isFavorited,
+        };
+        return result;
+    }
     // 创建帖子
-    static createPost(postData) {
+    static createPost(data) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { title, content, authorId } = postData;
             const post = yield db_1.default.post.create({
                 data: {
-                    title,
-                    content,
-                    author: {
-                        connect: { id: authorId },
-                    },
+                    title: data.title,
+                    content: data.content,
+                    authorId: data.authorId,
+                    imageUrl: data.imageUrl, // Include imageUrl if provided
+                    // Counts default to 0 via Prisma schema, no need to set here
                 },
+                select: {
+                    id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true,
+                    author: { select: { id: true, name: true, avatarUrl: true } },
+                    _count: { select: { likes: true, comments: true, favoritedBy: true } }
+                    // likes are not needed for the creator initially
+                }
             });
-            return post;
+            // Process the result (isLiked/isFavorited will be false)
+            return this.processPostResult(post);
         });
     }
-    // 获取所有帖子（可添加分页、过滤等）
-    static getAllPosts() {
-        return __awaiter(this, arguments, void 0, function* (options = {}) {
-            const { page = 1, limit = 10, sortBy = 'latest', currentUserId, authorId } = options;
+    // 获取所有帖子（分页，排序，可选当前用户ID以判断点赞/收藏状态）
+    static getAllPosts(options) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { page = 1, limit = 10, sortBy = 'createdAt', authorId, showcase, currentUserId } = options;
             const skip = (page - 1) * limit;
-            let orderBy = { createdAt: 'desc' };
-            if (sortBy === 'popular') {
-                orderBy = { likesCount: 'desc' };
+            const orderBy = {};
+            // Handle sorting
+            if (sortBy === 'likesCount') {
+                orderBy.likes = { _count: 'desc' };
             }
-            const whereClause = {};
+            else if (sortBy === 'commentsCount') {
+                orderBy.comments = { _count: 'desc' };
+            }
+            else { // Default to createdAt
+                orderBy.createdAt = 'desc';
+            }
+            // Dynamic where clause
+            const where = {};
             if (authorId) {
-                whereClause.authorId = authorId;
+                where.authorId = authorId;
             }
-            const [postsData, totalCount] = yield db_1.default.$transaction([
-                db_1.default.post.findMany({
-                    where: whereClause,
-                    skip: skip,
-                    take: limit,
-                    orderBy: orderBy,
-                    select: Object.assign({ id: true, title: true, content: true, createdAt: true, updatedAt: true, author: {
-                            select: {
-                                id: true,
-                                name: true,
-                                avatarUrl: true // Ensure this is selected
-                            }
-                        }, likesCount: true, commentsCount: true, favoritesCount: true }, (currentUserId && {
-                        likedBy: {
-                            where: { userId: currentUserId },
-                            select: { userId: true } // Select minimal field
-                        },
-                        favoritedBy: {
-                            where: { userId: currentUserId },
-                            select: { userId: true } // Select minimal field
-                        }
-                    }))
-                }),
-                db_1.default.post.count({ where: whereClause })
-            ]);
-            // Process posts to add flags and ensure correct type
-            const posts = postsData.map(post => {
-                var _a, _b;
-                // Type assertion is needed because Prisma's select type doesn't perfectly match our desired structure with conditional fields
-                const fullPost = post;
-                const isLiked = !!((_a = fullPost.likedBy) === null || _a === void 0 ? void 0 : _a.length);
-                const isFavorited = !!((_b = fullPost.favoritedBy) === null || _b === void 0 ? void 0 : _b.length);
-                // Remove temporary fields if they exist
-                delete fullPost.likedBy;
-                delete fullPost.favoritedBy;
-                // Ensure author has the correct shape (already selected by Prisma)
-                const author = fullPost.author;
-                return Object.assign(Object.assign({}, fullPost), { author, isLiked, isFavorited });
+            if (showcase === true) {
+                where.isShowcase = true;
+            }
+            // Add other filters here if needed (e.g., tags, search)
+            const selectClause = Object.assign({ id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, author: { select: { id: true, name: true, avatarUrl: true } }, _count: { select: { likes: true, comments: true, favoritedBy: true } } }, (currentUserId && {
+                likes: { where: { userId: currentUserId }, select: { userId: true } },
+                favoritedBy: { where: { userId: currentUserId }, select: { userId: true } }
+            }));
+            const postsData = yield db_1.default.post.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy,
+                select: selectClause,
             });
+            const totalCount = yield db_1.default.post.count({ where });
+            const posts = postsData.map(p => this.processPostResult(p, currentUserId));
             return { posts, totalCount };
         });
     }
     // 根据 ID 获取单个帖子
     static getPostById(postId, currentUserId) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
+            const selectClause = Object.assign({ id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, author: { select: { id: true, name: true, avatarUrl: true } }, _count: { select: { likes: true, comments: true, favoritedBy: true } } }, (currentUserId && {
+                likes: { where: { userId: currentUserId }, select: { userId: true } },
+                favoritedBy: { where: { userId: currentUserId }, select: { userId: true } }
+            }));
             const postData = yield db_1.default.post.findUnique({
                 where: { id: postId },
-                select: Object.assign({ id: true, title: true, content: true, createdAt: true, updatedAt: true, author: {
-                        select: {
-                            id: true,
-                            name: true,
-                            avatarUrl: true
-                        }
-                    }, likesCount: true, commentsCount: true, favoritesCount: true }, (currentUserId && {
-                    likedBy: { where: { userId: currentUserId }, select: { userId: true } },
-                    favoritedBy: { where: { userId: currentUserId }, select: { userId: true } }
-                }))
+                select: selectClause
             });
             if (!postData)
                 return null;
-            // Process data
-            const fullPost = postData;
-            const isLiked = !!((_a = fullPost.likedBy) === null || _a === void 0 ? void 0 : _a.length);
-            const isFavorited = !!((_b = fullPost.favoritedBy) === null || _b === void 0 ? void 0 : _b.length);
-            delete fullPost.likedBy;
-            delete fullPost.favoritedBy;
-            const author = fullPost.author ? {
-                id: fullPost.author.id,
-                name: fullPost.author.name,
-                avatarUrl: fullPost.author.avatarUrl
-            } : null; // Handle case where author might be null (though unlikely with required relation)
-            const result = Object.assign(Object.assign({}, fullPost), { author, isLiked, isFavorited });
-            return result;
+            return this.processPostResult(postData, currentUserId);
         });
     }
     // 更新帖子
-    static updatePost(postId, postData, userId) {
+    static updatePost(postId, data, userId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // 1. 检查帖子是否存在且属于该用户
-            const post = yield db_1.default.post.findUnique({
-                where: { id: postId },
-            });
-            if (!post) {
-                return null; // 或抛出错误表明帖子不存在
-            }
+            const post = yield db_1.default.post.findUnique({ where: { id: postId } });
+            if (!post)
+                return null; // Post not found
             if (post.authorId !== userId) {
                 throw new Error('Forbidden: You can only update your own posts');
             }
-            // 2. 更新帖子
-            const updatedPost = yield db_1.default.post.update({
+            const selectClause = {
+                id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true,
+                author: { select: { id: true, name: true, avatarUrl: true } },
+                _count: { select: { likes: true, comments: true, favoritedBy: true } },
+                // Need to re-fetch like/fav status for the *current user* after update
+                likes: { where: { userId: userId }, select: { userId: true } },
+                favoritedBy: { where: { userId: userId }, select: { userId: true } }
+            };
+            const updatedPostData = yield db_1.default.post.update({
                 where: { id: postId },
-                data: {
-                    title: postData.title,
-                    content: postData.content,
-                },
+                data,
+                select: selectClause
             });
-            return updatedPost;
+            return this.processPostResult(updatedPostData, userId);
         });
     }
     // 删除帖子
     static deletePost(postId, userId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // 1. 检查帖子是否存在且属于该用户
+            // First check if the post exists and belongs to the user
             const post = yield db_1.default.post.findUnique({
                 where: { id: postId },
+                select: { authorId: true }
             });
-            if (!post) {
-                return null; // 或抛出错误表明帖子不存在
-            }
+            if (!post)
+                return null; // Indicate not found
             if (post.authorId !== userId) {
                 throw new Error('Forbidden: You can only delete your own posts');
             }
-            // 2. 删除帖子
-            yield db_1.default.post.delete({
-                where: { id: postId },
+            // If checks pass, proceed with deletion
+            // Use deleteMany to ensure the where condition applies atomically
+            // Note: Prisma cascading deletes should handle related Likes, Comments, Favorites
+            const result = yield db_1.default.post.deleteMany({
+                where: {
+                    id: postId,
+                    authorId: userId, // Double check ownership during delete
+                }
             });
-            return post; // 返回被删除的帖子信息
+            // result.count will be 1 if successful, 0 if not found or ownership check failed
+            return result.count > 0 ? result : null;
         });
     }
     // Like a post
     static likePost(userId, postId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // Check if already liked
-            const existingLike = yield db_1.default.like.findUnique({
-                where: { userId_postId: { userId, postId } }
-            });
-            if (existingLike) {
-                return existingLike; // Already liked
+            const existingLike = yield db_1.default.like.findUnique({ where: { postId_userId: { postId, userId } } });
+            if (existingLike)
+                return existingLike;
+            try {
+                return yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
+                    const newLike = yield tx.like.create({ data: { userId, postId } });
+                    const postAuthor = yield tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
+                    if (postAuthor && postAuthor.authorId !== userId) {
+                        yield tx.notification.create({ data: { type: 'LIKE', recipientId: postAuthor.authorId, senderId: userId, postId } });
+                    }
+                    return newLike;
+                }));
             }
-            // Use transaction to create like, increment count, and create notification
-            const [newLike, post] = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
-                const like = yield tx.like.create({
-                    data: { userId, postId }
-                });
-                const updatedPost = yield tx.post.update({
-                    where: { id: postId },
-                    data: { likesCount: { increment: 1 } },
-                    select: { authorId: true } // Select authorId for notification
-                });
-                return [like, updatedPost];
-            }));
-            // --- Create Notification --- 
-            if (post && post.authorId !== userId) { // Don't notify self
-                try {
-                    yield db_1.default.notification.create({
-                        data: {
-                            recipientId: post.authorId,
-                            actorId: userId,
-                            postId: postId,
-                            type: 'LIKE'
-                        }
-                    });
-                    console.log(`[Notification] LIKE notification created for post ${postId}, recipient ${post.authorId}`);
-                }
-                catch (error) {
-                    console.error(`[Notification Error] Failed to create LIKE notification for post ${postId}:`, error);
-                    // Decide if this error should affect the main response
-                }
+            catch (error) {
+                console.error(`[PostService.likePost] Error liking post ${postId} for user ${userId}:`, error);
+                throw error;
             }
-            // --- End Create Notification ---
-            return newLike;
         });
     }
     // Unlike a post (No notification needed for unlike)
     static unlikePost(userId, postId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const existingLike = yield db_1.default.like.findUnique({
-                where: {
-                    userId_postId: {
-                        userId,
-                        postId,
-                    },
-                },
-            });
-            if (existingLike) {
-                yield db_1.default.like.delete({
-                    where: {
-                        userId_postId: {
-                            userId,
-                            postId,
-                        },
-                    },
-                });
-                // Optionally return the deleted like, but returning null is simpler
-                // and fulfills the Promise<Like | null> contract if nothing is found later.
-                // return existingLike; 
+            try {
+                return yield db_1.default.like.delete({ where: { postId_userId: { postId, userId } } });
             }
-            // Always return null, whether a like was found and deleted or not.
-            return null;
+            catch (error) {
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025')
+                    return null;
+                console.error(`[PostService.unlikePost] Error unliking post ${postId} for user ${userId}:`, error);
+                throw error;
+            }
         });
     }
-    // --- Comment Methods ---
-    // Create a new comment or reply
+    // Create a new comment or reply (Corrected based on regenerated client)
     static createComment(postId, commentData) {
         return __awaiter(this, void 0, void 0, function* () {
             const { text, authorId, parentId } = commentData;
-            // Use a transaction to ensure atomicity: create comment, update count, create notification
-            const [newComment, postAuthorData] = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
-                // 1. Create the comment
-                const comment = yield tx.comment.create({
-                    data: {
-                        text,
-                        postId,
-                        authorId,
-                        parentId: parentId !== null && parentId !== void 0 ? parentId : undefined, // Use undefined if parentId is null/undefined
-                    },
-                });
-                // 2. Increment the post's comments count and get post author ID
-                const postUpdate = yield tx.post.update({
-                    where: { id: postId },
-                    data: { commentsCount: { increment: 1 } },
-                    select: { authorId: true } // Select only needed field
-                });
-                return [comment, postUpdate];
-            }));
-            // 3. Create Notification for the post author (if not self-commenting)
-            if (postAuthorData && postAuthorData.authorId !== authorId) {
-                try {
-                    yield db_1.default.notification.create({
+            try {
+                return yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
+                    const newComment = yield tx.comment.create({
                         data: {
-                            recipientId: postAuthorData.authorId,
-                            actorId: authorId,
-                            postId: postId,
-                            commentId: newComment.id, // Link notification to the new comment
-                            type: parentId ? 'REPLY' : 'COMMENT', // Different type for reply?
+                            text,
+                            postId,
+                            authorId,
+                            parentId // This should now be valid
                         },
+                        include: { author: { select: { id: true, name: true, avatarUrl: true } } }
                     });
-                    console.log(`[Notification] ${parentId ? 'REPLY' : 'COMMENT'} notification created for post ${postId}, recipient ${postAuthorData.authorId}, comment ${newComment.id}`);
-                }
-                catch (error) {
-                    console.error(`[Notification Error] Failed to create ${parentId ? 'REPLY' : 'COMMENT'} notification for post ${postId}:`, error);
-                }
+                    const post = yield tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
+                    if (post && post.authorId !== authorId) {
+                        yield tx.notification.create({ data: { type: parentId ? 'REPLY' : 'COMMENT', recipientId: post.authorId, senderId: authorId, postId, commentId: newComment.id } });
+                    }
+                    return newComment;
+                }));
             }
-            // TODO: Consider adding notification for the parent comment author if it's a reply
-            return newComment;
+            catch (error) {
+                console.error(`[PostService.createComment] Error creating comment for post ${postId}:`, error);
+                throw error;
+            }
         });
     }
-    // Get comments for a post
+    // Get comments for a post - Use defined CommentWithAuthor type
     static getCommentsByPostId(postId) {
         return __awaiter(this, void 0, void 0, function* () {
             const comments = yield db_1.default.comment.findMany({
-                where: { postId: postId },
-                orderBy: { createdAt: 'asc' }, // Fetch comments chronologically
-                select: {
-                    id: true,
-                    text: true,
-                    createdAt: true,
-                    updatedAt: true,
-                    parentId: true,
-                    // Select author details using the relation
-                    author: {
-                        select: {
-                            id: true,
-                            name: true,
-                            avatarUrl: true,
-                        },
-                    },
-                    // Note: We don't select postId or authorId directly as they are included via the relation/where clause
-                },
+                where: { postId: postId, parentId: null }, // Fetch only top-level comments
+                orderBy: { createdAt: 'asc' },
+                include: {
+                    author: { select: { id: true, name: true, avatarUrl: true } }
+                    // Not including replies here for simplicity/performance
+                }
             });
-            // Map the Prisma result to our CommentWithAuthor structure
-            // Prisma's select should already match this structure closely
-            return comments.map(comment => (Object.assign(Object.assign({}, comment), { 
-                // Explicitly structure the author part to match CommentAuthorInfo, although Prisma's select does this
+            // Map to match the defined CommentWithAuthor structure
+            return comments.map(c => ({
+                id: c.id,
+                text: c.text,
+                createdAt: c.createdAt,
+                updatedAt: c.updatedAt,
                 author: {
-                    id: comment.author.id,
-                    name: comment.author.name,
-                    avatarUrl: comment.author.avatarUrl,
-                } })));
+                    id: c.author.id,
+                    name: c.author.name,
+                    avatarUrl: c.author.avatarUrl
+                }
+            })); // Remove the unnecessary 'as CommentWithAuthor[]' cast
         });
     }
-    // Delete a comment
+    // Delete a comment (Remove commentsCount update)
     static deleteComment(commentId, userId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // 1. Find the comment to check ownership and get postId
             const comment = yield db_1.default.comment.findUnique({
                 where: { id: commentId },
-                select: { authorId: true, postId: true }, // Select necessary fields
+                select: { authorId: true, post: { select: { authorId: true } } }
             });
-            if (!comment) {
-                return null; // Comment not found
+            if (!comment || (comment.authorId !== userId && comment.post.authorId !== userId)) {
+                throw new Error('Comment not found or permission denied');
             }
-            // 2. Check if the user is the author
-            if (comment.authorId !== userId) {
-                // In a real app, throwing a specific error might be better
-                throw new Error('Forbidden: You can only delete your own comments');
-            }
-            // 3. Use a transaction to delete the comment and decrement the post's count
             try {
-                const [deletedComment] = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
-                    // First, delete the comment itself
-                    // WARNING: This does NOT handle child comments gracefully yet.
-                    // Child comments will become orphaned (parentId points to non-existent comment).
-                    // A more robust solution would involve finding child comments and either deleting them
-                    // or setting their parentId to null.
-                    const deleted = yield tx.comment.delete({
-                        where: { id: commentId },
-                    });
-                    // Then, decrement the comments count on the related post
-                    yield tx.post.update({
-                        where: { id: comment.postId },
-                        data: { commentsCount: { decrement: 1 } },
-                    });
-                    // TODO: Consider deleting related notifications (COMMENT/REPLY)
-                    return [deleted]; // Return the deleted comment from transaction
-                }));
+                // Transaction no longer needed just for deleting comment
+                // TODO: Add transaction back if needing to delete related notifications
+                const deletedComment = yield db_1.default.comment.delete({ where: { id: commentId } });
+                // Removed post count update
+                // await tx.post.update({ ... data: { commentsCount: { decrement: 1 } } ... });
                 return deletedComment;
             }
             catch (error) {
-                console.error(`[PostService.deleteComment] Error during transaction for comment ${commentId}:`, error);
-                // Depending on the error type, you might want to throw or return null
-                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError) {
-                    // Handle specific Prisma errors if needed
-                }
-                throw error; // Re-throw the error for the controller to handle
+                console.error(`[PostService.deleteComment] Error deleting comment ${commentId}:`, error);
+                throw error;
             }
+        });
+    }
+    // 收藏帖子
+    static favoritePost(userId, postId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const existingFavorite = yield db_1.default.favorite.findUnique({ where: { userId_postId: { userId, postId } } });
+            if (existingFavorite) {
+                return existingFavorite;
+            }
+            try {
+                return yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
+                    const newFavorite = yield tx.favorite.create({ data: { userId, postId } });
+                    const post = yield tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
+                    if (post && post.authorId !== userId) {
+                        yield tx.notification.create({ data: { type: 'FAVORITE', recipientId: post.authorId, senderId: userId, postId } });
+                    }
+                    return newFavorite;
+                }));
+            }
+            catch (error) {
+                console.error(`[PostService.favoritePost] Error favoring post ${postId} for user ${userId}:`, error);
+                throw error;
+            }
+        });
+    }
+    // 取消收藏帖子
+    static unfavoritePost(userId, postId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                return yield db_1.default.favorite.delete({ where: { userId_postId: { userId, postId } } });
+            }
+            catch (error) {
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025')
+                    return null;
+                console.error(`[PostService.unfavoritePost] Error unfavoring post ${postId} for user ${userId}:`, error);
+                throw error;
+            }
+        });
+    }
+    // 获取用户自己的帖子 - Correct return type
+    static getMyPosts(userId_1) {
+        return __awaiter(this, arguments, void 0, function* (userId, options = {}) {
+            // Reuse getAllPosts logic, passing the authorId
+            return this.getAllPosts(Object.assign(Object.assign({}, options), { authorId: userId, currentUserId: userId }));
         });
     }
 }

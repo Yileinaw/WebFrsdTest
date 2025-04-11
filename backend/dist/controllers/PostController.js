@@ -8,17 +8,29 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PostController = void 0;
 const PostService_1 = require("../services/PostService");
+const client_1 = require("@prisma/client"); // Import Prisma for error checking
+const multer_1 = __importDefault(require("multer")); // Import multer
 class PostController {
     // 处理创建帖子的请求
     static createPost(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
+                // Check if Multer middleware added an error to the request
+                if (req.multerError) {
+                    // Keep this error log
+                    console.error('[PostController.createPost] Multer error passed via request:', req.multerError);
+                }
                 const { title, content } = req.body;
-                const authorId = req.userId; // 从认证中间件获取
+                const authorId = req.userId;
                 if (!authorId) {
+                    // Keep this error log
+                    console.error('[PostController.createPost] Error: authorId not found on request.');
                     res.status(401).json({ message: 'Unauthorized: User ID not found' });
                     return;
                 }
@@ -26,12 +38,44 @@ class PostController {
                     res.status(400).json({ message: 'Title is required' });
                     return;
                 }
-                const post = yield PostService_1.PostService.createPost({ title, content, authorId });
+                let imageUrl = null;
+                if (req.file) {
+                    const staticUrlPrefix = '/static/images/post/';
+                    imageUrl = staticUrlPrefix + req.file.filename;
+                    // Keep this log for successful uploads
+                    console.log(`[PostController.createPost] Image uploaded. Path: ${req.file.path}, Constructed URL: ${imageUrl}`);
+                }
+                else {
+                    // Optional: Log if no file was uploaded
+                    // console.log('[PostController.createPost] No file uploaded with this request.');
+                }
+                const post = yield PostService_1.PostService.createPost({
+                    title,
+                    content: content || '',
+                    authorId,
+                    imageUrl: imageUrl !== null && imageUrl !== void 0 ? imageUrl : undefined
+                });
                 res.status(201).json({ message: 'Post created successfully', post });
             }
             catch (error) {
+                // Keep this error log
                 console.error('Create Post Error:', error);
-                res.status(500).json({ message: 'Internal server error creating post' });
+                // Handle Multer errors
+                if (error instanceof multer_1.default.MulterError) {
+                    // Keep this error log
+                    console.error('[PostController.createPost] Caught MulterError:', error.code);
+                }
+                else if (error.message && error.message.includes('文件类型错误')) {
+                    // Keep this error log
+                    console.error('[PostController.createPost] Caught File Type Error from fileFilter');
+                }
+                // Handle Prisma errors
+                else if (error instanceof client_1.Prisma.PrismaClientKnownRequestError) {
+                    res.status(400).json({ message: `Database error: ${error.code}` });
+                }
+                else {
+                    res.status(500).json({ message: 'Internal server error creating post' });
+                }
             }
         });
     }
@@ -42,11 +86,12 @@ class PostController {
                 const page = parseInt(req.query.page) || undefined;
                 const limit = parseInt(req.query.limit) || undefined;
                 const sortBy = req.query.sortBy || undefined;
-                const currentUserId = req.userId; // Get userId from AuthMiddleware (if logged in)
+                const currentUserId = req.userId;
                 const { posts, totalCount } = yield PostService_1.PostService.getAllPosts({ page, limit, sortBy, currentUserId });
                 res.status(200).json({ posts, totalCount });
             }
             catch (error) {
+                // Keep this error log
                 console.error('Get All Posts Error:', error);
                 res.status(500).json({ message: 'Internal server error retrieving posts' });
             }
@@ -56,8 +101,8 @@ class PostController {
     static getPostById(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const postId = parseInt(req.params.id, 10);
-                const currentUserId = req.userId; // Get current user ID from authenticated request
+                const postId = parseInt(req.params.postId, 10);
+                const currentUserId = req.userId;
                 if (isNaN(postId)) {
                     res.status(400).json({ message: 'Invalid post ID' });
                     return;
@@ -70,6 +115,7 @@ class PostController {
                 res.status(200).json({ post });
             }
             catch (error) {
+                // Keep this error log
                 console.error('Get Post By ID Error:', error);
                 res.status(500).json({ message: 'Failed to retrieve post' });
             }
@@ -79,8 +125,8 @@ class PostController {
     static updatePost(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const postId = parseInt(req.params.id, 10);
-                const { title, content } = req.body;
+                const postId = parseInt(req.params.postId, 10);
+                const { title, content, imageUrl } = req.body;
                 const userId = req.userId;
                 if (isNaN(postId)) {
                     res.status(400).json({ message: 'Invalid post ID' });
@@ -90,14 +136,19 @@ class PostController {
                     res.status(401).json({ message: 'Unauthorized: User ID not found' });
                     return;
                 }
-                // 至少需要 title 或 content 中的一个来更新
-                if (title === undefined && content === undefined) {
-                    res.status(400).json({ message: 'No update data provided (title or content)' });
+                if (title === undefined && content === undefined && imageUrl === undefined) {
+                    res.status(400).json({ message: 'No update data provided (title, content, or imageUrl)' });
                     return;
                 }
-                const updatedPost = yield PostService_1.PostService.updatePost(postId, { title, content }, userId);
+                const updateData = {};
+                if (title !== undefined)
+                    updateData.title = title;
+                if (content !== undefined)
+                    updateData.content = content;
+                if (imageUrl !== undefined)
+                    updateData.imageUrl = imageUrl;
+                const updatedPost = yield PostService_1.PostService.updatePost(postId, updateData, userId);
                 if (!updatedPost) {
-                    // PostService 返回 null 通常意味着帖子不存在
                     res.status(404).json({ message: 'Post not found' });
                 }
                 else {
@@ -106,9 +157,10 @@ class PostController {
             }
             catch (error) {
                 if (error.message.startsWith('Forbidden')) {
-                    res.status(403).json({ message: error.message }); // 403 Forbidden
+                    res.status(403).json({ message: error.message });
                 }
                 else {
+                    // Keep this error log
                     console.error('Update Post Error:', error);
                     res.status(500).json({ message: 'Internal server error updating post' });
                 }
@@ -119,7 +171,7 @@ class PostController {
     static deletePost(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const postId = parseInt(req.params.id, 10);
+                const postId = parseInt(req.params.postId, 10);
                 const userId = req.userId;
                 if (isNaN(postId)) {
                     res.status(400).json({ message: 'Invalid post ID' });
@@ -129,22 +181,21 @@ class PostController {
                     res.status(401).json({ message: 'Unauthorized: User ID not found' });
                     return;
                 }
+                // TODO: Consider deleting associated image file from server storage here
                 const deletedPost = yield PostService_1.PostService.deletePost(postId, userId);
                 if (!deletedPost) {
-                    // PostService 返回 null 通常意味着帖子不存在
                     res.status(404).json({ message: 'Post not found' });
                 }
                 else {
-                    res.status(200).json({ message: 'Post deleted successfully', post: deletedPost });
-                    // 或者返回 204 No Content 状态码，不带响应体
-                    // res.status(204).send();
+                    res.status(200).json({ message: 'Post deleted successfully' });
                 }
             }
             catch (error) {
                 if (error.message.startsWith('Forbidden')) {
-                    res.status(403).json({ message: error.message }); // 403 Forbidden
+                    res.status(403).json({ message: error.message });
                 }
                 else {
+                    // Keep this error log
                     console.error('Delete Post Error:', error);
                     res.status(500).json({ message: 'Internal server error deleting post' });
                 }

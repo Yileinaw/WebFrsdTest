@@ -206,6 +206,34 @@ const nestedComments = computed((): NestedComment[] => {
     return rootComments;
 });
 
+// --- Helper function to flatten comment descendants ---
+interface CommentWithReplyTo extends NestedComment {
+    replyToAuthorName?: string | null;
+}
+const flattenDescendants = (comment: NestedComment): CommentWithReplyTo[] => {
+    const flattened: CommentWithReplyTo[] = [];
+    const processComment = (currentComment: NestedComment, replyToName: string | null) => {
+        // Add the current reply with the name it's replying to
+        flattened.push({ ...currentComment, replyToAuthorName: replyToName });
+        // Recursively process its children
+        if (currentComment.children && currentComment.children.length > 0) {
+            currentComment.children.forEach(child => {
+                // The child is replying to the currentComment's author
+                processComment(child, currentComment.author?.name || null); 
+            });
+        }
+    };
+
+    // Start processing children of the top-level comment
+    if (comment.children && comment.children.length > 0) {
+        comment.children.forEach(child => {
+            // These first-level replies are replying to the top-level comment's author
+            processComment(child, comment.author?.name || null); 
+        });
+    }
+    return flattened;
+};
+
 // --- Computed property for rendered Markdown content using markdown-it ---
 const renderedContent = computed(() => {
   if (post.value?.content) {
@@ -228,6 +256,7 @@ const fetchComments = async () => {
     try {
         // Ensure PostService.getCommentsByPostId returns an array or handle null/undefined
         const response = await PostService.getCommentsByPostId(postId.value);
+        console.log('[PostDetailView] Raw comments response from API:', JSON.stringify(response, null, 2)); // Log the raw response
         comments.value = Array.isArray(response) ? response : []; 
     } catch (err: any) {
         console.error('Error fetching comments:', err);
@@ -477,36 +506,6 @@ const deleteComment = async (id: number) => {
         console.error('Error deleting comment:', err);
         ElMessage.error(err.response?.data?.message || '评论删除失败');
     }
-};
-
-// --- Helper function to flatten descendants ---
-interface FlattenedComment extends Comment {
-    replyToAuthorName?: string | null;
-}
-
-// REMOVED DUPLICATE PLACEHOLDER
-const flattenDescendants = (comment: NestedComment): FlattenedComment[] => {
-    let descendants: FlattenedComment[] = [];
-    const parentAuthorName = comment.author?.name || '匿名用户'; 
-
-    // Recursive function to traverse children
-    const traverse = (children: NestedComment[] | undefined, currentParentAuthorName: string | null) => {
-        if (!Array.isArray(children)) return; // Ensure children is an array
-
-        children.forEach(child => {
-            // Add the current child, noting who it replies to
-            descendants.push({ 
-                ...child, 
-                replyToAuthorName: currentParentAuthorName // Author of the parent comment in the current context
-            });
-            // Continue traversal with the child's children, passing the child's author name
-            traverse(child.children, child.author?.name || '匿名用户');
-        });
-    };
-
-    // Start traversal with the direct children of the initial comment
-    traverse(comment.children, parentAuthorName);
-    return descendants;
 };
 
 // --- Lifecycle Hook --- MERGED onMounted

@@ -28,6 +28,9 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item @click="goToProfile">个人中心</el-dropdown-item>
+                  <el-dropdown-item v-if="userStore.isAdmin" @click="goToAdmin">
+                    后台管理
+                  </el-dropdown-item>
                   <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -60,6 +63,11 @@ const goToRegister = () => {
 
 const goToProfile = () => {
   router.push('/personal-center') // 跳转到个人中心根路径
+}
+
+// Add function to navigate to admin
+const goToAdmin = () => {
+  router.push('/admin/food-management');
 }
 
 // 处理登出

@@ -26,24 +26,52 @@ class NotificationService {
                 recipientId: recipientId,
             };
             if (unreadOnly) {
-                whereClause.read = false;
+                whereClause.isRead = false;
             }
+            // Add debug log
+            console.log('[DEBUG] getNotifications called with simplified query (no includes).');
             const [notificationsData, totalCount] = yield db_1.default.$transaction([
                 db_1.default.notification.findMany({
                     where: whereClause,
                     skip: skip,
                     take: limit,
                     orderBy: { createdAt: 'desc' },
-                    include: {
-                        actor: { select: { id: true, name: true, avatarUrl: true } },
-                        post: { select: { id: true, title: true } },
-                        comment: { select: { id: true, text: true } } // Include comment if present
+                    // Select necessary fields and include sender info
+                    select: {
+                        id: true,
+                        type: true,
+                        isRead: true,
+                        createdAt: true,
+                        senderId: true, // Keep senderId if useful elsewhere
+                        postId: true,
+                        commentId: true,
+                        // Include sender details
+                        sender: {
+                            select: {
+                                id: true,
+                                name: true,
+                                avatarUrl: true
+                            }
+                        }
                     }
                 }),
                 db_1.default.notification.count({ where: whereClause })
             ]);
-            // Cast to the extended type (assuming includes are always present as requested)
-            const notifications = notificationsData;
+            // Map to the BasicNotification structure, ensure type compatibility
+            const notifications = notificationsData.map(n => ({
+                id: n.id,
+                type: n.type, // Type is already NotificationType from select
+                isRead: n.isRead,
+                createdAt: n.createdAt,
+                // senderId: n.senderId, // Keep if needed
+                postId: n.postId,
+                commentId: n.commentId,
+                sender: n.sender ? {
+                    id: n.sender.id,
+                    name: n.sender.name,
+                    avatarUrl: n.sender.avatarUrl
+                } : null // Handle case where sender might be null
+            }));
             return { notifications, totalCount };
         });
     }
@@ -57,9 +85,9 @@ class NotificationService {
                 where: {
                     id: notificationId,
                     recipientId: recipientId,
-                    read: false // Only update if it's currently unread
+                    isRead: false // Only update if it's currently unread
                 },
-                data: { read: true }
+                data: { isRead: true }
             });
             if (updatedNotification.count > 0) {
                 return db_1.default.notification.findUnique({ where: { id: notificationId } });
@@ -77,9 +105,9 @@ class NotificationService {
             const result = yield db_1.default.notification.updateMany({
                 where: {
                     recipientId: recipientId,
-                    read: false,
+                    isRead: false,
                 },
-                data: { read: true },
+                data: { isRead: true },
             });
             return result;
         });

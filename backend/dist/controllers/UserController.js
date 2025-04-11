@@ -18,14 +18,14 @@ const PostService_1 = require("../services/PostService");
 const FavoriteService_1 = require("../services/FavoriteService");
 const NotificationService_1 = require("../services/NotificationService");
 const multer_1 = __importDefault(require("multer"));
+const fs_1 = __importDefault(require("fs")); // Import fs module
+const path_1 = __importDefault(require("path")); // Import path module
 class UserController {
     // 处理获取当前登录用户信息的请求
     static getCurrentUser(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            // console.log('[UserController] Reached getCurrentUser handler'); // Remove log
             try {
                 const userId = req.userId;
-                // console.log(`[UserController - getCurrentUser] userId: ${userId}`); // Remove log
                 if (!userId) {
                     console.error('[UserController - getCurrentUser] Error: userId is missing');
                     res.status(401).json({ message: 'Unauthorized: User ID not found after authentication' });
@@ -33,54 +33,62 @@ class UserController {
                 }
                 const user = yield UserService_1.UserService.getUserById(userId);
                 if (!user) {
-                    // 理论上如果认证中间件的数据库检查有效，这里也不会发生
                     res.status(404).json({ message: 'User not found' });
                     return;
                 }
                 res.status(200).json({ user });
             }
             catch (error) {
-                console.error('Get Current User Error:', error); // Keep error log
+                console.error('Get Current User Error:', error);
                 res.status(500).json({ message: 'Internal server error retrieving user data' });
             }
         });
     }
     // 处理更新用户个人资料的请求
-    static updateProfile(req, res) {
+    static updateProfile(req, res, next) {
         return __awaiter(this, void 0, void 0, function* () {
+            const userId = req.userId;
+            if (!userId) {
+                res.status(401).json({ message: 'Unauthorized: User ID not found in request' });
+                return;
+            }
+            const { name, avatarUrl } = req.body;
+            // Basic validation
+            if (name !== undefined && typeof name !== 'string') {
+                res.status(400).json({ message: 'Name must be a string' });
+                return;
+            }
+            if (avatarUrl !== undefined && typeof avatarUrl !== 'string') {
+                res.status(400).json({ message: 'avatarUrl must be a string' });
+                return;
+            }
+            // Add more validation for avatarUrl if needed (e.g., check if it's one of the defaults or an uploaded path)
             try {
-                const userId = req.userId;
-                const { name /* 其他允许更新的字段 */ } = req.body;
-                if (!userId) {
-                    res.status(401).json({ message: 'Unauthorized: User ID not found' });
+                const updateData = {};
+                if (name !== undefined) {
+                    updateData.name = name;
+                }
+                if (avatarUrl !== undefined) { // Allow setting or removing avatar
+                    updateData.avatarUrl = avatarUrl; // Could be a preset URL or potentially null/empty string to remove
+                }
+                // Only update if there's data to update
+                if (Object.keys(updateData).length === 0) {
+                    res.status(400).json({ message: 'No update data provided' });
                     return;
                 }
-                // 验证输入，确保至少提供了一个有效字段
-                if (name === undefined /* && 其他字段 === undefined */) {
-                    res.status(400).json({ message: 'No valid profile data provided for update (e.g., name)' });
-                    return;
-                }
-                const updatedUser = yield UserService_1.UserService.updateUserProfile(userId, { name /* 其他字段 */ });
+                const updatedUser = yield UserService_1.UserService.updateUserProfile(userId, updateData);
                 res.status(200).json({ message: 'Profile updated successfully', user: updatedUser });
             }
             catch (error) {
-                console.error('Update Profile Error:', error);
-                if (error.message === "No profile data provided for update" || error.message === "Failed to update user profile") {
-                    res.status(400).json({ message: error.message });
-                }
-                else {
-                    res.status(500).json({ message: 'Internal server error updating profile' });
-                }
+                next(error); // Pass error to the global error handler
             }
         });
     }
     // --- Add method to get current user's posts --- 
     static getMyPosts(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            // console.log('[UserController] Reached getMyPosts handler'); // Remove log
             try {
                 const userId = req.userId;
-                // console.log(`[UserController] userId: ${userId}`); // Remove log
                 if (!userId) {
                     console.error('[UserController] Error: userId is missing after AuthMiddleware');
                     res.status(401).json({ message: 'Unauthorized: User ID not found' });
@@ -88,19 +96,16 @@ class UserController {
                 }
                 const page = parseInt(req.query.page) || 1;
                 const limit = parseInt(req.query.limit) || 10;
-                // console.log(`[UserController] Fetching posts for user ${userId}, page: ${page}, limit: ${limit}`); // Remove log
-                // Call PostService.getAllPosts with authorId filter
                 const result = yield PostService_1.PostService.getAllPosts({
                     page,
                     limit,
                     authorId: userId,
                     currentUserId: userId
                 });
-                // console.log(`[UserController] PostService returned ${result.posts.length} posts, totalCount: ${result.totalCount}`); // Remove log
                 res.status(200).json(result);
             }
             catch (error) {
-                console.error('[UserController] Get My Posts Error:', error); // Keep error log
+                console.error('[UserController] Get My Posts Error:', error);
                 res.status(500).json({ message: 'Internal server error retrieving your posts' });
             }
         });
@@ -133,21 +138,20 @@ class UserController {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const userId = req.userId;
-                const { name, avatarUrl } = req.body; // 接收 name 和 avatarUrl
+                const { name, avatarUrl } = req.body;
                 if (!userId) {
                     res.status(401).json({ message: 'Unauthorized' });
                     return;
                 }
-                // 构建要更新的数据
-                const profileData = {}; // Allow null for removing avatar
+                const profileData = {};
                 if (name !== undefined)
                     profileData.name = name;
-                // 验证 avatarUrl 是否是合法的预设路径或为空 (不允许通过此接口设置上传路径)
                 if (avatarUrl !== undefined) {
-                    if (avatarUrl === null || (typeof avatarUrl === 'string' && avatarUrl.startsWith('/avatars/defaults/'))) {
+                    if (avatarUrl === null || (typeof avatarUrl === 'string' && avatarUrl.startsWith('/static/avatars/defaults/'))) {
                         profileData.avatarUrl = avatarUrl;
                     }
                     else {
+                        console.warn(`[UserController.updateUserProfile] Invalid avatarUrl received: ${avatarUrl}. Allowed: null or starting with /static/avatars/defaults/`);
                         res.status(400).json({ message: 'Invalid avatar URL for profile update' });
                         return;
                     }
@@ -178,14 +182,16 @@ class UserController {
                     res.status(400).json({ message: 'No file uploaded' });
                     return;
                 }
-                // 构建存储在数据库中的 URL 路径
-                const avatarPath = `/uploads/avatars/${req.file.filename}`;
-                // 调用 UserService 更新数据库中的 avatarUrl
+                // Construct the URL path stored in the database and returned to the client
+                // Use the /static/ prefix consistent with other image URLs
+                const avatarPath = `/static/images/avatars/${req.file.filename}`;
+                // Call UserService to update the avatarUrl in the database
                 const updatedUser = yield UserService_1.UserService.updateUserProfile(userId, { avatarUrl: avatarPath });
+                // Ensure the response includes the correct URL and the updated user object
                 res.status(200).json({
                     message: 'Avatar uploaded successfully',
-                    avatarUrl: avatarPath,
-                    user: updatedUser
+                    avatarUrl: avatarPath, // Return the correct URL path
+                    user: updatedUser // Return the updated user object
                 });
             }
             catch (error) {
@@ -214,8 +220,6 @@ class UserController {
                 }
                 const page = parseInt(req.query.page) || 1;
                 const limit = parseInt(req.query.limit) || 10;
-                // Corrected method name - Call the new service method
-                // const favoritesData = await FavoriteService.getFavoritePostsByUserId(userId, { page, limit }); // Old call
                 const favoritesData = yield FavoriteService_1.FavoriteService.fetchUserFavoritesPage(userId, { page, limit }); // <-- New call
                 res.status(200).json(favoritesData);
             }
@@ -267,6 +271,32 @@ class UserController {
             catch (error) {
                 console.error("Get User Notifications Error:", error);
                 res.status(500).json({ message: error.message || 'Failed to get notifications' });
+            }
+        });
+    }
+    // --- End methods ---
+    /**
+     * Get a list of available default avatar image URLs.
+     */
+    static getDefaultAvatars(req, res, next) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const defaultAvatarDir = path_1.default.resolve(process.cwd(), 'public/avatars/defaults'); // Correct path relative to project root
+                if (!fs_1.default.existsSync(defaultAvatarDir)) {
+                    console.error(`[UserController] Default avatar directory not found: ${defaultAvatarDir}`);
+                    res.status(404).json({ message: 'Default avatars directory not found.' });
+                    return;
+                }
+                const files = fs_1.default.readdirSync(defaultAvatarDir);
+                const avatarUrls = files
+                    .filter(file => /\.(jpg|jpeg|png|webp)$/i.test(file))
+                    .map(file => `/static/avatars/defaults/${file}`); // Ensure consistent /static prefix
+                const response = { avatarUrls };
+                res.json(response);
+            }
+            catch (error) {
+                console.error("Error fetching default avatars:", error);
+                next(error); // Pass error to global handler
             }
         });
     }

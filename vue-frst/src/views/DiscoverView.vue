@@ -1,412 +1,438 @@
 <template>
   <div class="discover-view">
     <!-- 1. Hero Section -->
-    <section class="hero-section">
+    <section class="hero-section-simplified">
       <div class="hero-content container">
         <h1>探索美食的无限可能</h1>
-        <p>发现、分享、品尝，开启你的味蕾之旅</p>
-        <div class="hero-search">
+        <p>发现、分享、品味，开启你的味蕾之旅</p>
+        <!-- Re-add Basic Search Bar -->
+        <div class="search-container">
           <el-input
             v-model="searchQuery"
-            placeholder="搜索菜谱、食材、餐厅..."
+            placeholder="搜索美食标题或描述"
             size="large"
+            :prefix-icon="SearchIcon"
             clearable
             @keyup.enter="performSearch"
-            class="search-input"
-          >
-            <template #prepend>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-          <el-button type="primary" size="large" @click="performSearch">搜索</el-button>
+            @clear="handleSearchClear"
+          />
+          <!-- Optional: Add a separate button if needed -->
+          <!-- <el-button type="primary" size="large" @click="performSearch">搜索</el-button> -->
         </div>
       </div>
     </section>
 
-    <!-- 2. Filter Bar Section -->
-    <section class="filter-bar-section sticky-filter-bar">
-      <div class="filter-bar-content container">
-        <!-- Category Filter -->
-        <div class="filter-group">
-          <span class="filter-label">分类:</span>
-          <el-radio-group v-model="selectedCategory" size="small">
-            <el-radio-button label="全部" />
-            <el-radio-button label="家常菜" />
-            <el-radio-button label="烘焙" />
-            <el-radio-button label="饮品" />
-            <!-- Add more categories as needed -->
-          </el-radio-group>
-        </div>
-
-        <!-- Sorting Filter -->
-        <div class="filter-group">
-           <span class="filter-label">排序:</span>
-           <el-radio-group v-model="selectedSort" size="small">
-              <el-radio-button label="最新发布" value="latest" />
-              <el-radio-button label="最受欢迎" value="popular" />
-              <!-- Add more sort options if needed -->
-            </el-radio-group>
-          <!-- Alternative Select for Sorting -->
-          <!-- <el-select v-model="selectedSort" placeholder="排序" size="small" style="width: 120px;">
-            <el-option label="最新发布" value="latest" />
-            <el-option label="最受欢迎" value="popular" />
-          </el-select> -->
-        </div>
-      </div>
+    <!-- 2. Tags Section -->
+    <section class="tags-section container">
+        <el-button
+          v-for="tag in availableTags"
+          :key="tag.id"
+          round
+          :type="selectedTags.includes(tag.name) ? 'primary' : ''"
+          class="tag-button"
+          @click="handleTagClick(tag.name)"
+        >
+          {{ tag.name }}
+        </el-button>
+        <el-button
+            v-if="selectedTags.length > 0"
+            size="small"
+            circle
+            :icon="CloseIcon"
+            class="clear-tag-button"
+            @click="clearTagFilter"
+            title="清除标签筛选"
+        />
     </section>
 
-    <!-- 3. Results Section -->
+    <!-- 3. Results Section (Masonry/CSS Columns) -->
     <section class="results-section container">
-      <!-- Waterfall Component -->
-      <waterfall
-        :list="discoverPosts"
-        :breakpoints="{
-            1200: { // >= 1200px
-              rowPerView: 4,
-            },
-            800: { // >= 800px
-              rowPerView: 3,
-            },
-            500: { // >= 500px
-              rowPerView: 2,
-            }
-          }"
-        :width="cardWidth"
-        :gutter="15"
-        v-if="discoverPosts.length > 0"
-      >
-        <template #item="{ item, url, index }" >
-          <div class="masonry-item" >
-             <FoodCard :post="item" />
-          </div>
-        </template>
-      </waterfall>
-
       <!-- Loading Indicator -->
       <div v-if="isLoading" class="loading-indicator">加载中...</div>
-      <!-- Empty State -->
-      <el-empty v-if="!isLoading && discoverPosts.length === 0 && !error" description="暂无美食分享"></el-empty>
-      <!-- Error State -->
-      <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
+      <!-- CSS Masonry Container -->
+      <div v-if="!isLoading && foodShowcases.length > 0" class="masonry-container">
+        <!-- Loop through items, get index -->
+        <div v-for="(item, index) in foodShowcases" :key="item.id" class="masonry-item">
+           <img
+             :src="getImageUrl(item.imageUrl)"
+             :alt="item.title || '美食图片'"
+             class="food-image"
+             loading="lazy"
+             @click="showLightbox(index)"
+             style="cursor: pointer;"
+           >
+           <!-- Add Info Overlay -->
+           <div class="image-info-overlay">
+               <h4>{{ item.title || '无标题' }}</h4>
+               <!-- Add description preview if available and desired -->
+               <!-- <p v-if="item.description">{{ item.description.substring(0, 50) + (item.description.length > 50 ? '...' : '') }}</p> -->
+           </div>
+        </div>
+      </div>
+      <!-- Empty State / Error State ... -->
+       <el-empty 
+         v-if="!isLoading && foodShowcases.length === 0 && !error" 
+         :description="emptyStateDescription"
+       />
+       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
     </section>
+
+    <!-- Lightbox remains unchanged -->
+    <vue-easy-lightbox
+      :visible="lightboxVisible"
+      :imgs="lightboxImages"
+      :index="lightboxIndex"
+      @hide="lightboxVisible = false"
+    ></vue-easy-lightbox>
 
   </div>
 </template>
 
 <script setup lang="ts">
-// Import necessary functions from Vue and other libraries
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'; // Added computed
-import { useRoute } from 'vue-router';
-import FoodCard from '@/components/common/FoodCard.vue';
-import { PostService } from '@/services/PostService';
-import type { PostPreview } from '@/types/models';
-import { Search } from '@element-plus/icons-vue'; // Import Search icon
+import { ref, onMounted, computed, watch } from 'vue';
+// Use AdminService instead of FoodShowcaseService
+import { AdminService } from '@/services/AdminService';
+// Assume FoodShowcasePreview type exists in models.ts
+// Also import Tag type
+import type { FoodShowcasePreview, Tag } from '@/types/models';
 // Import the Waterfall component
-import { Waterfall } from 'vue-waterfall-plugin-next'
-import 'vue-waterfall-plugin-next/dist/style.css' // Import its styles
+// import { Waterfall } from 'vue-waterfall-plugin-next'
+// import 'vue-waterfall-plugin-next/dist/style.css'
+import { getImageUrl } from '@/utils/imageUrl'; // Assuming you have a utility for image URLs
+// Import vue-easy-lightbox
+import VueEasyLightbox from 'vue-easy-lightbox';
+import 'vue-easy-lightbox/dist/external-css/vue-easy-lightbox.css'; // Import CSS
+// Add necessary Element Plus components
+import { ElInput, ElButton, ElIcon, ElEmpty, ElAlert } from 'element-plus';
+import { Search as SearchIcon, Close as CloseIcon } from '@element-plus/icons-vue';
 
 // --- Component State Refs ---
-const route = useRoute();
-const searchQuery = ref('');
-const discoverPosts = ref<PostPreview[]>([]);
+const foodShowcases = ref<FoodShowcasePreview[]>([]);
 const isLoading = ref(false);
 const error = ref<string | null>(null);
-const currentPage = ref(1);
-const limit = ref(12); // Increase limit slightly for wider grid
-const totalCount = ref(0);
-const hasMore = ref(true);
-const isUnmounted = ref(false);
+const isLoadingTags = ref(false); // Loading state for tags
+const errorTags = ref<string | null>(null); // Error state for tags
+// Removed waterfallRef
+// const waterfallRef = ref<InstanceType<typeof Waterfall> | null>(null);
 
-// --- Filter State Refs ---
-const selectedCategory = ref('全部'); // Default category
-const selectedSort = ref('latest'); // Default sort order
-
-// --- Waterfall specific calculation ---
-const cardWidth = computed(() => {
-  // You might need to adjust this based on your layout and desired card width
-  return 236; // Example fixed width, adjust as needed
+// --- Lightbox State ---
+const lightboxVisible = ref(false);
+const lightboxIndex = ref(0);
+const lightboxImages = computed(() => {
+  // Ensure getImageUrl handles potential base URL issues gracefully
+  return foodShowcases.value.map(item => getImageUrl(item.imageUrl) || '');
 });
 
-// --- API Interaction (fetchDiscoverPosts remains largely the same, but we won't call it initially) ---
-const fetchDiscoverPosts = async (
-    page: number = 1,
-    searchTerm: string = '',
-    category: string = '全部',
-    sortBy: string = 'latest'
-) => {
-    if (isLoading.value || (page > 1 && !hasMore.value)) return;
-    console.log(`Fetching posts: Page=${page}, Search='${searchTerm}', Category='${category}', SortBy='${sortBy}'`);
+// --- Search State ---
+const searchQuery = ref('');
+
+// --- Active Tag State (Changed to Multi-select) ---
+const selectedTags = ref<string[]>([]); // Keep as string array for selected names
+
+// --- Available Tags State (Fetched from backend) ---
+// const predefinedTags = ref([...]); // Remove predefined tags
+const availableTags = ref<Tag[]>([]); // New state for fetched tags
+
+// --- Computed property for empty state description ---
+const emptyStateDescription = computed(() => {
+    if (searchQuery.value) {
+        return `未能找到与 "${searchQuery.value}" 相关的结果`;
+    } else if (selectedTags.value.length > 0) {
+        return `未能找到包含标签 "${selectedTags.value.join(', ')}" 的结果`;
+    } else {
+        return '暂无美食展示'; // Default empty state
+    }
+});
+
+// --- Watchers ---
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+watch(searchQuery, (newValue, oldValue) => {
+  // Clear previous debounce timer
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+  }
+
+  if (newValue === '' && oldValue !== '') {
+    // Handle clear event immediately (or use handleSearchClear)
+    // console.log('Search query cleared, fetching all.');
+    handleSearchClear(); 
+  } else if (newValue !== oldValue && newValue !== '') {
+    // Set new debounce timer only if value changed and is not empty
+    searchDebounceTimer = setTimeout(() => {
+      // console.log('Debounced search triggered for:', newValue);
+      performSearch();
+    }, 500); // Wait 500ms after user stops typing
+  }
+});
+
+// --- Method to show lightbox ---
+const showLightbox = (index: number) => {
+  lightboxIndex.value = index;
+  lightboxVisible.value = true;
+};
+
+// --- Fetch Available Tags from Backend ---
+const fetchAvailableTags = async () => {
+  isLoadingTags.value = true;
+  errorTags.value = null;
+  try {
+    availableTags.value = await AdminService.getAllTags();
+    console.log('[DiscoverView] Fetched available tags:', availableTags.value);
+  } catch (err) {
+    console.error('[DiscoverView] Failed to fetch tags:', err);
+    errorTags.value = '加载标签列表失败';
+    availableTags.value = []; // Reset on error
+  } finally {
+    isLoadingTags.value = false;
+  }
+};
+
+// --- Methods ---
+const handleTagClick = (tagName: string) => {
+  const index = selectedTags.value.indexOf(tagName);
+  if (index === -1) {
+    selectedTags.value.push(tagName);
+  } else {
+    selectedTags.value.splice(index, 1);
+  }
+  searchQuery.value = ''; 
+  fetchFoodShowcases({ tags: selectedTags.value.length > 0 ? selectedTags.value : undefined });
+};
+
+const clearTagFilter = () => {
+    if (selectedTags.value.length > 0) {
+        selectedTags.value = []; // Clear the array
+        fetchFoodShowcases({}); // Fetch without tags
+    }
+};
+
+const performSearch = () => {
+  // Debounce logic is now in watch, this function is called after debounce
+  // console.log('Performing search for:', searchQuery.value); 
+  selectedTags.value = []; // Clear tags when searching
+  fetchFoodShowcases({ search: searchQuery.value || undefined });
+};
+
+// --- Add handler for clearing the search input ---
+const handleSearchClear = () => {
+  // console.log('Search input cleared, fetching all.'); // Optional log
+  // searchQuery is already cleared by el-input
+  selectedTags.value = []; // Ensure tags are also cleared
+  fetchFoodShowcases({}); // Fetch without search or tags
+};
+
+// --- Removed Waterfall specific calculation ---
+// const cardWidth = computed(() => 236);
+
+// --- Removed Helper method for image load ---
+// const onImageLoad = async () => { ... };
+
+// --- API Interaction ---
+const fetchFoodShowcases = async (params: { search?: string; tags?: string[] } = {}) => { // Expect tags array
+    if (isLoading.value) return;
+    console.log('[DiscoverView] Fetching with params:', params);
     isLoading.value = true;
     error.value = null;
     try {
-        const apiParams: { page: number; limit: number; search?: string; category?: string; sortBy?: string } = {
-            page: page,
-            limit: limit.value,
-            sortBy: sortBy,
-        };
-        if (searchTerm) apiParams.search = searchTerm;
-        if (category && category !== '全部') apiParams.category = category;
-
-        const response = await PostService.getAllPosts(apiParams);
-        const newPosts = response.posts.map(post => ({
-            id: post.id,
-            title: post.title,
-            imageUrl: post.imageUrl ?? null,
-            content: post.content ?? null,
-            author: post.author ? {
-                id: post.author.id,
-                name: post.author.name ?? '匿名用户',
-                avatarUrl: post.author.avatarUrl ?? null
-            } : null
-        }));
-
-        if (page === 1) {
-            discoverPosts.value = newPosts;
-        } else {
-            discoverPosts.value = [...discoverPosts.value, ...newPosts];
-        }
-
-        totalCount.value = response.totalCount;
-        currentPage.value = page;
-        hasMore.value = discoverPosts.value.length < totalCount.value;
-
+        // Call AdminService, request a large limit to simulate fetching "all" for discovery view
+        const response = await AdminService.getFoodShowcases({
+            search: params.search,
+            tags: params.tags, // Pass tags array
+            limit: 100, // Request a larger number of items for discovery
+            page: 1, // Always fetch the first page for simplicity here
+            includeTags: false // Tags might not be needed in discovery view
+        });
+        console.log('[DiscoverView] API Response received:', response);
+        // Extract items from the paginated response
+        foodShowcases.value = response.items;
+        console.log(`[DiscoverView] Successfully fetched ${foodShowcases.value.length} showcases.`);
+       
     } catch (err: any) {
-        console.error("Failed to fetch discover posts:", err);
-        error.value = '加载美食列表失败，请稍后再试。';
+        console.error("[DiscoverView] Failed to fetch food showcases:", err);
+        error.value = '加载美食展示失败，请稍后再试。';
+        foodShowcases.value = [];
     } finally {
         isLoading.value = false;
+        console.log(`[DiscoverView] Fetch finished. isLoading: ${isLoading.value}, showcases count: ${foodShowcases.value.length}, error: ${error.value}`);
     }
 };
 
-// --- Event Handlers & Logic (performSearch, handleScroll remain the same) ---
-const performSearch = () => {
-    console.log(`Performing search for: "${searchQuery.value}" with filters: Category=${selectedCategory.value}, Sort=${selectedSort.value}`);
-    currentPage.value = 1;
-    hasMore.value = true;
-    discoverPosts.value = [];
-    // Scroll to filter bar after search
-    const filterBarElement = document.querySelector('.filter-bar-section');
-    if (filterBarElement instanceof HTMLElement) {
-         window.scrollTo({ top: filterBarElement.offsetTop, behavior: 'smooth' });
-    }
-    fetchDiscoverPosts(1, searchQuery.value, selectedCategory.value, selectedSort.value);
-};
-
-const handleScroll = () => {
-    if (isUnmounted.value || isLoading.value || !hasMore.value) return;
-    const threshold = 300; // Increase threshold slightly
-    const bottomOfWindow = document.documentElement.scrollTop + window.innerHeight >= document.documentElement.offsetHeight - threshold;
-    if (bottomOfWindow) {
-        console.log("Scroll near bottom, fetching next page...");
-        fetchDiscoverPosts(currentPage.value + 1, searchQuery.value, selectedCategory.value, selectedSort.value);
-    }
-};
-
-// --- Watchers (watch logic remains the same) ---
-watch([selectedCategory, selectedSort], (newValues, oldValues) => {
-    if (JSON.stringify(newValues) === JSON.stringify(oldValues)) return;
-    console.log(`Filters changed: Category=${newValues[0]}, Sort=${newValues[1]}`);
-    currentPage.value = 1;
-    hasMore.value = true;
-    discoverPosts.value = [];
-    fetchDiscoverPosts(1, searchQuery.value, newValues[0], newValues[1]);
-});
-
-// --- Lifecycle Hooks (onMounted, onUnmounted remain largely the same, adjust initial fetch if needed) ---
+// --- Lifecycle Hooks ---
 onMounted(() => {
-    console.log('[DiscoverView] Mounted');
-    isUnmounted.value = false;
-
-    if (route.query.search && typeof route.query.search === 'string') {
-        searchQuery.value = route.query.search;
-        console.log(`Initial search from URL: "${searchQuery.value}"`);
-        performSearch();
-    } else {
-        console.log('Initial fetch without URL search query.');
-        fetchDiscoverPosts(1, '', selectedCategory.value, selectedSort.value);
-    }
-    
-    window.addEventListener('scroll', handleScroll);
+    console.log('[DiscoverView] Mounted - Fetching initial data and tags');
+    fetchFoodShowcases(); // Initial fetch (no filters)
+    fetchAvailableTags(); // Fetch tags from backend
 });
 
-onUnmounted(() => {
-    console.log('[DiscoverView] Unmounting, removing scroll listener.');
-    isUnmounted.value = true;
-    window.removeEventListener('scroll', handleScroll);
-});
+// Removed: searchQuery, discoverPosts, currentPage, limit, totalCount, hasMore, isUnmounted
+// Removed: selectedCategory, selectedSort
+// Removed: fetchDiscoverPosts, performSearch, handleScroll, watchers, onUnmounted scroll logic
 
 </script>
 
 <style scoped lang="scss">
 .discover-view {
-  background-color: #f8f9fa; // Light background for the whole view
+  background-color: #f8f9fa;
 }
 
-// --- 1. Hero Section --- 
-.hero-section {
-  // Use the provided image URL
+/* --- Hero Section --- */
+.hero-section-simplified {
+  // Adjust styles if needed, example uses existing gradient/image
   background: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url('https://media.istockphoto.com/id/492301737/zh/%E7%85%A7%E7%89%87/delicious-breakfast.jpg?s=2048x2048&w=is&k=20&c=_k-olo7WGLG-JB36DVgaqq6UsW6g-QKLQpUThBY3Y60=');
   background-size: cover;
   background-position: center;
-  padding: 80px 20px; // Add horizontal padding too
+  padding: 60px 0; // Reset padding if search bar space is removed
   text-align: center;
   color: #fff;
 
   h1 {
     font-size: 2.8rem;
-    font-weight: 700;
-    margin-bottom: 15px;
-    text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+    margin-bottom: 0.5em;
+    font-weight: 600;
   }
 
   p {
-    font-size: 1.2rem;
-    margin-bottom: 30px;
-    opacity: 0.9;
+    font-size: 1.1rem;
+    margin-bottom: 0; // Removed margin as search is gone
   }
 }
 
-.hero-search {
-  max-width: 600px;
-  margin: 0 auto;
-  display: flex;
-  gap: 10px;
-
-  .search-input {
-    flex-grow: 1;
-    // Style the input itself
-    :deep(.el-input__wrapper) {
-        border-radius: 6px 0 0 6px !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-     :deep(.el-input-group__prepend) {
-        background-color: #fff;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-         border-radius: 6px 0 0 6px !important;
-         padding: 0 15px;
-     }
-  }
-
-  .el-button {
-    border-radius: 0 6px 6px 0 !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  }
+/* --- Tags Section --- */
+.tags-section {
+  padding: 20px 0;
+  text-align: center;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 30px;
+  position: relative; // For positioning the clear button
 }
 
-
-// --- 2. Filter Bar Section --- 
-.filter-bar-section {
-  background-color: #fff;
-  padding: 15px 0;
-  border-bottom: 1px solid #e0e0e0;
-  z-index: 10; // Ensure it stays above content when sticky
+.tag-button {
+  margin: 5px 8px;
 }
 
-.sticky-filter-bar {
-   position: sticky;
-   // Assuming header height is 60px
-   top: 60px; // Adjust if your header height is different
-   background-color: rgba(255, 255, 255, 0.95); // Slightly transparent when sticky
-   backdrop-filter: blur(5px);
-   -webkit-backdrop-filter: blur(5px); // For Safari
+// Style for the clear tag button
+.clear-tag-button {
+    margin-left: 15px; // Space from the tags
+    // Optional: Adjust position if needed relative to tags
+    // position: absolute;
+    // right: 0;
+    // top: 50%;
+    // transform: translateY(-50%);
 }
 
-.filter-bar-content {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start; // Align items to the start
-  gap: 30px; // Space between filter groups
-  flex-wrap: wrap; // Allow wrapping on smaller screens
-}
-
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 10px; // Space between label and controls
-}
-
-.filter-label {
-  font-size: 0.9rem;
-  color: #555;
-  font-weight: 500;
-  white-space: nowrap; // Prevent label wrapping
-}
-
-// Adjust radio button style for filter bar
-.filter-bar-section .el-radio-button {
-   :deep(.el-radio-button__inner) {
-     border-radius: 4px !important;
-     border: 1px solid #dcdfe6;
-     box-shadow: none;
-     padding: 6px 12px;
-     font-size: 0.85rem;
-     background-color: #f5f7fa; // Lighter background
-     transition: all 0.2s ease-in-out;
-   }
-    &:hover:not(.is-active) {
-      :deep(.el-radio-button__inner) {
-         border-color: var(--el-color-primary-light-3);
-         color: var(--el-color-primary);
-         background-color: #fff;
-      }
-    }
-    &.is-active {
-       :deep(.el-radio-button__inner) {
-        background-color: var(--el-color-primary);
-        border-color: var(--el-color-primary);
-        color: #fff;
-      }
-    }
-}
-
-// --- 3. Results Section --- 
+/* --- Results Section & Masonry --- */
 .results-section {
-    padding-top: 30px; // Add some space above the results
-    padding-bottom: 50px;
+  padding-top: 30px;
+  padding-bottom: 30px;
+}
+
+.masonry-container {
+  // Define columns - Adjust count based on screen size via media queries
+  column-count: 4; // Default for larger screens
+  column-gap: 15px; // Space between columns
+
+  @media (max-width: 1200px) {
+    column-count: 3;
+  }
+  @media (max-width: 768px) {
+    column-count: 2;
+  }
+  @media (max-width: 480px) {
+    column-count: 1;
+  }
+}
+
+.masonry-item {
+  // Prevent items from breaking across columns
+  break-inside: avoid;
+  // Add space below each item
+  margin-bottom: 15px;
+  // Required for break-inside to work correctly in some contexts
+  display: inline-block;
+  width: 100%; // Item fills the column width
+
+  // --- Styles moved from .waterfall-item-content ---
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  cursor: pointer;
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+  }
+}
+
+.food-image {
+  // Styles remain the same - block display is important
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  border-radius: 8px;
 }
 
 .loading-indicator {
-    text-align: center;
-    padding: 50px;
-    color: #909399;
-    font-size: 1.1rem;
+  text-align: center;
+  padding: 40px;
+  color: #666;
 }
 
-// --- Remove Responsive adjustments temporarily --- 
-/*
-@media (max-width: 992px) { 
-    .masonry-item {
-        width: 50%; // Target 2 columns
-    }
+/* --- Common styles --- */
+.container {
+  max-width: 1200px; // Or your preferred max width
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 15px;
+  padding-right: 15px;
 }
 
-@media (max-width: 768px) { 
-    .masonry-item {
-        width: 100%; // Target 1 column
-    }
-}
-*/
+// Remove sticky filter bar styles if they exist globally or were here
+// .sticky-filter-bar { ... } removed
 
-// --- Responsive adjustments for filter bar & hero --- 
-@media (max-width: 768px) {
-    .filter-bar-content {
-        gap: 15px; // Reduce gap
-        padding-left: 15px; // Add padding on small screens
-        padding-right: 15px;
-        justify-content: center; // Center items when wrapping
-    }
-    .filter-group {
-        margin-bottom: 10px; // Add some space when groups wrap
-    }
-     .hero-section {
-         padding: 60px 20px;
-         h1 { font-size: 2.2rem; }
-         p { font-size: 1rem; }
-     }
-     // Adjust sticky top for potentially different header height on mobile
-     .sticky-filter-bar {
-         top: 50px; // Example: Assuming mobile header is shorter
-     }
+// Basic styles for the new search container
+.search-container {
+  max-width: 600px;
+  margin: 30px auto 0 auto;
+}
+
+// --- Info Overlay Styles ---
+.image-info-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 10px 12px; // Adjust padding
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.5) 60%, transparent 100%);
+  color: #fff;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  pointer-events: none; // Important: Allows clicks to pass through to the image
+  border-bottom-left-radius: 8px; // Match item rounding
+  border-bottom-right-radius: 8px;
+
+  h4 {
+    margin: 0;
+    font-size: 0.9rem; // Adjust size
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  // Optional paragraph styling if description is added
+  // p {
+  //   margin: 4px 0 0 0;
+  //   font-size: 0.8rem;
+  //   opacity: 0.9;
+  // }
+}
+
+.masonry-item:hover .image-info-overlay {
+  opacity: 1;
+  visibility: visible;
 }
 
 </style> 

@@ -46,11 +46,15 @@ const UserRoutes_1 = require("./routes/UserRoutes");
 const PostRoutes_1 = require("./routes/PostRoutes");
 const FeedRoutes_1 = __importDefault(require("./routes/FeedRoutes"));
 const NotificationRoutes_1 = __importDefault(require("./routes/NotificationRoutes"));
+const foodShowcaseRoutes_1 = __importDefault(require("./routes/foodShowcaseRoutes"));
+const TagRoutes_1 = __importDefault(require("./routes/TagRoutes")); // Import tag routes
+const ErrorHandlingMiddleware_1 = require("./middleware/ErrorHandlingMiddleware");
 // --- Remove direct imports, rely on userRoutes ---
 // import { UserController } from './controllers/UserController'; 
 // import { AuthMiddleware } from './middleware/AuthMiddleware';
 // --- End Remove ---
-console.log("--- RUNNING FULL SERVER.TS ---");
+// Remove server startup log, keep only the final listening log
+// console.log("--- RUNNING FULL SERVER.TS ---");
 // --- Remove Log Database URL --- 
 // console.log('[server.ts] DATABASE_URL used by this process:', process.env.DATABASE_URL);
 // --- End Remove Log Database URL ---
@@ -80,35 +84,50 @@ const corsOptions = {
     credentials: true // If you need to handle cookies or authorization headers
 };
 app.use(cors.default(corsOptions));
+// --- Ensure Body Parsers are Active ---
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
-// --- Static Files Middleware (Moved Before API Routes) ---
-// console.log('[server.ts] Mounting static file server for public directory...');
-app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
-// --- End Static Files Middleware ---
-// --- Base Route (Keep) ---
+// --- End Ensure ---
+// --- Remove EARLY Mount / Restore Original Order ---
+// app.use('/api/posts', postRouter); // Remove potential early mount
+// --- Static Files for Public Assets ---
+// Calculate public dir based on project root (assuming cwd is project root)
+const publicDirectory = path_1.default.resolve(process.cwd(), 'backend', 'public');
+app.use('/static', express_1.default.static(publicDirectory));
+console.log(`[Server] Serving general static files from: ${publicDirectory} at /static`);
+// --- Static Files for User Uploads - Based on project root (cwd) ---
+const uploadsRootDirectory = path_1.default.resolve(process.cwd(), 'backend', 'storage', 'uploads');
+app.use('/uploads', express_1.default.static(uploadsRootDirectory));
+// Log the final absolute path being served
+console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /uploads`);
+// --- 静态文件服务中间件 (Keep for user uploads) ---
+// const uploadsDirectory = path.join(process.cwd(), 'uploads'); // Old version removed
+// console.log(`[Server] Serving user uploads from: ${uploadsDirectory} at /uploads`);
+// app.use('/uploads', express.static(uploadsDirectory)); // Old version removed
+// --- End Restore Static Files ---
+// --- Base Route --- 
 app.get('/', (req, res) => {
     res.send('TDFRS Backend API is running!');
 });
-// --- API Routes ---
-// console.log('[server.ts] Mounting /api/auth routes...');
+// --- Restore Original API Route Order ---
 app.use('/api/auth', AuthRoutes_1.default);
-// console.log('[server.ts] Mounting /api/users routes...');
 app.use('/api/users', (req, res, next) => {
     // console.log(`[server.ts] Request to /api/users path: ${req.originalUrl}`);
     next();
-}, UserRoutes_1.userRouter); // Restore mounting userRoutes
-// console.log('[server.ts] Mounting /api/posts routes...'); 
+}, UserRoutes_1.userRouter);
+// --- Restore original /api/posts mount position ---
 app.use('/api/posts', PostRoutes_1.postRouter);
-// console.log('[server.ts] Mounting /api/comments routes...');
 app.use('/api/comments', PostRoutes_1.commentRouter);
-// console.log('[server.ts] Mounting /api/feed routes...');
 app.use('/api/feed', FeedRoutes_1.default);
-// console.log('[server.ts] Mounting /api/notifications routes...');
 app.use('/api/notifications', NotificationRoutes_1.default);
+app.use('/api/food-showcase', foodShowcaseRoutes_1.default);
+app.use('/api/tags', TagRoutes_1.default); // Mount tag routes
+// --- 全局错误处理中间件 ---
+app.use(ErrorHandlingMiddleware_1.errorHandler);
 // --- End API Routes ---
 app.listen(port, () => {
-    console.log(`[server]: Server is running at http://localhost:${port}`);
+    // Keep this log
+    console.log(`[Server]: Server is running at http://localhost:${port}`);
 });
 exports.default = app;
 //# sourceMappingURL=server.js.map

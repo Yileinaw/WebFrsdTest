@@ -14,50 +14,39 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FavoriteService = void 0;
 const db_1 = __importDefault(require("../db"));
+const client_1 = require("@prisma/client");
 class FavoriteService {
     /**
      * Add a post to user's favorites.
      */
     static favoritePost(userId, postId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // Check if already favorited
-            const existingFavorite = yield db_1.default.favorite.findUnique({
-                where: { userId_postId: { userId, postId } }
-            });
-            if (existingFavorite) {
+            const existingFavorite = yield db_1.default.favorite.findUnique({ where: { userId_postId: { userId, postId } } });
+            if (existingFavorite)
                 return existingFavorite;
-            }
-            // Use transaction to create favorite, increment count, and create notification
-            const [newFavorite, post] = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
-                const favorite = yield tx.favorite.create({
-                    data: { userId, postId }
-                });
-                const updatedPost = yield tx.post.update({
-                    where: { id: postId },
-                    data: { favoritesCount: { increment: 1 } },
-                    select: { authorId: true } // Select authorId for notification
-                });
-                return [favorite, updatedPost];
-            }));
-            // --- Create Notification --- 
-            if (post && post.authorId !== userId) { // Don't notify self
-                try {
-                    yield db_1.default.notification.create({
-                        data: {
-                            recipientId: post.authorId,
-                            actorId: userId,
-                            postId: postId,
-                            type: 'FAVORITE' // Correct type
-                        }
-                    });
-                    // console.log(`[Notification] FAVORITE notification created for post ${postId}, recipient ${post.authorId}`);
+            // Transaction: Create favorite & notification (No count update needed)
+            try {
+                const [newFavorite, post] = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
+                    const favorite = yield tx.favorite.create({ data: { userId, postId } });
+                    // Fetch post author for notification
+                    const postData = yield tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
+                    return [favorite, postData];
+                }));
+                // Create Notification (Use senderId)
+                if (post && post.authorId !== userId) {
+                    try {
+                        yield db_1.default.notification.create({
+                            data: { recipientId: post.authorId, senderId: userId, postId, type: 'FAVORITE' }
+                        });
+                    }
+                    catch (error) { /* Log notification error */ }
                 }
-                catch (error) {
-                    // console.error(`[Notification Error] Failed to create FAVORITE notification for post ${postId}:`, error);
-                }
+                return newFavorite;
             }
-            // --- End Create Notification ---
-            return newFavorite;
+            catch (error) {
+                console.error(`[FavoriteService.favoritePost] Error:`, error);
+                throw error; // Re-throw
+            }
         });
     }
     /**
@@ -65,113 +54,101 @@ class FavoriteService {
      */
     static unfavoritePost(userId, postId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // Check if it exists before trying to delete
-            const favoriteToDelete = yield db_1.default.favorite.findUnique({
-                where: { userId_postId: { userId, postId } }
-            });
-            if (!favoriteToDelete) {
-                return null; // Not favorited, nothing to delete
+            // Transaction: Delete favorite (No count update needed)
+            try {
+                return yield db_1.default.favorite.delete({ where: { userId_postId: { userId, postId } } });
             }
-            // Use transaction to delete favorite and decrement count
-            const deletedFavorite = yield db_1.default.$transaction((tx) => __awaiter(this, void 0, void 0, function* () {
-                const favorite = yield tx.favorite.delete({
-                    where: { userId_postId: { userId, postId } }
-                });
-                yield tx.post.update({
-                    where: { id: postId },
-                    // Prevent count from going below zero, though theoretically shouldn't happen with checks
-                    data: { favoritesCount: { decrement: 1 } }
-                });
-                return favorite;
-            }));
-            return deletedFavorite;
+            catch (error) {
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025')
+                    return null;
+                console.error(`[FavoriteService.unfavoritePost] Error:`, error);
+                throw error; // Re-throw other errors
+            }
         });
     }
     /**
-     * NEW method to get posts favorited by a specific user with pagination.
+     * Get posts favorited by a specific user with pagination.
      */
     static fetchUserFavoritesPage(userId_1) {
         return __awaiter(this, arguments, void 0, function* (userId, options = {}) {
-            // console.log(`[FavoriteService.fetchUserFavoritesPage] Fetching favorites for userId: ${userId}, options: ${JSON.stringify(options)}`); // Remove log
             const { page = 1, limit = 10 } = options;
             const skip = (page - 1) * limit;
-            // 1. Get total count
-            const totalCount = yield db_1.default.favorite.count({ where: { userId } });
-            // 2. Get paginated favorite records (just post IDs)
+            // Fetch total count of favorites for the user
+            const totalCount = yield db_1.default.favorite.count({
+                where: { userId },
+            });
+            // Fetch paginated favorite records using SELECT to ensure all needed fields are present
             const favoriteRecords = yield db_1.default.favorite.findMany({
                 where: { userId },
-                select: { postId: true },
-                orderBy: { createdAt: 'desc' },
+                select: {
+                    // Select necessary fields from Favorite itself if needed (e.g., createdAt)
+                    // createdAt: true, 
+                    post: {
+                        select: {
+                            id: true,
+                            title: true,
+                            content: true,
+                            imageUrl: true,
+                            createdAt: true,
+                            updatedAt: true,
+                            isShowcase: true, // Ensure isShowcase is selected
+                            author: {
+                                select: { id: true, name: true, avatarUrl: true }
+                            },
+                            likes: {
+                                where: { userId: userId },
+                                select: { id: true }
+                            },
+                            _count: {
+                                select: { likes: true, comments: true, favoritedBy: true }
+                            }
+                        } // End of post select
+                    } // End of post relation select
+                }, // End of top-level select
+                orderBy: { createdAt: 'desc' }, // Need to order by a field selected or available (e.g., post.createdAt)
+                // orderBy: { post: { createdAt: 'desc' } }, // Example: Order by post creation date
                 skip,
                 take: limit,
             });
-            const postIds = favoriteRecords.map(fav => fav.postId);
-            if (postIds.length === 0) {
-                // console.log(`[FavoriteService.fetchUserFavoritesPage] No favorite post IDs found for userId: ${userId}`); // Remove log
-                return { posts: [], totalCount: 0 };
-            }
-            // console.log(`[FavoriteService.fetchUserFavoritesPage] Found favorite post IDs: ${postIds}`); // Remove log
-            // 3. Fetch post details for these IDs
-            const postsData = yield db_1.default.post.findMany({
-                where: { id: { in: postIds } },
-                select: {
-                    id: true,
-                    title: true,
-                    content: true,
-                    createdAt: true,
-                    updatedAt: true,
-                    authorId: true, // Keep authorId for potential reference if needed
-                    author: {
-                        select: {
-                            id: true,
-                            name: true,
-                            avatarUrl: true
-                        }
-                    },
-                    likesCount: true,
-                    commentsCount: true,
-                    favoritesCount: true,
-                    // Need relations to determine isLiked/isFavorited for the *requesting user*
-                    likedBy: { where: { userId }, select: { userId: true } },
-                    favoritedBy: { where: { userId }, select: { userId: true } }
-                }
-            });
-            // --- Remove Debug Log --- 
-            // console.log('[FavoriteService.fetchUserFavoritesPage] Raw postsData fetched:', JSON.stringify(postsData, null, 2));
-            // --- End Remove Debug Log ---
-            // 4. Map data to the stricter PostWithAuthor type
-            const processedPosts = postsData.map(post => {
-                var _a;
-                const isLiked = !!((_a = post.likedBy) === null || _a === void 0 ? void 0 : _a.length);
-                // Since we are fetching *this user's* favorites, isFavorited should be true
-                const isFavorited = true; // Simplification: posts fetched via this method are always favorited by the user
-                // const isFavorited = !!post.favoritedBy?.length; // Original check retained for consistency if needed elsewhere
-                // Create the author object explicitly matching AuthorInfo
-                const authorInfo = post.author ? {
-                    id: post.author.id,
-                    name: post.author.name,
-                    avatarUrl: post.author.avatarUrl // Directly use the selected value
+            // Process data and explicitly build PostWithAuthor objects
+            const posts = favoriteRecords
+                .map(favRecord => {
+                var _a, _b, _c, _d, _e, _f;
+                // favRecord now only contains the 'post' object based on the select
+                const postData = favRecord.post;
+                if (!postData)
+                    return null;
+                const authorInfo = postData.author ? {
+                    id: postData.author.id,
+                    name: postData.author.name,
+                    avatarUrl: postData.author.avatarUrl
                 } : null;
-                return {
-                    id: post.id,
-                    title: post.title,
-                    content: post.content,
-                    createdAt: post.createdAt,
-                    updatedAt: post.updatedAt,
+                // Construct the PostWithAuthor object
+                const processedPost = {
+                    id: postData.id,
+                    title: postData.title,
+                    content: postData.content,
+                    imageUrl: postData.imageUrl,
+                    createdAt: postData.createdAt,
+                    updatedAt: postData.updatedAt,
                     author: authorInfo,
-                    likesCount: post.likesCount,
-                    commentsCount: post.commentsCount,
-                    favoritesCount: post.favoritesCount,
-                    isLiked,
-                    isFavorited
+                    likesCount: (_b = (_a = postData._count) === null || _a === void 0 ? void 0 : _a.likes) !== null && _b !== void 0 ? _b : 0,
+                    commentsCount: (_d = (_c = postData._count) === null || _c === void 0 ? void 0 : _c.comments) !== null && _d !== void 0 ? _d : 0,
+                    favoritesCount: (_f = (_e = postData._count) === null || _e === void 0 ? void 0 : _e.favoritedBy) !== null && _f !== void 0 ? _f : 0,
+                    isLiked: !!(postData.likes && postData.likes.length > 0),
+                    isFavorited: true,
+                    isShowcase: postData.isShowcase // This should now be available
                 };
-            });
-            // 5. Re-order based on favoriteRecords order
-            const orderedPosts = postIds
-                .map(id => processedPosts.find(p => p.id === id))
-                .filter((p) => p !== undefined);
-            // console.log(`[FavoriteService.fetchUserFavoritesPage] Returning ${orderedPosts.length} ordered posts.`); // Remove log
-            return { posts: orderedPosts, totalCount };
+                return processedPost;
+            })
+                .filter((p) => p !== null);
+            return { posts, totalCount };
+        });
+    }
+    // Wrapper method (remains the same)
+    static getMyFavorites(userId_1) {
+        return __awaiter(this, arguments, void 0, function* (userId, options = {}) {
+            return this.fetchUserFavoritesPage(userId, options);
         });
     }
 }

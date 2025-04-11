@@ -1,6 +1,12 @@
 ---
 description: 
 globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: 
 alwaysApply: true
 ---
 在C:\Users\27049\Desktop\DevTest\Dfts-master\vue-frst里编码时统一为ts文件
+遇到需要询问用户的问题时先遍历项目然后没有结果再向用户提问

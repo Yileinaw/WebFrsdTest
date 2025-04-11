@@ -11,6 +11,7 @@ export class UserService {
                 id: true,
                 email: true,
                 name: true,
+                role: true,
                 avatarUrl: true,
                 createdAt: true,
                 updatedAt: true,
@@ -45,7 +46,8 @@ export class UserService {
                 data: dataToUpdate,
                 select: { 
                     id: true, email: true, name: true,
-                    avatarUrl: true, // Ensure avatarUrl is selected back
+                    role: true,
+                    avatarUrl: true,
                     createdAt: true, updatedAt: true,
                 }
             });
