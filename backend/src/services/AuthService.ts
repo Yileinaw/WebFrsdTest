@@ -57,20 +57,26 @@ export class AuthService {
         // 1. 查找用户
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) {
-            throw new Error('Invalid email or password');
+            throw new Error('账号或密码错误'); // Generic error message
         }
 
-        // 2. 比较密码
+        // 2. 检查邮箱是否已验证
+        if (!user.isEmailVerified) {
+            // Consider allowing resend verification email option here
+            throw new Error('邮箱尚未验证，请检查您的邮箱并点击验证链接');
+        }
+
+        // 3. 比较密码
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            throw new Error('Invalid email or password');
+            throw new Error('账号或密码错误'); // Generic error message
         }
 
-        // 3. 生成 JWT
-        const tokenPayload = { userId: user.id, email: user.email };
+        // 4. 生成 JWT
+        const tokenPayload = { userId: user.id, email: user.email, role: user.role }; // Include role in token
         const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: expiresInSeconds });
 
-        // 4. 返回 token 和用户信息（不包含密码）
+        // 5. 返回 token 和用户信息（不包含密码）
         const { password: _, ...userWithoutPassword } = user;
         return { token, user: userWithoutPassword };
     }

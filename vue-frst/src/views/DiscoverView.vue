@@ -52,7 +52,12 @@
       <!-- CSS Masonry Container -->
       <div v-if="!isLoading && foodShowcases.length > 0" class="masonry-container">
         <!-- Loop through items, get index -->
-        <div v-for="(item, index) in foodShowcases" :key="item.id" class="masonry-item">
+        <div 
+          v-for="(item, index) in foodShowcases" 
+          :key="item.id" 
+          :id="`showcase-${item.id}`" 
+          class="masonry-item"
+        >
            <img
              :src="getImageUrl(item.imageUrl)"
              :alt="item.title || '美食图片'"
@@ -89,7 +94,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch, nextTick } from 'vue';
+import { useRoute } from 'vue-router';
 // Use AdminService instead of FoodShowcaseService
 import { AdminService } from '@/services/AdminService';
 // Assume FoodShowcasePreview type exists in models.ts
@@ -105,6 +111,8 @@ import 'vue-easy-lightbox/dist/external-css/vue-easy-lightbox.css'; // Import CS
 // Add necessary Element Plus components
 import { ElInput, ElButton, ElIcon, ElEmpty, ElAlert } from 'element-plus';
 import { Search as SearchIcon, Close as CloseIcon } from '@element-plus/icons-vue';
+
+const route = useRoute();
 
 // --- Component State Refs ---
 const foodShowcases = ref<FoodShowcasePreview[]>([]);
@@ -257,11 +265,32 @@ const fetchFoodShowcases = async (params: { search?: string; tags?: string[] } =
     }
 };
 
+// --- Function to scroll to element ---
+const scrollToElement = async (elementId: string) => {
+  // Ensure DOM is updated before trying to scroll
+  await nextTick(); 
+  const element = document.getElementById(elementId);
+  if (element) {
+    console.log(`Scrolling to element: ${elementId}`);
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    console.warn(`Element with ID ${elementId} not found for scrolling.`);
+    }
+};
+
 // --- Lifecycle Hooks ---
 onMounted(() => {
     console.log('[DiscoverView] Mounted - Fetching initial data and tags');
     fetchFoodShowcases(); // Initial fetch (no filters)
     fetchAvailableTags(); // Fetch tags from backend
+
+    // Check for hash and scroll after initial data load
+    watch(isLoading, (newIsLoading) => {
+      if (!newIsLoading && route.hash && route.hash.startsWith('#showcase-')) {
+        const elementId = route.hash.substring(1); // Remove #
+        scrollToElement(elementId);
+      }
+    }, { immediate: true }); // Run immediately in case data loads before watch setup
 });
 
 // Removed: searchQuery, discoverPosts, currentPage, limit, totalCount, hasMore, isUnmounted
@@ -343,35 +372,18 @@ onMounted(() => {
 }
 
 .masonry-item {
-  // Prevent items from breaking across columns
-  break-inside: avoid;
-  // Add space below each item
-  margin-bottom: 15px;
-  // Required for break-inside to work correctly in some contexts
-  display: inline-block;
-  width: 100%; // Item fills the column width
-
-  // --- Styles moved from .waterfall-item-content ---
-  position: relative;
-  overflow: hidden;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  cursor: pointer;
-  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-
-  &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-  }
+  /* Ensure items are identifiable and have some margin/padding if needed */
+  break-inside: avoid; /* Prevent breaking inside an item */
+  margin-bottom: 20px; 
+  position: relative; /* Needed for overlay */
+  overflow: hidden; /* Needed for overlay */
+  border-radius: 8px; /* Add rounding */
 }
 
 .food-image {
-  // Styles remain the same - block display is important
-  display: block;
   width: 100%;
-  height: auto;
-  object-fit: cover;
-  border-radius: 8px;
+  display: block;
+  border-radius: 8px; /* Match item rounding */
 }
 
 .loading-indicator {
@@ -404,35 +416,26 @@ onMounted(() => {
   bottom: 0;
   left: 0;
   width: 100%;
-  padding: 10px 12px; // Adjust padding
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.5) 60%, transparent 100%);
-  color: #fff;
+  padding: 10px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
+  color: white;
   opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.3s ease, visibility 0.3s ease;
-  pointer-events: none; // Important: Allows clicks to pass through to the image
-  border-bottom-left-radius: 8px; // Match item rounding
+  transition: opacity 0.3s ease;
+  box-sizing: border-box;
+  border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
 
   h4 {
     margin: 0;
-    font-size: 0.9rem; // Adjust size
-    font-weight: 600;
+    font-size: 0.9rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  // Optional paragraph styling if description is added
-  // p {
-  //   margin: 4px 0 0 0;
-  //   font-size: 0.8rem;
-  //   opacity: 0.9;
-  // }
 }
 
 .masonry-item:hover .image-info-overlay {
   opacity: 1;
-  visibility: visible;
 }
 
 </style> 

@@ -15,6 +15,9 @@ import AdminLayout from '@/components/layout/AdminLayout.vue';
 import UnderDevelopment from '@/views/admin/common/UnderDevelopment.vue' 
 import PostDetailView from '@/views/post/PostDetailView.vue' 
 import UserProfileView from '@/views/PersonalCenter/ProfileSettingsView.vue' 
+import RegisterView from '@/views/auth/RegisterView.vue';
+import ResetPasswordView from '@/views/auth/ResetPasswordView.vue';
+import VerifyEmailView from '@/views/auth/VerifyEmailView.vue';
 
 // Ensure guards import is commented out if it causes errors
 // import { requireAuth, requireAdmin } from './guards'
@@ -99,6 +102,18 @@ const routes: Array<RouteRecordRaw> = [
      path: '/register',
      name: 'Register',
      component: () => import('@/views/auth/RegisterView.vue'),
+     meta: { requiresGuest: true }
+   },
+   {
+     path: '/reset-password',
+     name: 'ResetPassword',
+     component: ResetPasswordView,
+     meta: { requiresGuest: true }
+   },
+   {
+     path: '/verify-email',
+     name: 'VerifyEmail',
+     component: VerifyEmailView,
      meta: { requiresGuest: true }
    },
   // Add Admin Routes

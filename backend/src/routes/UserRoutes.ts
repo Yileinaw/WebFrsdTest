@@ -25,21 +25,13 @@ userRouter.use(AuthMiddleware); // Apply auth middleware to all subsequent route
 userRouter.get('/me', UserController.getCurrentUserProfile);
 
 // GET /api/users/me/favorites - 获取当前用户的收藏列表 (需要认证)
-userRouter.get('/me/favorites', (req: AuthenticatedRequest, res, next) => {
-    // console.log(`[UserRoutes.ts] Matched /me/favorites route for user ${req.userId}. Calling FavoriteController.getMyFavorites...`); // Remove log
-    FavoriteController.getMyFavorites(req, res).catch(next);
-});
+userRouter.get('/me/favorites', FavoriteController.getMyFavorites);
 
 // GET /api/users/me/posts - 获取当前用户的帖子列表 (Re-apply definition)
-userRouter.get('/me/posts', (req: AuthenticatedRequest, res, next) => {
-    // console.log('[UserRoutes.ts] Matched /me/posts route definition'); // Remove log
-    UserController.getMyPosts(req, res).catch(next);
-});
+userRouter.get('/me/posts', UserController.getMyPosts);
 
 // GET /api/users/me/notifications - 获取当前用户的通知列表
-userRouter.get('/me/notifications', (req: AuthenticatedRequest, res, next) => {
-     NotificationController.getNotifications(req, res).catch(next); // Use getNotifications method
-});
+userRouter.get('/me/notifications', NotificationController.getNotifications);
 
 // --- REMOVE OBSOLETE ROUTE --- 
 // PUT /api/users/profile - 更新当前用户个人资料 (需要认证)
@@ -52,8 +44,11 @@ userRouter.put('/me/profile', UserController.updateUserProfile);
 // 上传头像
 userRouter.post('/me/avatar', upload.single('avatar'), UserController.uploadAvatar);
 
-// 未来可以在这里添加其他用户相关的路由，例如更新用户信息
-// router.put('/profile', AuthMiddleware, UserController.updateProfile);
+// 新增：发送密码重置验证码 (需要认证)
+userRouter.post('/me/send-password-reset-code', UserController.sendPasswordResetCode);
+
+// PUT /api/users/me/password - 修改当前用户密码 (新增)
+userRouter.put('/me/password', UserController.changePassword);
 
 // --- 获取用户其他关联数据的路由占位符 (未来实现) ---
 // userRouter.get('/me/favorites', AuthMiddleware, UserController.getUserFavorites); // <-- 删除或注释掉这个重复的定义

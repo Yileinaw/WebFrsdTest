@@ -15,6 +15,7 @@ export class UserService {
                 avatarUrl: true,
                 createdAt: true,
                 updatedAt: true,
+                isEmailVerified: true
             }
         });
         return user;
@@ -49,6 +50,7 @@ export class UserService {
                     role: true,
                     avatarUrl: true,
                     createdAt: true, updatedAt: true,
+                    isEmailVerified: true
                 }
             });
              // Optional: Log successful update details

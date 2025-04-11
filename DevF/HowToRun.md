@@ -2,6 +2,11 @@
 
 本文档介绍如何在本地环境设置并运行 TDFRS (Taste Discover & Food Record Sharing) 项目的前后端。
 
+## 技术栈
+
+*   **后端**: Node.js, Express, Prisma (ORM), PostgreSQL
+*   **前端**: Vue 3 (Composition API), TypeScript, Vite, Element Plus (UI 库), SCSS
+
 ## 先决条件
 
 在开始之前，请确保你的开发环境中安装了以下软件：
@@ -58,6 +63,8 @@
 
 ## 前端设置 (vue-frst)
 
+前端项目位于 `vue-frst` 目录，使用了 Vue 3 的 Composition API 和 TypeScript，并集成了 Element Plus UI 库。
+
 1.  **导航到前端目录**: (假设你当前在项目根目录)
     ```bash
     cd vue-frst
@@ -82,6 +89,16 @@
     npm run dev
     ```
     前端开发服务器通常会运行在 `http://localhost:5173` (或其他 Vite 默认或配置的端口)。打开浏览器访问此地址即可看到应用界面。
+
+### 主要前端组件说明
+
+*   **`src/views/HomeView.vue`**: 首页组件，包含"热门推荐"（使用 `el-carousel` 轮播展示）和"最新分享"（垂直列表展示）。
+*   **`src/components/common/FoodCard.vue`**: 可复用的卡片组件，用于展示美食推荐或社区分享。
+    *   它根据应用到自身的 CSS 类来决定布局：
+        *   默认：垂直布局，带图片覆盖层，用于轮播或类似场景。
+        *   `.horizontal-layout` 类：图片居左、文字居右的水平布局，用于列表场景。
+*   **Element Plus**: 用于构建界面的 UI 组件库 (例如：`el-carousel`, `el-button`, `el-card`, `el-image` 等)。
+*   **SCSS**: 用于编写更结构化的 CSS 样式。
 
 ## 注意事项
 

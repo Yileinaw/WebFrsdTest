@@ -11,6 +11,7 @@ import notificationRouter from './routes/NotificationRoutes';
 import foodShowcaseRouter from './routes/foodShowcaseRoutes';
 import tagRouter from './routes/TagRoutes'; // Import tag routes
 import { errorHandler } from './middleware/ErrorHandlingMiddleware';
+import { initializeMailer } from './utils/mailer'; // <-- 导入邮件初始化函数
 // --- Remove direct imports, rely on userRoutes ---
 // import { UserController } from './controllers/UserController'; 
 // import { AuthMiddleware } from './middleware/AuthMiddleware';
@@ -108,9 +109,21 @@ app.use(errorHandler as ErrorRequestHandler);
 
 // --- End API Routes ---
 
+// 异步启动函数
+async function startServer() {
+  try {
+    await initializeMailer(); // <-- 初始化邮件服务
 app.listen(port, () => {
      // Keep this log
     console.log(`[Server]: Server is running at http://localhost:${port}`); 
 });
+  } catch (error) {
+    console.error('Failed to start the server:', error);
+    process.exit(1); // 如果邮件服务初始化失败，则退出进程
+  }
+}
+
+// 调用启动函数
+startServer();
 
 export default app; 

@@ -37,11 +37,18 @@
           </el-upload>
       </div>
       
-      <!-- Profile Form -->
-      <div class="setting-item profile-form">
-         <label>修改昵称</label>
-         <el-input v-model="editableName" placeholder="输入新昵称"></el-input>
-         <el-button type="primary" @click="updateName" :loading="isUpdatingName">保存昵称</el-button>
+      <!-- Profile Actions Section -->
+      <div class="setting-item profile-actions">
+         <label>账号操作</label> 
+         <div class="action-group">
+             <!-- Nickname Form -->
+            <el-form @submit.prevent="updateName" class="inline-form nickname-form">
+                <el-input v-model="editableName" placeholder="输入新昵称" size="default"></el-input>
+                <el-button type="primary" @click="updateName" :loading="isUpdatingName" size="default">保存昵称</el-button>
+            </el-form>
+            <!-- Change Password Button -->
+            <el-button type="danger" plain @click="showPasswordModal = true" size="default" class="password-button">修改密码</el-button>
+         </div>
       </div>
 
     </div>
@@ -82,17 +89,21 @@
       </template>
     </el-dialog>
 
+  <!-- Password Change Modal -->
+  <PasswordChangeModal v-model:visible="showPasswordModal" />
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { useUserStore } from '@/stores/modules/user';
-import { ElAvatar, ElUpload, ElButton, ElInput, ElMessage, ElEmpty, ElDialog, ElIcon } from 'element-plus';
+import { ElAvatar, ElUpload, ElButton, ElInput, ElMessage, ElEmpty, ElDialog, ElIcon, ElForm } from 'element-plus';
 import type { UploadProps, UploadRawFile } from 'element-plus'
 import { UserService } from '@/services/UserService';
 import http from '@/http'; // 导入 http 实例以获取 baseUrl
-import { EditPen, User } from '@element-plus/icons-vue';
+import { EditPen, User, Setting } from '@element-plus/icons-vue';
+import PasswordChangeModal from '@/components/modal/PasswordChangeModal.vue'; // <-- Import modal
 
 const userStore = useUserStore();
 
@@ -100,12 +111,11 @@ const editableName = ref('');
 const isUpdatingName = ref(false);
 const avatarDialogVisible = ref(false);
 const pendingAvatarUrl = ref<string | null>(null);
+const presetAvatarUrls = ref<string[]>([]);
+const showPasswordModal = ref(false); // <-- Define state for modal
 
 // --- Remove hardcoded defaultAvatars ---
 // const defaultAvatars = ref([...]); 
-
-// --- Add ref for dynamically loaded preset avatars ---
-const presetAvatarUrls = ref<string[]>([]);
 
 // --- Fetch preset avatars on mount ---
 const fetchPresetAvatars = async () => {
@@ -280,15 +290,17 @@ const updateName = async () => {
 }
 
 .setting-item {
-    display: grid;
-    grid-template-columns: 120px 1fr; /* Label and control */
-    align-items: center;
-    gap: 15px;
-
+    display: flex; 
+    align-items: flex-start; // Align label top
+    margin-bottom: 25px;
     label {
+        width: 100px; // Consistent label width
+        margin-right: 20px;
+        padding-top: 6px; // Align label with input/button text
+        color: var(--el-text-color-regular);
         font-weight: 500;
-        color: #606266;
         text-align: right;
+        flex-shrink: 0; // Prevent label shrinking
     }
 }
 
@@ -329,9 +341,6 @@ const updateName = async () => {
 }
 
 .avatar-upload {
-   .avatar-uploader {
-     // Style the uploader if needed
-   }
    .el-upload__tip {
      color: #909399;
      font-size: 12px;
@@ -339,15 +348,21 @@ const updateName = async () => {
    }
 }
 
-.profile-form {
-    grid-template-columns: 120px auto auto; /* Label, Input, Button */
-    align-items: center; /* Align items vertically */
+.profile-actions {
+  .action-group {
+    display: flex;
+    flex-wrap: wrap; // Allow wrapping on smaller screens
+    gap: 15px; // Space between items
+    align-items: center; // Align items vertically
+  }
+  .inline-form {
+    display: inline-flex; // Keep input and button together
+    align-items: center;
+    gap: 10px;
     .el-input {
-        // Input width can be adjusted if needed
+      width: 200px; // Adjust width as needed
     }
-    .el-button {
-        // Button style if needed
-    }
+  }
 }
 
 /* Dialog Styles */
@@ -408,4 +423,5 @@ const updateName = async () => {
         }
     }
 }
+
 </style> 

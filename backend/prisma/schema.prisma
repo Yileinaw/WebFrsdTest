@@ -14,20 +14,23 @@ datasource db {
 }
 
 model User {
-  id         Int      @id @default(autoincrement())
-  email      String   @unique
-  name       String?
-  password   String
-  role       String   @default("user") // Add role field, default to user
-  avatarUrl  String? // 可选，用于存储头像路径
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  posts      Post[]   // 用户发布的所有帖子
-  comments   Comment[] // 用户的所有评论
-  likes      Like[]    // 用户收到的赞
-  notifications Notification[] @relation("UserNotifications") // 用户收到的通知
-  sentNotifications Notification[] @relation("UserNotificationSender") // 用户发出的通知
-  favorites  Favorite[] // 用户的收藏
+  id                 Int      @id @default(autoincrement())
+  email              String   @unique
+  name               String?
+  password           String
+  role               String   @default("user") // Add role field, default to user
+  avatarUrl          String? // 可选，用于存储头像路径
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  isEmailVerified    Boolean  @default(false) // <-- 添加邮箱验证状态
+  posts              Post[]   // 用户发布的所有帖子
+  comments           Comment[] // 用户的所有评论
+  likes              Like[]    // 用户收到的赞
+  notifications      Notification[] @relation("UserNotifications") // 用户收到的通知
+  sentNotifications  Notification[] @relation("UserNotificationSender") // 用户发出的通知
+  favorites          Favorite[] // 用户的收藏
+  passwordResetCodes PasswordResetCode[] // <-- 添加反向关联
+  emailVerificationCodes EmailVerificationCode[] // <-- 添加反向关联
 }
 
 model Post {
@@ -127,4 +130,31 @@ model FoodShowcase {
   @@index([createdAt])
   @@index([title])
   @@index([description])
+}
+
+// 新增：用于存储密码重置验证码
+model PasswordResetCode {
+  id        Int      @id @default(autoincrement())
+  code      String   // 验证码
+  userId    Int      // 关联的用户ID
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime // 过期时间
+  createdAt DateTime @default(now())
+
+  @@unique([userId, code]) // 一个用户可能同时请求多个，但特定code应唯一
+  @@index([userId])
+  @@index([expiresAt]) // 用于快速查找过期记录
+}
+
+// 新增：用于存储邮箱验证码
+model EmailVerificationCode {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique // 验证码或Token，设为unique
+  userId    Int      // 关联的用户ID
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime // 过期时间
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }

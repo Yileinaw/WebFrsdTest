@@ -1,6 +1,8 @@
 import http from '@/http';
 import type { User, Post, Notification } from '@/types/models';
 import type { PaginatedResponse } from '@/types/api';
+import type { ChangePasswordPayload } from '@/types/payloads';
+import type { SuccessMessageResponse } from '@/types/payloads';
 
 // Define specific response types based on backend controllers
 interface UserProfileResponse {
@@ -55,6 +57,29 @@ export class UserService {
             return [];
         }
     }
+
+    // --- Add password related methods ---
+
+    /**
+     * 请求发送密码重置验证码 (给当前登录用户)
+     * Calls POST /api/users/me/send-password-reset-code
+     */
+    static async sendPasswordResetCode(): Promise<SuccessMessageResponse> {
+        const response = await http.post<SuccessMessageResponse>('/users/me/send-password-reset-code');
+        return response.data; // Returns { message: "..." }
+    }
+
+    /**
+     * 修改当前登录用户的密码
+     * Calls PUT /api/users/me/password
+     * @param payload - Object containing oldPassword, newPassword, confirmPassword, code
+     */
+    static async changePassword(payload: ChangePasswordPayload): Promise<SuccessMessageResponse> {
+        const response = await http.put<SuccessMessageResponse>('/users/me/password', payload);
+        return response.data; // Returns { message: "..." }
+    }
+
+    // --- End password related methods ---
 
     // --- Removed duplicate methods and other unused service methods --- 
     // If getFavorites, getMyPosts, getNotifications are needed later,

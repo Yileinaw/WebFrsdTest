@@ -18,30 +18,49 @@
         <router-link to="/discover?filter=featured" class="view-more-link">查看更多推荐 &gt;</router-link>
       </div>
       <div v-if="loadingFeatured" class="loading-indicator">加载中...</div>
-      <el-scrollbar v-else-if="featuredPosts.length > 0" class="featured-posts-scrollbar">
-        <div class="featured-posts-list">
-          <FoodCard v-for="post in featuredPosts" :key="post.id" :post="post" class="featured-post-card" />
-        </div>
-      </el-scrollbar>
+      
+      <!-- Replace Scrollbar with Carousel -->
+      <el-carousel 
+        v-else-if="featuredPosts.length > 0" 
+        :interval="5000" 
+        type="card" 
+        height="350px" 
+        arrow="always"
+        indicator-position="none"
+        class="featured-carousel"
+      >
+        <el-carousel-item v-for="post in featuredPosts" :key="post.id">
+           <!-- Wrap FoodCard in a div for potential styling/sizing -->
+           <div class="carousel-card-wrapper">
+                <FoodCard :post="post" class="featured-post-card" />
+           </div>
+        </el-carousel-item>
+      </el-carousel>
+      
       <el-empty v-else-if="!errorFeatured" description="暂无热门推荐"></el-empty>
       <el-alert v-if="errorFeatured" :title="errorFeatured" type="error" show-icon :closable="false" />
     </section>
 
-    <!-- 3. 最新分享 Section -->
+    <!-- 3. 最新分享 Section (Vertical List) -->
     <section class="latest-section container">
-       <div class="section-header">
-         <h2><el-icon><ChatLineSquare /></el-icon> 最新分享</h2>
-         <router-link to="/discover" class="view-more-link">查看更多分享 &gt;</router-link>
-       </div>
-       <div v-if="loadingCommunity" class="loading-indicator">加载中...</div>
-       <!-- Changed to Horizontal Scroll -->
-       <el-scrollbar v-else-if="latestCommunityPosts.length > 0" class="latest-posts-scrollbar">
-         <div class="latest-posts-list">
-           <FoodCard v-for="post in latestCommunityPosts" :key="post.id" :post="post" class="latest-post-card" />
-         </div>
-       </el-scrollbar>
-       <el-empty v-else-if="!errorCommunity" description="暂无最新分享"></el-empty>
-       <el-alert v-if="errorCommunity" :title="errorCommunity" type="error" show-icon :closable="false" />
+      <div class="section-header">
+        <h2><el-icon><ChatLineSquare /></el-icon> 最新分享</h2>
+        <router-link to="/community" class="view-more-link">进入社区 &gt;</router-link>
+      </div>
+      <div v-if="loadingCommunity" class="loading-indicator">加载中...</div>
+      
+      <!-- Removed el-scrollbar, use a simple div for vertical list -->
+      <div v-else-if="latestCommunityPosts.length > 0" class="latest-posts-list vertical-list">
+          <FoodCard 
+            v-for="post in latestCommunityPosts" 
+            :key="post.id" 
+            :post="post" 
+            class="latest-post-card horizontal-layout" 
+          />
+      </div>
+      
+      <el-empty v-else-if="!errorCommunity" description="暂无最新分享"></el-empty>
+      <el-alert v-if="errorCommunity" :title="errorCommunity" type="error" show-icon :closable="false" />
     </section>
 
   </div>
@@ -50,17 +69,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
-import { ElButton, ElIcon, ElScrollbar, ElEmpty, ElAlert } from 'element-plus';
-import { Star, ChatLineSquare, Search as SearchIcon } from '@element-plus/icons-vue'; // Import icons
-import FoodCard from '@/components/common/FoodCard.vue'; // Assuming FoodCard component exists
-// --- Re-import PostService and types --- 
-import { PostService } from '@/services/PostService'; 
-import type { PostPreview } from '@/types/models'; 
-// --- Keep AdminService for featured showcases --- 
-import { AdminService } from '@/services/AdminService'; // Use named import for AdminService
-import type { FoodShowcasePreview } from '@/types/models'; // Use correct FoodShowcasePreview type
+import { ElIcon, ElEmpty, ElAlert, ElCarousel, ElCarouselItem } from 'element-plus';
+import { Star, ChatLineSquare } from '@element-plus/icons-vue';
+import FoodCard from '@/components/common/FoodCard.vue';
+import { PostService } from '@/services/PostService';
+import type { PostPreview, FoodShowcasePreview } from '@/types/models';
+import { AdminService } from '@/services/AdminService';
 
-// --- Helper function to shuffle array (Fisher-Yates) ---
 function shuffleArray<T>(array: T[]): T[] {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -69,25 +84,19 @@ function shuffleArray<T>(array: T[]): T[] {
   return array;
 }
 
-// --- State for Featured Posts (Random Food Showcases) ---
-const featuredPosts = ref<FoodShowcasePreview[]>([]); // Still FoodShowcasePreview
+const featuredPosts = ref<FoodShowcasePreview[]>([]);
 const loadingFeatured = ref(false);
 const errorFeatured = ref<string | null>(null);
-
-// --- State for Latest Community Posts ---
-const latestCommunityPosts = ref<PostPreview[]>([]); // Use PostPreview type
+const latestCommunityPosts = ref<PostPreview[]>([]);
 const loadingCommunity = ref(false);
 const errorCommunity = ref<string | null>(null);
 
-// --- Fetch Featured Posts (Random Food Showcases) ---
 const fetchFeaturedPosts = async () => {
   loadingFeatured.value = true;
   errorFeatured.value = null;
   try {
-    // Fetch a slightly larger list to randomize from (e.g., 12 items)
-    const response = await AdminService.getFoodShowcases({ page: 1, limit: 12 }); 
-    // Shuffle the array and take the first 6 (or desired number)
-    featuredPosts.value = shuffleArray([...response.items]).slice(0, 6); 
+    const response = await AdminService.getFoodShowcases({ page: 1, limit: 12 });
+    featuredPosts.value = shuffleArray([...response.items]).slice(0, 6);
   } catch (err) {
     console.error("[HomeView] Failed to fetch featured posts:", err);
     errorFeatured.value = '加载热门推荐失败';
@@ -96,16 +105,12 @@ const fetchFeaturedPosts = async () => {
   }
 };
 
-// --- Fetch Latest Community Posts ---
 const fetchLatestCommunityPosts = async () => {
   loadingCommunity.value = true;
   errorCommunity.value = null;
   try {
-    // Fetch latest posts (assuming non-showcase or filter appropriately)
-    // Might need to adjust parameters based on PostService implementation
-    // e.g., { showcase: false } or rely on default behavior
-    const response = await PostService.getAllPosts({ sortBy: 'createdAt', limit: 8 }); 
-    latestCommunityPosts.value = response.posts; // Assign posts from response
+    const response = await PostService.getAllPosts({ sortBy: 'createdAt', limit: 4 });
+    latestCommunityPosts.value = response.posts;
   } catch (err) {
     console.error("[HomeView] Failed to fetch latest community posts:", err);
     errorCommunity.value = '加载最新分享失败';
@@ -114,22 +119,19 @@ const fetchLatestCommunityPosts = async () => {
   }
 };
 
-// --- Lifecycle Hooks ---
 onMounted(() => {
-  // console.log('[HomeView] Mounted'); // Keep or remove log
   fetchFeaturedPosts();
-  fetchLatestCommunityPosts(); // Fetch community posts instead of latest showcases
+  fetchLatestCommunityPosts();
 });
 </script>
 
 <style scoped lang="scss">
 .home-view {
-  padding-bottom: 40px; // Add some padding at the bottom
+  padding-bottom: 40px;
 }
 
 /* --- Hero Section --- */
 .hero-section {
-  // Existing styles seem okay, maybe adjust background or text
   background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.5)), url('https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1');
   background-size: cover;
   background-position: center;
@@ -186,38 +188,6 @@ onMounted(() => {
   margin-bottom: 40px;
 }
 
-/* --- Featured Posts Scrollbar --- */
-.featured-posts-scrollbar {
-  width: 100%;
-}
-
-.featured-posts-list {
-  display: flex;
-  gap: 20px; // Space between cards
-  padding-bottom: 15px; // Space for scrollbar
-}
-
-.featured-post-card {
-  flex: 0 0 auto; // Prevent shrinking/growing
-  width: 280px; // Set a fixed width for horizontal scroll items
-}
-
-/* --- Latest Posts Scrollbar (Similar to Featured) --- */
-.latest-posts-scrollbar {
-  width: 100%;
-}
-
-.latest-posts-list {
-  display: flex;
-  gap: 20px; // Space between cards
-  padding-bottom: 15px; // Space for scrollbar
-}
-
-.latest-post-card {
-  flex: 0 0 auto; // Prevent shrinking/growing
-  width: 280px; // Set a fixed width for horizontal scroll items (match featured or adjust)
-}
-
 /* --- Common styles --- */
 .loading-indicator {
   text-align: center;
@@ -229,5 +199,50 @@ onMounted(() => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 15px;
+}
+
+.featured-carousel {
+  margin: 0 -10px;
+  
+  .el-carousel__item {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .carousel-card-wrapper {
+      width: 90%; 
+      height: 100%; 
+      display: flex;
+      justify-content: center;
+  }
+
+  .featured-post-card {
+     width: 100%; 
+     height: 100%; 
+     box-shadow: 0 2px 12px rgba(0,0,0,0.1); 
+  }
+
+  :deep(.el-carousel__arrow) {
+      background-color: rgba(31, 45, 61, 0.6); 
+      &:hover {
+         background-color: rgba(31, 45, 61, 0.8);
+      }
+  }
+}
+
+/* --- Latest Posts Section - Vertical List Styles --- */
+.latest-section {
+   margin-bottom: 30px; 
+}
+
+.latest-posts-list.vertical-list {
+  display: flex;          
+  flex-direction: column;
+  gap: 25px;             
+}
+
+.latest-post-card {
+  width: 100%;
 }
 </style>

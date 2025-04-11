@@ -1,62 +1,107 @@
 <template>
-  <div class="login-view">
+  <div class="login-container">
     <el-card class="login-card">
       <template #header>
         <!-- TODO: Add logo? -->
         <div class="card-header">
-          <!-- TODO: Add logo? -->
-          <span>用户登录</span>
+          <!-- Dynamic title based on viewMode -->
+          <h2>{{ viewMode === 'login' ? '用户登录' : '忘记密码' }}</h2>
         </div>
       </template>
-      <el-form
-        ref="loginFormRef"
-        :model="loginForm"
-        :rules="loginRules"
-        label-position="top"
-        size="large"
-        status-icon
-        @keyup.enter="submitLogin"
-      >
-        <el-form-item label="邮箱" prop="email">
-          <el-input
-            v-model="loginForm.email"
-            placeholder="请输入邮箱"
-            :prefix-icon="User"
-          ></el-input>
-        </el-form-item>
-        <el-form-item label="密码" prop="password">
-          <el-input
-            type="password"
-            v-model="loginForm.password"
-            placeholder="请输入密码"
-            show-password
-            :prefix-icon="Lock"
-          ></el-input>
-        </el-form-item>
-        <el-form-item class="login-btn-item">
-          <el-button type="primary" @click="submitLogin" :loading="loading" class="login-button">登录</el-button>
-        </el-form-item>
-      </el-form>
-      <div class="extra-links">
-        <el-link type="primary" :underline="false" @click="goToRegister">没有账号？立即注册</el-link>
-        <!-- TODO: Add forgot password link? -->
+      
+      <!-- Login Form -->
+      <div v-if="viewMode === 'login'">
+        <el-form
+          ref="loginFormRef"
+          :model="loginForm"
+          :rules="loginRules"
+          label-position="top"
+          @submit.prevent="handleLogin"
+        >
+          <el-form-item label="邮箱" prop="email">
+            <el-input
+              v-model="loginForm.email"
+              placeholder="请输入邮箱"
+              :prefix-icon="User"
+            ></el-input>
+          </el-form-item>
+          <el-form-item label="密码" prop="password">
+            <el-input
+              type="password"
+              v-model="loginForm.password"
+              placeholder="请输入密码"
+              show-password
+              :prefix-icon="Lock"
+            ></el-input>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" native-type="submit" :loading="loading" style="width: 100%;">登录</el-button>
+          </el-form-item>
+          
+          <!-- Resend Verification Link (Conditional) -->
+          <el-form-item v-if="showResendLink">
+             <el-link type="warning" @click="handleResendVerification" :loading="isResending" :disabled="isResending">
+                邮箱未验证？点此重新发送验证邮件
+            </el-link>
+          </el-form-item>
+
+        </el-form>
+        <div class="extra-links">
+          <el-link type="primary" @click="viewMode = 'forgotPassword'">忘记密码？</el-link>
+          <router-link to="/register">
+            <el-link type="primary">没有账号？去注册</el-link>
+          </router-link>
+        </div>
       </div>
+
+      <!-- Forgot Password Form -->
+      <div v-else-if="viewMode === 'forgotPassword'">
+          <el-form 
+            ref="forgotPasswordFormRef" 
+            :model="forgotPasswordForm" 
+            :rules="forgotPasswordRules" 
+            label-position="top"
+            @submit.prevent="handleSendResetCode"
+           >
+            <el-form-item label="注册邮箱" prop="email">
+              <el-input 
+                v-model="forgotPasswordForm.email" 
+                placeholder="请输入您注册时使用的邮箱" 
+                :prefix-icon="Message" 
+                @keydown.enter.prevent="handleSendResetCode"
+              />
+            </el-form-item>
+             <el-form-item>
+                <el-button type="primary" native-type="submit" :loading="isSendingCode" style="width: 100%;">
+                    发送重置邮件
+                </el-button>
+            </el-form-item>
+          </el-form>
+           <div class="extra-links">
+                <el-link type="primary" @click="viewMode = 'login'">返回登录</el-link>
+           </div>
+      </div>
+
     </el-card>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { User, Lock } from '@element-plus/icons-vue'
+import { User, Lock, Message } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/modules/user'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules, ElForm, ElFormItem, ElInput, ElButton, ElLink, ElCard } from 'element-plus'
 import { AuthService } from '@/services/AuthService'
 
 const router = useRouter()
 const userStore = useUserStore()
 const loginFormRef = ref<FormInstance | null>(null)
 const loading = ref(false)
+const viewMode = ref<'login' | 'forgotPassword'>('login')
+const showResendLink = ref(false)
+const isResending = ref(false)
 
 const loginForm = reactive({
   email: '',
@@ -88,59 +133,107 @@ const loginRules = reactive<FormRules>({
   ]
 })
 
-// 提交登录
-const submitLogin = async () => {
-  if (!loginFormRef.value) return
+// 提交登录 - 重命名为 handleLogin
+const handleLogin = async () => {
+  if (!loginFormRef.value) return;
+  showResendLink.value = false;
   await loginFormRef.value.validate(async (valid: boolean) => {
     if (valid) {
-      loading.value = true
+      loading.value = true;
       try {
-        // 直接调用 AuthService.login
-        const response = await AuthService.login({
-          email: loginForm.email,
-          password: loginForm.password
-        });
-
-        // 登录成功，处理返回的数据
-        const { token, user } = response;
-
-        // 调用 Pinia Store 来存储 token 和用户信息
-        userStore.setToken(token); // 假设 store 有 setToken 方法
-        userStore.setUser(user);   // 假设 store 有 setUser 方法
-
+        await userStore.login(loginForm);
         ElMessage.success('登录成功');
-        // 登录成功后跳转到首页
-        router.push('/');
+        const redirect = router.currentRoute.value.query.redirect as string || '/';
+        router.push(redirect);
       } catch (error: any) {
-        let errorMessage = '登录失败，请稍后再试';
-        if (error.response && error.response.data && error.response.data.message) {
-          errorMessage = error.response.data.message;
-        } else if (error.message) {
-          errorMessage = error.message;
+        console.error('Login failed:', error);
+        const errorMessage = error.response?.data?.message || '登录失败';
+        ElMessage.error(errorMessage);
+        if (errorMessage.includes('邮箱尚未验证')) { 
+          showResendLink.value = true;
         }
-        ElMessage.error(`登录失败: ${errorMessage}`);
       } finally {
-        loading.value = false
+        loading.value = false;
       }
     } else {
-      console.log('登录表单校验失败')
+      console.log('登录表单校验失败');
     }
-  })
-}
+  });
+};
 
 // 跳转注册
 const goToRegister = () => {
   router.push('/register')
 }
+
+// --- Forgot Password Logic (No longer uses dialog state) ---
+// const showForgotPasswordDialog = ref(false); // Remove dialog state
+const forgotPasswordFormRef = ref<FormInstance>();
+const forgotPasswordForm = reactive({ email: '' });
+const isSendingCode = ref(false);
+
+const forgotPasswordRules = reactive<FormRules<typeof forgotPasswordForm>>({
+    email: [
+        { required: true, message: '请输入邮箱地址', trigger: 'blur' },
+        { type: 'email', message: '请输入有效的邮箱地址', trigger: ['blur', 'change'] }
+    ]
+});
+
+const handleSendResetCode = async () => {
+    if (!forgotPasswordFormRef.value) return;
+    await forgotPasswordFormRef.value.validate(async (valid) => {
+        if (valid) {
+            isSendingCode.value = true;
+            try {
+                const response = await AuthService.sendPublicPasswordResetCode(forgotPasswordForm.email);
+                ElMessage.success(response.message || '请求已发送，请检查您的邮箱');
+                // showForgotPasswordDialog.value = false; // No longer need to close dialog
+                
+                // Navigate to reset password page with email pre-filled
+                router.push({ 
+                    path: '/reset-password', 
+                    query: { email: forgotPasswordForm.email } 
+                });
+                // Reset viewMode back to login after navigation? Or leave it to user clicking back?
+                // viewMode.value = 'login'; // Optional: Reset view after navigation
+            } catch (error: any) {
+                console.error('Send reset code failed:', error);
+                ElMessage.error(error.response?.data?.message || '发送失败，请稍后重试');
+            } finally {
+                isSendingCode.value = false;
+            }
+        }
+    });
+};
+
+// --- Resend Verification Logic ---
+const handleResendVerification = async () => {
+    if (!loginForm.email) {
+        ElMessage.warning('请输入您的邮箱地址后再尝试重新发送');
+        return;
+    }
+    isResending.value = true;
+    try {
+        const response = await AuthService.resendVerificationEmail(loginForm.email);
+        ElMessage.success(response.message || '验证邮件已重新发送，请检查您的邮箱');
+        showResendLink.value = false;
+    } catch (error: any) {
+        console.error('Resend verification failed:', error);
+        ElMessage.error(error.response?.data?.message || '重新发送失败，请稍后重试');
+    } finally {
+        isResending.value = false;
+    }
+};
+
 </script>
 
 <style scoped lang="scss">
-.login-view {
+.login-container {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  background-color: #f0f2f5;
+  min-height: calc(100vh - 120px); // Adjust based on header/footer height
+  background-color: #f5f7fa;
 }
 
 .login-card {
@@ -175,10 +268,20 @@ const goToRegister = () => {
 }
 
 .extra-links {
-  margin-top: 10px;
-  text-align: center;
-  .el-link {
-    font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between; // Keep space between for login view
+  margin-top: 15px;
+  & > * { // Add some spacing for single link view
+      margin: 0 5px;
   }
+  a { // Ensure router-link doesn't add underline if not desired
+      text-decoration: none;
+  }
+}
+
+// Style for the resend link if needed
+.el-form-item .el-link[type="warning"] {
+    font-size: 0.9rem;
+    /* Add other styles like margin if needed */
 }
 </style> 
