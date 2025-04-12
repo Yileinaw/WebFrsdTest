@@ -16,21 +16,31 @@ datasource db {
 model User {
   id                 Int      @id @default(autoincrement())
   email              String   @unique
+  username           String   @unique
   name               String?
   password           String
   role               String   @default("user") // Add role field, default to user
   avatarUrl          String? // 可选，用于存储头像路径
+  bio                String?  // 添加个人简介字段
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   isEmailVerified    Boolean  @default(false) // <-- 添加邮箱验证状态
+  emailVerificationToken String? @unique // 假设已有邮箱验证Token
   posts              Post[]   // 用户发布的所有帖子
   comments           Comment[] // 用户的所有评论
-  likes              Like[]    // 用户收到的赞
-  notifications      Notification[] @relation("UserNotifications") // 用户收到的通知
-  sentNotifications  Notification[] @relation("UserNotificationSender") // 用户发出的通知
+  likes              Like[]    // 用户收到的赞 (来自 Like 模型)
+  likedPosts         Post[]    @relation("PostLikes") // 新增：用户点赞的帖子
+  collections        Post[]    @relation("Collections")
+  notifications      Notification[] @relation("RecipientNotifications") // 假设已有通知
+  sentNotifications  Notification[] @relation("SenderNotifications") // 假设已有通知
   favorites          Favorite[] // 用户的收藏
   passwordResetCodes PasswordResetCode[] // <-- 添加反向关联
   emailVerificationCodes EmailVerificationCode[] // <-- 添加反向关联
+  // 新增关注关系
+  followers          Follows[] @relation("Following") // 关注我的人 (我是被关注者)
+  following          Follows[] @relation("Follower")  // 我关注的人 (我是关注者)
+  // 新增评论点赞关系 (为后续评论区优化准备)
+  likedComments      Comment[] @relation("CommentLikes")
 }
 
 model Post {
@@ -44,10 +54,13 @@ model Post {
   comments    Comment[]  // 帖子的所有评论
   likes       Like[]     // 帖子收到的赞
   imageUrl    String?    @unique // Correctly add @unique to the existing field
-  tags        Tag[]      @relation // Implicit M2M: Removed references: [id]
+  tags        Tag[]      @relation("PostTags")
   favoritedBy Favorite[] // 帖子被哪些用户收藏
   notifications Notification[] // Added inverse relation for Notification.post
   isShowcase  Boolean    @default(false)
+  likedBy     User[]     @relation("PostLikes")
+  collectedBy User[]     @relation("Collections")
+  viewCount   Int        @default(0)
 
   @@index([authorId])
 }
@@ -64,20 +77,27 @@ model Like {
 }
 
 model Comment {
-  id        Int      @id @default(autoincrement())
-  text      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  postId    Int
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  authorId  Int
+  id          Int       @id @default(autoincrement())
+  text        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId      Int
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId    Int
   notification Notification? 
 
   // Add parent/reply relation
-  parentId  Int?      // Optional ID of the parent comment
-  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade, map: "comment_parentId_fkey") // Added explicit map name for clarity
-  replies   Comment[] @relation("CommentReplies") // List of replies to this comment
+  parentId    Int?      // 指向父评论的 ID，根评论则为 null
+  parent      Comment?  @relation("Replies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction) // 避免循环级联删除问题
+  replies     Comment[] @relation("Replies") // 该评论下的所有回复
+
+  // 评论点赞 (多对多关系) - 注意与User模型中的 likedComments 对应
+  likedBy     User[]    @relation("CommentLikes")
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+  @@index([authorId]) // 添加索引
 }
 
 model Notification {
@@ -85,9 +105,9 @@ model Notification {
   type         String    // e.g., 'LIKE', 'COMMENT', 'FAVORITE'
   isRead       Boolean   @default(false)
   createdAt    DateTime  @default(now())
-  recipient    User      @relation("UserNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  recipient    User      @relation("RecipientNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
   recipientId  Int       // 通知接收者 (通常是帖子作者)
-  sender       User?     @relation("UserNotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
+  sender       User?     @relation("SenderNotifications", fields: [senderId], references: [id], onDelete: SetNull)
   senderId     Int?      // 触发通知的用户 (点赞者、评论者、收藏者)
   postId       Int?      // 关联的帖子ID (可选)
   post         Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -103,7 +123,7 @@ model Tag {
   id            Int            @id @default(autoincrement())
   name          String         @unique
   isFixed       Boolean        @default(false)
-  posts         Post[]         @relation // Existing relation
+  posts         Post[]         @relation("PostTags")
   foodShowcases FoodShowcase[] @relation // Add relation to FoodShowcase
 }
 
@@ -157,4 +177,18 @@ model EmailVerificationCode {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// 新增 Follows 模型
+model Follows {
+  followerId     Int     // 关注者 ID
+  followingId    Int     // 被关注者 ID
+  createdAt      DateTime @default(now())
+
+  follower         User    @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade) // 添加 onDelete
+  following        User    @relation("Following", fields: [followingId], references: [id], onDelete: Cascade) // 添加 onDelete
+
+  @@id([followerId, followingId]) // 联合主键
+  @@index([followerId])
+  @@index([followingId])
 }

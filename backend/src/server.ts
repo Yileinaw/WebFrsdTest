@@ -63,19 +63,16 @@ app.use(express.urlencoded({ extended: true }));
 // app.use('/api/posts', postRouter); // Remove potential early mount
 
 // --- Static Files for Public Assets ---
-// Calculate public dir based on project root (assuming cwd is project root)
-// const publicDirectory = path.resolve(process.cwd(), 'backend', 'public'); // Old incorrect path
-const publicDirectory = path.resolve(__dirname, '..', 'public'); // Correct path relative to src
-app.use('/static', express.static(publicDirectory)); 
-// console.log(`[Server] Serving general static files from: ${publicDirectory} at /static`);
+const publicDirectory = path.resolve(__dirname, '..', 'public'); 
+// Serve files directly from the root (e.g., /avatars/defaults/1.jpg maps to public/avatars/defaults/1.jpg)
+app.use(express.static(publicDirectory)); 
+console.log(`[Server] Serving static files from: ${publicDirectory}`);
 
-// --- Static Files for User Uploads - Based on project root (cwd) ---
-// const uploadsRootDirectory = path.resolve(process.cwd(), 'backend', 'storage', 'uploads'); // Old incorrect path
-const uploadsRootDirectory = path.resolve(__dirname, '..', 'storage', 'uploads'); // Correct path relative to src
-
+// --- Static Files for User Uploads (Keep as is or adjust if needed) ---
+// Assuming uploads are separate and served under /uploads
+const uploadsRootDirectory = path.resolve(__dirname, '..', 'storage', 'uploads'); 
 app.use('/uploads', express.static(uploadsRootDirectory));
-// Log the final absolute path being served
-// console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /uploads`);
+console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /uploads`);
 
 // --- 静态文件服务中间件 (Keep for user uploads) ---
 // const uploadsDirectory = path.join(process.cwd(), 'uploads'); // Old version removed

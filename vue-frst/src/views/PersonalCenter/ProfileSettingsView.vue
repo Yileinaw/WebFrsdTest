@@ -213,27 +213,30 @@ const openAvatarDialog = () => {
   avatarDialogVisible.value = true;
 };
 
-// Save avatar selection
+// Save avatar selection from dialog (preset or remove)
 const saveAvatarSelection = async () => {
   const currentStoredUrl = userStore.currentUser?.avatarUrl || null;
-  
-  // Use null to represent removing the avatar if pendingAvatarUrl is null
-  const urlToSave = pendingAvatarUrl.value;
+  const urlToSave = pendingAvatarUrl.value; 
 
   if (urlToSave === currentStoredUrl) {
     avatarDialogVisible.value = false;
-    return; // No change
+    return; 
   }
-  
-  console.log('[ProfileSettingsView] Saving avatar selection with URL:', urlToSave);
+
+  console.log('[ProfileSettingsView] Saving avatar selection. New URL:', urlToSave);
   try {
-      const { user: updatedUser } = await UserService.updateUserProfile({ avatarUrl: urlToSave ?? undefined }); // Send null if pending is null, otherwise the URL
-      userStore.setUser(updatedUser); // Update user store with the complete updated user object
+    // Call the unified update method
+    const response = await UserService.updateMyProfile({ avatarUrl: urlToSave }); 
+    if (response && response.user) {
+      userStore.setUser(response.user); 
       ElMessage.success('头像更新成功!');
       avatarDialogVisible.value = false;
+    } else {
+      throw new Error('Invalid response after updating profile');
+    }
   } catch (error: any) {
-      console.error('Failed to update avatar:', error);
-      ElMessage.error(error.response?.data?.message || '头像更新失败');
+    console.error('Failed to update avatar:', error);
+    ElMessage.error(error.response?.data?.message || error.message || '头像更新失败');
   }
 };
 
@@ -244,17 +247,22 @@ const updateName = async () => {
     }
     isUpdatingName.value = true;
     try {
-         const response = await UserService.updateUserProfile({ name: editableName.value });
+         // Call the unified update method
+         const response = await UserService.updateMyProfile({ name: editableName.value });
          console.log('[ProfileSettingsView] Update Profile Response (Name):', response);
-         userStore.updateUserInfo(response.user);
-         ElMessage.success('昵称更新成功!');
-     } catch (error: any) {
-         console.error('[ProfileSettingsView] Error updating name:', error);
-         ElMessage.error(error.response?.data?.message || '昵称更新失败');
-     } finally {
-        isUpdatingName.value = false;
-     }
- };
+         if (response && response.user) {
+             userStore.setUser(response.user); 
+             ElMessage.success('昵称更新成功!');
+         } else {
+             throw new Error('Invalid response after updating profile');
+         }
+    } catch (error: any) {
+         console.error('Failed to update name:', error);
+         ElMessage.error(error.response?.data?.message || error.message || '昵称更新失败');
+    } finally {
+         isUpdatingName.value = false;
+    }
+};
 
 </script>
 

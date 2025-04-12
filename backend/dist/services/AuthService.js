@@ -28,19 +28,23 @@ exports.AuthService = void 0;
 const db_1 = __importDefault(require("../db"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 // 建议将 JWT 密钥和过期时间放在环境变量中
 const JWT_SECRET = process.env.JWT_SECRET || 'YOUR_SUPER_SECRET_KEY'; // 生产环境务必替换并使用环境变量
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d'; // 例如 '1h', '7d'
-// 将 expiresIn 转换为秒数以尝试解决类型问题
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d'; // Keep JWT expiration simple as string here
+// Helper to convert expiresIn string (like '1h', '7d') to seconds
 const getExpiresInSeconds = (expiresInString) => {
-    const unit = expiresInString.charAt(expiresInString.length - 1);
+    const unit = expiresInString.slice(-1).toLowerCase();
     const value = parseInt(expiresInString.slice(0, -1), 10);
+    if (isNaN(value))
+        return 3600; // Default to 1 hour
     switch (unit) {
         case 's': return value;
         case 'm': return value * 60;
         case 'h': return value * 60 * 60;
         case 'd': return value * 60 * 60 * 24;
-        default: return 60 * 60 * 24; // 默认为 1 天
+        default: return 3600; // Default
     }
 };
 const expiresInSeconds = getExpiresInSeconds(JWT_EXPIRES_IN);
@@ -48,11 +52,16 @@ class AuthService {
     // 用户注册
     static register(userData) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { email, password, name } = userData;
+            const { email, password, name, username } = userData;
             // 1. 检查邮箱是否已存在
             const existingUser = yield db_1.default.user.findUnique({ where: { email } });
             if (existingUser) {
                 throw new Error('Email already exists');
+            }
+            // 2. 检查 username 是否已存在
+            const existingUsername = yield db_1.default.user.findUnique({ where: { username } });
+            if (existingUsername) {
+                throw new Error('Username already exists');
             }
             // 2. 哈希密码
             const hashedPassword = yield bcrypt_1.default.hash(password, 10); // 10 是 salt rounds
@@ -60,6 +69,7 @@ class AuthService {
             const user = yield db_1.default.user.create({
                 data: {
                     email,
+                    username,
                     password: hashedPassword,
                     name,
                 },
@@ -72,22 +82,47 @@ class AuthService {
     // 用户登录
     static login(credentials) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { email, password } = credentials;
-            // 1. 查找用户
-            const user = yield db_1.default.user.findUnique({ where: { email } });
+            const { email, username, password } = credentials;
+            // 1. Validate input: ensure either email or username is provided
+            if (!(email || username)) {
+                throw new Error('Username or Email is required for login');
+            }
+            if (!password) {
+                throw new Error('Password is required for login');
+            }
+            // 2. Find user by email or username
+            let user = null;
+            if (email) {
+                user = yield db_1.default.user.findUnique({ where: { email: email.toLowerCase() } });
+            }
+            else if (username) {
+                user = yield db_1.default.user.findUnique({ where: { username } });
+            }
+            // 3. Check if user exists
             if (!user) {
-                throw new Error('Invalid email or password');
+                console.log(`Login attempt failed: User not found with identifier ${email || username}`);
+                throw new Error('Invalid credentials'); // Generic error
             }
-            // 2. 比较密码
+            // 4. Compare password
+            console.log(`[AuthService.login] Comparing password for user ${user.id}. Input password: ${password}`); // Log input password
+            console.log(`[AuthService.login] Stored hash: ${user.password}`); // Log stored hash
             const isPasswordValid = yield bcrypt_1.default.compare(password, user.password);
+            console.log(`[AuthService.login] bcrypt.compare result: ${isPasswordValid}`); // Log comparison result
             if (!isPasswordValid) {
-                throw new Error('Invalid email or password');
+                console.log(`Login attempt failed: Password mismatch for user ${user.id}`);
+                throw new Error('Invalid credentials'); // Generic error
             }
-            // 3. 生成 JWT
-            const tokenPayload = { userId: user.id, email: user.email };
+            // 5. Check if email is verified
+            if (!user.isEmailVerified) {
+                console.log(`Login attempt failed: Email not verified for user ${user.id}`);
+                throw new Error('邮箱尚未验证，请检查您的邮箱并点击验证链接');
+            }
+            // 6. Generate JWT
+            const tokenPayload = { userId: user.id, role: user.role }; // Include necessary claims
             const token = jsonwebtoken_1.default.sign(tokenPayload, JWT_SECRET, { expiresIn: expiresInSeconds });
-            // 4. 返回 token 和用户信息（不包含密码）
+            // 7. Return token and user info (excluding password)
             const { password: _ } = user, userWithoutPassword = __rest(user, ["password"]);
+            console.log(`User ${user.id} logged in successfully via ${email ? 'email' : 'username'}.`);
             return { token, user: userWithoutPassword };
         });
     }

@@ -32,8 +32,9 @@ export class PostController {
 
             let imageUrl: string | null = null; 
             if (req.file) {
-                const staticUrlPrefix = '/static/images/post/';
-                imageUrl = staticUrlPrefix + req.file.filename; 
+                // Correct prefix for the image URL, matching static file serving config
+                const uploadUrlPrefix = '/uploads/posts/';
+                imageUrl = uploadUrlPrefix + req.file.filename; 
                 // Keep this log for successful uploads
                 console.log(`[PostController.createPost] Image uploaded. Path: ${req.file.path}, Constructed URL: ${imageUrl}`);
             } else {

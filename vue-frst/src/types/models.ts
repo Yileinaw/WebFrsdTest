@@ -9,6 +9,10 @@ export interface User {
   avatarUrl?: string | null; // 头像 URL (可选)
   createdAt: string; // Prisma DateTime maps to string
   updatedAt: string;
+  // Add count fields (optional)
+  postCount?: number;
+  followerCount?: number;
+  followingCount?: number;
   // posts?: Post[]; // Keep optional, only include if an API endpoint actually populates this
 }
 

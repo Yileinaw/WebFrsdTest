@@ -19,32 +19,33 @@
           <el-button @click="goToRegister">注册</el-button>
         </template>
         <template v-else>
-           <el-dropdown>
-              <span class="el-dropdown-link">
-                <el-avatar :size="32" :src="userStore.resolvedAvatarUrl" /> 
-                <span class="username">{{ userStore.userName }}</span>
-                <el-icon class="el-icon--right"><arrow-down /></el-icon>
-              </span>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="goToProfile">个人中心</el-dropdown-item>
-                  <el-dropdown-item v-if="userStore.isAdmin" @click="goToAdmin">
-                    后台管理
-                  </el-dropdown-item>
-                  <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+           <!-- Reverted to ElPopover triggered by click -->
+           <el-popover
+             placement="bottom-end"
+             trigger="click" 
+           >
+             <template #reference>
+               <!-- Restore trigger with username and arrow -->
+               <div class="user-menu-trigger flex items-center cursor-pointer">
+                  <el-avatar :size="32" :src="userStore.resolvedAvatarUrl" /> 
+                  <span class="username ml-2">{{ userStore.userName }}</span>
+                  <el-icon class="el-icon--right ml-1"><ArrowDown /></el-icon> 
+               </div>
+             </template>
+             <!-- Restore ProfileDropdown component -->
+             <ProfileDropdown />
+           </el-popover>
         </template>
       </div>
     </div>
   </el-header>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user' // 引入 User Store
-import { ArrowDown } from '@element-plus/icons-vue' // 引入图标
+import { ArrowDown } from '@element-plus/icons-vue'; // Re-add ArrowDown icon
+import ProfileDropdown from '../common/ProfileDropdown.vue'; // 导入自定义下拉菜单组件
 
 const router = useRouter()
 const userStore = useUserStore() // 获取 Store 实例
@@ -59,21 +60,6 @@ const goToLogin = () => {
 
 const goToRegister = () => {
   router.push('/register')
-}
-
-const goToProfile = () => {
-  router.push('/personal-center') // 跳转到个人中心根路径
-}
-
-// Add function to navigate to admin
-const goToAdmin = () => {
-  router.push('/admin/food-management');
-}
-
-// 处理登出
-const handleLogout = () => {
-  userStore.logout() // 调用 Store 的 logout action 清理状态
-  router.push('/login') // 在 Header 组件中执行跳转
 }
 
 </script>
@@ -144,18 +130,31 @@ const handleLogout = () => {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  .el-dropdown-link {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    color: var(--el-text-color-primary); // 使用主要文字颜色
-    outline: none; // 移除焦点时的轮廓
-    .el-avatar {
-      margin-right: 8px;
-    }
-    .username {
-        margin-right: 5px; // 用户名和下拉图标间距
-    }
-  }
+  // Remove styles related to el-dropdown-link if they exist
+}
+
+// Restore user-menu-trigger styles if they were removed
+.user-menu-trigger {
+  color: var(--el-text-color-primary);
+  outline: none;
+  // Add back any necessary styles for layout
+  display: flex;
+  align-items: center;
+  .username { margin-left: 8px; margin-right: 4px; } // Adjust spacing
+  .el-icon--right { margin-left: auto; } // Push arrow right if needed
+}
+
+</style>
+
+<!-- Add global style for the popper to remove padding -->
+<!-- This might need to go in App.vue or a global CSS file -->
+<style lang="scss">
+.profile-popover.el-popper {
+  padding: 0 !important;
+  border: none !important;
+  box-shadow: var(--el-box-shadow-light); 
+  border-radius: var(--el-border-radius-base); 
+  background-color: var(--el-bg-color-overlay); 
+  // Removed transform
 }
 </style> 

@@ -101,7 +101,8 @@ class FavoriteService {
                             },
                             _count: {
                                 select: { likes: true, comments: true, favoritedBy: true }
-                            }
+                            },
+                            viewCount: true
                         } // End of post select
                     } // End of post relation select
                 }, // End of top-level select
@@ -113,7 +114,7 @@ class FavoriteService {
             // Process data and explicitly build PostWithAuthor objects
             const posts = favoriteRecords
                 .map(favRecord => {
-                var _a, _b, _c, _d, _e, _f;
+                var _a, _b, _c, _d, _e, _f, _g;
                 // favRecord now only contains the 'post' object based on the select
                 const postData = favRecord.post;
                 if (!postData)
@@ -137,7 +138,8 @@ class FavoriteService {
                     favoritesCount: (_f = (_e = postData._count) === null || _e === void 0 ? void 0 : _e.favoritedBy) !== null && _f !== void 0 ? _f : 0,
                     isLiked: !!(postData.likes && postData.likes.length > 0),
                     isFavorited: true,
-                    isShowcase: postData.isShowcase // This should now be available
+                    isShowcase: postData.isShowcase,
+                    viewCount: (_g = postData.viewCount) !== null && _g !== void 0 ? _g : 0
                 };
                 return processedPost;
             })

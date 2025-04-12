@@ -20,6 +20,7 @@ interface PostWithAuthor extends Omit<Post, 'authorId'> {
     isLiked?: boolean; 
     isFavorited?: boolean; 
     isShowcase: boolean; // Add isShowcase here
+    viewCount: number;
 }
 
 // Define the Paginated response type using PostWithAuthor
@@ -114,7 +115,8 @@ export class FavoriteService {
                        },
                        _count: { // Select counts
                            select: { likes: true, comments: true, favoritedBy: true }
-                       }
+                       },
+                       viewCount: true
                    } // End of post select
                 } // End of post relation select
             }, // End of top-level select
@@ -151,7 +153,8 @@ export class FavoriteService {
                     favoritesCount: postData._count?.favoritedBy ?? 0,
                     isLiked: !!(postData.likes && postData.likes.length > 0),
                     isFavorited: true,
-                    isShowcase: postData.isShowcase // This should now be available
+                    isShowcase: postData.isShowcase,
+                    viewCount: postData.viewCount ?? 0
                 };
                 return processedPost;
             })

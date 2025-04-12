@@ -234,29 +234,31 @@ class PostService {
             }
         });
     }
-    // Get comments for a post - Use defined CommentWithAuthor type
+    // 获取帖子的所有评论（包括回复）
     static getCommentsByPostId(postId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const comments = yield db_1.default.comment.findMany({
-                where: { postId: postId, parentId: null }, // Fetch only top-level comments
-                orderBy: { createdAt: 'asc' },
-                include: {
-                    author: { select: { id: true, name: true, avatarUrl: true } }
-                    // Not including replies here for simplicity/performance
-                }
-            });
-            // Map to match the defined CommentWithAuthor structure
-            return comments.map(c => ({
-                id: c.id,
-                text: c.text,
-                createdAt: c.createdAt,
-                updatedAt: c.updatedAt,
-                author: {
-                    id: c.author.id,
-                    name: c.author.name,
-                    avatarUrl: c.author.avatarUrl
-                }
-            })); // Remove the unnecessary 'as CommentWithAuthor[]' cast
+            try {
+                const comments = yield db_1.default.comment.findMany({
+                    where: {
+                        postId: postId,
+                        // Remove parentId: null to fetch ALL comments for the post
+                        // parentId: null 
+                    },
+                    orderBy: { createdAt: 'asc' }, // Keep ordering
+                    include: {
+                        author: {
+                            select: { id: true, name: true, avatarUrl: true }
+                        }
+                        // We might need parentId later for nesting, so return full Comment
+                    }
+                });
+                // We need the full Comment structure (including parentId) for frontend nesting
+                return comments;
+            }
+            catch (error) {
+                console.error(`Error fetching comments for post ${postId}:`, error);
+                throw new Error('Failed to fetch comments');
+            }
         });
     }
     // Delete a comment (Remove commentsCount update)

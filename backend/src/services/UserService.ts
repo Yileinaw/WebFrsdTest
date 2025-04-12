@@ -11,11 +11,14 @@ export class UserService {
                 id: true,
                 email: true,
                 name: true,
+                username: true,
+                bio: true,
                 role: true,
                 avatarUrl: true,
                 createdAt: true,
                 updatedAt: true,
-                isEmailVerified: true
+                isEmailVerified: true,
+                emailVerificationToken: true
             }
         });
         return user;
@@ -24,13 +27,15 @@ export class UserService {
     // 更新用户个人资料
     public static async updateUserProfile(
         userId: number, 
-        profileData: { name?: string; avatarUrl?: string | null }
+        profileData: { name?: string; username?: string; bio?: string | null; avatarUrl?: string | null }
     ): Promise<Omit<User, 'password'> | null> {
         // Optional: Log only when there is data to update
         // console.log(`[UserService.updateUserProfile] User ${userId} updating profile with:`, profileData);
         
         const dataToUpdate: Prisma.UserUpdateInput = {};
         if (profileData.name !== undefined) { dataToUpdate.name = profileData.name; }
+        if (profileData.username !== undefined) { dataToUpdate.username = profileData.username; }
+        if (profileData.bio !== undefined) { dataToUpdate.bio = profileData.bio; }
         if (profileData.avatarUrl !== undefined) { dataToUpdate.avatarUrl = profileData.avatarUrl; }
 
         if (Object.keys(dataToUpdate).length === 0) {
@@ -46,11 +51,17 @@ export class UserService {
                 where: { id: userId },
                 data: dataToUpdate,
                 select: { 
-                    id: true, email: true, name: true,
+                    id: true, 
+                    email: true, 
+                    name: true,
+                    username: true,
+                    bio: true,
                     role: true,
                     avatarUrl: true,
-                    createdAt: true, updatedAt: true,
-                    isEmailVerified: true
+                    createdAt: true, 
+                    updatedAt: true,
+                    isEmailVerified: true,
+                    emailVerificationToken: true
                 }
             });
              // Optional: Log successful update details
@@ -59,6 +70,10 @@ export class UserService {
         } catch (error: any) {
              // Keep this error log
             console.error(`[UserService.updateUserProfile] Error updating user ${userId}:`, error);
+            // Handle potential unique constraint violation for username if updated
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                throw new Error("Username already taken.");
+            }
             throw new Error("Failed to update user profile");
         }
     }

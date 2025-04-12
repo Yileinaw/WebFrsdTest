@@ -14,6 +14,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserService = void 0;
 const db_1 = __importDefault(require("../db"));
+const client_1 = require("@prisma/client");
 class UserService {
     // 根据 ID 获取用户信息（不包含密码）
     static getUserById(userId) {
@@ -24,10 +25,14 @@ class UserService {
                     id: true,
                     email: true,
                     name: true,
+                    username: true,
+                    bio: true,
                     role: true,
                     avatarUrl: true,
                     createdAt: true,
                     updatedAt: true,
+                    isEmailVerified: true,
+                    emailVerificationToken: true
                 }
             });
             return user;
@@ -41,6 +46,12 @@ class UserService {
             const dataToUpdate = {};
             if (profileData.name !== undefined) {
                 dataToUpdate.name = profileData.name;
+            }
+            if (profileData.username !== undefined) {
+                dataToUpdate.username = profileData.username;
+            }
+            if (profileData.bio !== undefined) {
+                dataToUpdate.bio = profileData.bio;
             }
             if (profileData.avatarUrl !== undefined) {
                 dataToUpdate.avatarUrl = profileData.avatarUrl;
@@ -57,10 +68,17 @@ class UserService {
                     where: { id: userId },
                     data: dataToUpdate,
                     select: {
-                        id: true, email: true, name: true,
+                        id: true,
+                        email: true,
+                        name: true,
+                        username: true,
+                        bio: true,
                         role: true,
                         avatarUrl: true,
-                        createdAt: true, updatedAt: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        isEmailVerified: true,
+                        emailVerificationToken: true
                     }
                 });
                 // Optional: Log successful update details
@@ -70,6 +88,10 @@ class UserService {
             catch (error) {
                 // Keep this error log
                 console.error(`[UserService.updateUserProfile] Error updating user ${userId}:`, error);
+                // Handle potential unique constraint violation for username if updated
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                    throw new Error("Username already taken.");
+                }
                 throw new Error("Failed to update user profile");
             }
         });

@@ -32,11 +32,22 @@ class FoodShowcaseService {
             const where = {};
             const skip = (page - 1) * limit;
             const take = limit;
-            // Add search condition (case-insensitive search on title and description)
+            // Add search condition (case-insensitive search on title, description, and tags)
             if (search) {
                 where.OR = [
                     { title: { contains: search, mode: 'insensitive' } },
                     { description: { contains: search, mode: 'insensitive' } },
+                    // Add condition to search within related tags' names
+                    {
+                        tags: {
+                            some: {
+                                name: {
+                                    contains: search,
+                                    mode: 'insensitive',
+                                },
+                            },
+                        },
+                    },
                 ];
             }
             // Add tag condition: Check if the showcase has at least one tag whose name is in the provided list

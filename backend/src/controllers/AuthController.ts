@@ -17,14 +17,18 @@ export class AuthController {
     // 处理用户注册请求
     public static async register(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { email, password, name } = req.body;
+            const { email, password, name, username } = req.body;
 
-            // 基本输入验证
-            if (!email || !password) {
-                res.status(400).json({ message: 'Email and password are required' });
+            // Input validation (add username validation)
+            if (!email || !password || !name || !username) {
+                res.status(400).json({ message: 'Email, password, name, and username are required' });
                 return;
             }
-            // 可以在这里添加更复杂的验证逻辑（例如使用 zod）
+            // Add more specific validation if needed (e.g., email format, password strength, username format/length)
+             if (typeof username !== 'string' || username.length < 3) { // Example username validation
+                 res.status(400).json({ message: 'Username must be a string of at least 3 characters' });
+                 return;
+             }
 
             // Check if email already exists and is verified (optional: allow re-register if not verified?)
             const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -43,12 +47,11 @@ export class AuthController {
             // Hash password
             const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-            // Create user (or potentially update if handling unverified existing user)
-            // For simplicity, let's assume we always create, relying on email unique constraint 
-            // (This might error if unverified user exists - adjust logic if needed)
+            // Create user (包含 username)
             const newUser = await prisma.user.create({
                 data: {
                     email,
+                    username,
                     password: hashedPassword,
                     name,
                     isEmailVerified: false // Start as not verified
@@ -111,27 +114,32 @@ export class AuthController {
         }
     }
 
-    // 处理用户登录请求
-    public static async login(req: Request, res: Response): Promise<void> {
+    // 处理用户登录请求 (Simplified)
+    public static async login(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { email, password } = req.body;
+            // 1. Extract credentials from request body
+            const { email, username, password } = req.body;
 
-            // 基本输入验证
-            if (!email || !password) {
-                res.status(400).json({ message: 'Email and password are required' });
-                return;
-            }
-
-            const { token, user } = await AuthService.login({ email, password });
+            // 2. Call AuthService.login (it handles validation and logic)
+            const { token, user } = await AuthService.login({ email, username, password });
+            
+            // 3. Send successful response
             res.status(200).json({ message: 'Login successful', token, user });
+
         } catch (error: any) {
-            // 根据错误类型返回不同的状态码
-            if (error.message === 'Invalid email or password') {
-                res.status(401).json({ message: error.message }); // 401 Unauthorized
-            } else {
-                console.error('Login Error:', error);
-                res.status(500).json({ message: 'Internal server error during login' });
-            }
+             // 4. Handle errors from AuthService
+             console.error('Login Controller Error:', error.message); // Log the specific error message
+             if (error.message === 'Username or Email is required for login' || error.message === 'Password is required for login') {
+                res.status(400).json({ message: error.message });
+             } else if (error.message === 'Invalid credentials') {
+                 res.status(401).json({ message: error.message }); // Unauthorized
+             } else if (error.message.includes('邮箱尚未验证')) { // Check specific verification message
+                 res.status(403).json({ message: error.message }); // Forbidden
+             } else {
+                 // Pass other errors to the global error handler or return 500
+                 // next(error); 
+                 res.status(500).json({ message: 'Internal server error during login' });
+             }
         }
     }
 

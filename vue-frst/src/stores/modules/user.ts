@@ -15,6 +15,11 @@ import type { LoginResponse } from '@/services/AuthService'
 // Define a more specific type for currentUser state, including role
 type CurrentUserType = Omit<User, 'password'> | null;
 
+interface LoginPayload {
+    identifier: string;
+    password: string;
+}
+
 export const useUserStore = defineStore('user', () => {
     // --- State --- 
     // 使用 ref 定义状态属性
@@ -106,32 +111,42 @@ export const useUserStore = defineStore('user', () => {
     }
 
     // --- 新增 Action: 登录 ---
-    async function login(credentials: any): Promise<LoginResponse> {
-        console.log('[login] Attempting login...');
-        const response = await AuthService.login(credentials);
-        console.log('[login] Login API success, token:', response.token);
-        // Set token first, then fetch profile which will set the user
-        setToken(response.token);
-        await fetchUserProfile();
-        return response;
+    // Accept LoginPayload with identifier
+    async function login(payload: LoginPayload): Promise<LoginResponse> {
+        console.log('[login] Attempting login with identifier:', payload.identifier);
+        // Pass identifier and password directly to AuthService.login
+        const response = await AuthService.login(payload); 
+        
+        // AuthService.login now handles fetching user profile internally
+        // If it resolves, it means both token and user are fetched successfully
+        
+        // Use the user data returned by AuthService.login to set the state
+        // Assuming _setLoginInfo is still the correct way to set token and user
+        _setLoginInfo(response.token, response.user);
+        
+        console.log('[login] Login and profile fetch successful in store.');
+        return response; // Return the full response { token, user }
     }
 
-    // --- 新增 Action: 获取用户信息 ---
+    // --- 新增 Action: 获取用户信息 --- (Keep for explicit profile fetching if needed, e.g., on refresh)
     async function fetchUserProfile() {
         console.log('[fetchUserProfile] Fetching profile...');
         if (!token.value) {
             console.log('[fetchUserProfile] No token, aborting.');
-            return;
+            return; 
         }
+        // Optimization: If user info already exists, maybe don't fetch again?
+        // if (currentUser.value) {
+        //     console.log('[fetchUserProfile] User info already exists, skipping fetch.');
+        //     return;
+        // }
         try {
-            // Correctly call AuthService.getCurrentUser()
             const response = await AuthService.getCurrentUser();
             console.log('[fetchUserProfile] API success, received user:', response.user);
-            // Use setUser to update state correctly
-            setUser(response.user);
+            setUser(response.user); // Use setUser to update state
         } catch (error) {
             console.error("[fetchUserProfile] Failed:", error);
-            logout(); // Logout on failure
+            logout(); // Logout on failure seems reasonable here
         }
     }
 
@@ -167,6 +182,13 @@ export const useUserStore = defineStore('user', () => {
     function logout() {
         console.log('[logout] Logging out...');
         _setLoginInfo(null, null);
+         // Also remove token from localStorage on explicit logout
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentUserInfo'); // Ensure user info is also removed
+        // Ensure header is cleared
+        if (http && http.defaults && http.defaults.headers && http.defaults.headers.common) {
+             delete http.defaults.headers.common['Authorization']; 
+        }
     }
 
     // --- Return --- 

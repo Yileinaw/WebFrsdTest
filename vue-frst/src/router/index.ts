@@ -116,12 +116,32 @@ const routes: Array<RouteRecordRaw> = [
      component: VerifyEmailView,
      meta: { requiresGuest: true }
    },
+  // Route for viewing a specific user's profile
+  {
+    path: '/user/:userId',
+    component: MainLayout, // Assuming main layout is appropriate
+    children: [
+      {
+        path: '',
+        name: 'UserProfile', // Name is now here
+        component: () => import('@/views/PersonalCenter/UserProfile.vue'), // Component to display profile
+        props: true // Pass route params (userId) as props to the component
+      }
+    ],
+    meta: { requiresAuth: false } // Public profile view
+  },
   // Add Admin Routes
   {
     path: '/admin',
     component: AdminLayout, 
     // meta: { requiresAuth: true }, // Ensure guards are handled globally or fix import
     children: [
+      {
+        path: '', // Or a specific path like 'dashboard'
+        name: 'AdminDashboard',
+        component: UnderDevelopment, // Point to a placeholder or actual dashboard
+        meta: { requiresAuth: true, isAdmin: true, title: '管理后台首页' }
+      },
       {
         path: 'food-management',
         name: 'AdminFoodManagement',

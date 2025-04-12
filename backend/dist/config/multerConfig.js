@@ -22,22 +22,29 @@ const ensureExists = (dirPath) => {
 };
 const storage = multer_1.default.diskStorage({
     destination: (req, file, cb) => {
-        // Remove log
-        // console.log('[Multer Config] Destination function called for file:', file.originalname);
-        let uploadDir = 'public/images/post'; // 默认帖子图片
-        if (req.baseUrl.includes('users') && req.route.path.includes('avatar')) {
-            uploadDir = 'public/images/avatars';
+        var _a;
+        // Determine the upload directory based on the route
+        let uploadDir = 'storage/uploads/posts'; // Default for posts
+        if (req.baseUrl.includes('/users') && ((_a = req.route) === null || _a === void 0 ? void 0 : _a.path) === '/me/avatar') {
+            // Corrected path for avatar uploads
+            uploadDir = 'storage/uploads/avatars';
         }
-        ensureExists(uploadDir);
-        cb(null, uploadDir); // Multer 会基于项目根目录解析此路径
+        else if (req.baseUrl.includes('/posts')) {
+            // Explicitly keep posts going to their directory (or adjust if needed)
+            uploadDir = 'storage/uploads/posts';
+        }
+        // console.log(`[Multer Config] Request BaseURL: ${req.baseUrl}, Route Path: ${req.route?.path}, Determined Upload Dir: ${uploadDir}`)
+        ensureExists(uploadDir); // Ensure the target directory exists
+        cb(null, uploadDir); // Pass the determined directory to Multer
     },
     filename: (req, file, cb) => {
-        // Remove log
-        console.log('[Multer Config] Filename function called for file:', file.originalname);
-        // 生成唯一文件名: 时间戳-随机字符串.原扩展名
+        // Keep the unique filename generation logic
         const uniqueSuffix = Date.now() + '-' + crypto_1.default.randomBytes(8).toString('hex');
         const extension = path_1.default.extname(file.originalname);
-        cb(null, file.fieldname + '-' + uniqueSuffix + extension);
+        // Use a consistent filename structure, fieldname can be helpful
+        const finalFilename = file.fieldname + '-' + uniqueSuffix + extension;
+        // console.log(`[Multer Config] Original: ${file.originalname}, Generated: ${finalFilename}`);
+        cb(null, finalFilename);
     }
 });
 const fileFilter = (req, file, cb) => {

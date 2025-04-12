@@ -1,14 +1,62 @@
 import http from '@/http';
-import type { User, Post, Notification } from '@/types/models';
-import type { PaginatedResponse } from '@/types/api';
+import type { User } from '@/types/models'; // Import the User type
+// import type { User, Post, Notification } from '@/types/models'; // 可能不再直接需要 User
+// import type { PaginatedResponse } from '@/types/api'; // 可能需要根据后端调整
 import type { ChangePasswordPayload } from '@/types/payloads';
 import type { SuccessMessageResponse } from '@/types/payloads';
 
-// Define specific response types based on backend controllers
-interface UserProfileResponse {
-    message?: string;
+// --- 类型接口定义 ---
+// 用于获取用户信息的接口，与后端 getUserById 返回一致
+// export interface UserProfileData {
+//     id: number;
+//     username: string | null;
+//     name: string | null;
+//     avatarUrl: string | null;
+//     bio: string | null;
+//     joinedAt: string; // ISO Date String
+//     postCount: number;
+//     followerCount: number;
+//     followingCount: number;
+//     isFollowing: boolean;
+//     // 可能还包含 email, role, isEmailVerified 用于个人设置页
+//     email?: string;
+//     role?: string;
+//     isEmailVerified?: boolean;
+// }
+
+// 用于更新个人资料后，后端返回的数据结构
+// Ensure the user property type matches the store
+export interface UpdatedUserProfileResponse {
+    message: string;
     user: Omit<User, 'password'>;
 }
+
+// 用于获取关注/粉丝列表的分页响应
+// (假设后端返回的数据结构如 getFollowers/getFollowing 控制器所示)
+export interface PaginatedUserListResponse {
+    followers?: UserPublicListData[]; // 对应 getFollowers
+    following?: UserPublicListData[]; // 对应 getFollowing
+    currentPage: number;
+    totalPages: number;
+    totalFollowers?: number; // 对应 getFollowers
+    totalFollowing?: number; // 对应 getFollowing
+}
+
+// 导入 UserPublicListData (如果它在 models.ts 中定义)
+// import type { UserPublicListData } from '@/types/models';
+// 如果 UserPublicListData 只在此处使用，保持上面的定义即可
+type UserPublicListData = {
+    id: number;
+    username: string | null;
+    avatarUrl: string | null;
+    bio: string | null;
+}
+
+// Remove unused UserProfileResponse interface
+// interface UserProfileResponse {
+//     message?: string;
+//     user: Omit<User, 'password'>;
+// }
 
 // Define the response type for getting default avatars
 interface DefaultAvatarsResponse {
@@ -18,22 +66,49 @@ interface DefaultAvatarsResponse {
 // Keep as an exported class with static methods
 export class UserService { 
 
-    // 获取当前用户信息 (需要认证)
-    static async getMe(): Promise<User> {
-        // Using /users/me endpoint which returns the User object directly
-        const response = await http.get<UserProfileResponse>('/users/me');
-        return response.data.user;
+    // 获取当前用户信息 (返回 Omit<User, 'password'>)
+    static async getMe(): Promise<Omit<User, 'password'>> {
+        // Backend /users/me already returns this structure
+        const response = await http.get<Omit<User, 'password'>>('/users/me');
+        return response.data;
     }
 
-    // 更新用户信息 (名字或预设头像) - Calls PUT /users/me/profile
-    static async updateUserProfile(data: { name?: string; avatarUrl?: string | null }): Promise<UserProfileResponse> {
-        const payload: { name?: string; avatarUrl?: string | null } = {};
+    // 获取特定用户信息 (返回 Omit<User, 'password'>)
+    // NOTE: Backend /users/:userId needs to return the full Omit<User,'password'> structure
+    // OR this function needs to construct it if backend only returns public data.
+    // Assuming backend /users/:userId returns full structure for now.
+    static async getUserProfile(userId: number): Promise<Omit<User, 'password'>> {
+        const response = await http.get<Omit<User, 'password'>>(`/users/${userId}`);
+        return response.data;
+    }
+
+    // 更新当前用户个人资料 
+    static async updateMyProfile(data: { 
+        username?: string; 
+        name?: string | null; 
+        bio?: string | null; 
+        avatarUrl?: string | null; 
+    }): Promise<UpdatedUserProfileResponse> { 
+        // Correctly define the payload type inline
+        const payload: { 
+            username?: string; 
+            name?: string | null; 
+            bio?: string | null; 
+            avatarUrl?: string | null; 
+        } = {};
+        if (data.username !== undefined) payload.username = data.username;
         if (data.name !== undefined) payload.name = data.name;
-        // Handle null explicitly for avatar removal
+        if (data.bio !== undefined) payload.bio = data.bio;
         if (data.avatarUrl !== undefined) payload.avatarUrl = data.avatarUrl; 
         
-        // Ensure this matches the backend route /users/me/profile
-        const response = await http.put<UserProfileResponse>('/users/me/profile', payload);
+        if (Object.keys(payload).length === 0) {
+            throw new Error('No update data provided'); 
+        }
+
+        console.log('[UserService.updateMyProfile] Sending payload:', payload);
+        // Backend PUT /users/me/profile should return UpdatedUserProfileResponse structure
+        const response = await http.put<UpdatedUserProfileResponse>('/users/me/profile', payload);
+        console.log('[UserService.updateMyProfile] Received response:', response.data);
         return response.data;
     }
     
@@ -56,6 +131,32 @@ export class UserService {
             console.error("Failed to fetch default avatars:", error);
             return [];
         }
+    }
+
+    // --- 关注/取关 --- //
+    static async followUser(userId: number): Promise<void> {
+        // 后端成功返回 201，失败返回 4xx/5xx，没有特定 body
+        await http.post(`/users/${userId}/follow`);
+    }
+
+    static async unfollowUser(userId: number): Promise<void> {
+         // 后端成功返回 200，失败返回 4xx/5xx，没有特定 body
+        await http.delete(`/users/${userId}/follow`);
+    }
+
+    // --- 获取关注/粉丝列表 --- //
+    static async getFollowers(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedUserListResponse> {
+        const response = await http.get<PaginatedUserListResponse>(`/users/${userId}/followers`, {
+            params: { page, limit }
+        });
+        return response.data;
+    }
+
+    static async getFollowing(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedUserListResponse> {
+        const response = await http.get<PaginatedUserListResponse>(`/users/${userId}/following`, {
+            params: { page, limit }
+        });
+        return response.data;
     }
 
     // --- Add password related methods ---

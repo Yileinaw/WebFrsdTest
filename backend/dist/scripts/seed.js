@@ -35,9 +35,11 @@ function main() {
                 author = yield prisma.user.create({
                     data: {
                         name: '默认作者',
+                        username: `default_author_${Date.now()}`,
                         email: `author${Date.now()}@example.com`, // Ensure unique email
                         password: hashedPassword,
-                        avatarUrl: '/static/images/avatars/default-avatar.png' // Use a consistent default
+                        avatarUrl: '/static/images/avatars/default-avatar.png', // Use a consistent default
+                        isEmailVerified: true // Assume seeded user is verified for simplicity
                     }
                 });
                 console.log(`创建了测试用户: ${author.name} (ID: ${author.id})`);

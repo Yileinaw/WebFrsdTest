@@ -7,12 +7,13 @@ interface RegisterData {
     email: string;
     password?: string; // 注册时密码通常是必须的
     name?: string;
+    username?: string; // Add username field
 }
 
-// 定义登录请求的数据类型
-interface LoginData {
-    email: string;
-    password?: string; // 登录时密码通常是必须的
+// Define the input type for login, now using identifier
+interface LoginPayload {
+    identifier: string;
+    password: string;
 }
 
 // 定义登录响应的数据类型 (根据后端返回)
@@ -43,15 +44,27 @@ export const AuthService = {
         return response.data;
     },
 
-    async login(data: LoginData): Promise<LoginResponse> {
-        const response = await http.post<LoginResponse>('/auth/login', data);
+    // Login accepts identifier and determines payload for backend
+    async login(payload: LoginPayload): Promise<LoginResponse> {
+        const { identifier, password } = payload;
+        const isEmail = identifier.includes('@');
+        
+        // Construct the data object based on whether it's an email or username
+        const requestData = isEmail 
+            ? { email: identifier, password }
+            : { username: identifier, password };
+            
+        // Call the backend /login endpoint with the correct data structure
+        const response = await http.post<LoginResponse>('/auth/login', requestData);
         return response.data;
     },
 
     // 获取当前用户信息 (使用 GET 请求，需要认证)
     async getCurrentUser(): Promise<{ user: Omit<User, 'password'> }> {
-        const response = await http.get<{ user: Omit<User, 'password'> }>('/users/me');
-        return response.data;
+        // Fetch the user object directly (backend returns the object, not nested)
+        const response = await http.get<Omit<User, 'password'>>('/users/me');
+        // Wrap the received user data into the expected structure
+        return { user: response.data }; 
     },
 
     /**

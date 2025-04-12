@@ -10,8 +10,9 @@ const fs_1 = __importDefault(require("fs"));
 // Log the current working directory
 // console.log('[UploadMiddleware] process.cwd():', process.cwd()); // Comment out log
 // Define the upload directory path relative to the project root (process.cwd())
-const foodShowcaseUploadDir = path_1.default.resolve(process.cwd(), 'backend', 'storage', 'uploads', 'food-showcase');
-console.log(`[UploadMiddleware] Target upload dir (relative to project root): ${foodShowcaseUploadDir}`); // Log for verification
+// const foodShowcaseUploadDir = path.resolve(process.cwd(), 'backend', 'storage', 'uploads', 'food-showcase'); // Old incorrect path
+const foodShowcaseUploadDir = path_1.default.resolve(__dirname, '..', '..', 'storage', 'uploads', 'food-showcase'); // Correct path relative to middleware dir
+// console.log(`[UploadMiddleware] Target upload dir (calculated): ${foodShowcaseUploadDir}`); // Log for verification
 try {
     // Ensure the full path exists, including intermediate directories
     fs_1.default.mkdirSync(foodShowcaseUploadDir, { recursive: true });

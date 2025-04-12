@@ -32,6 +32,15 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -49,6 +58,7 @@ const NotificationRoutes_1 = __importDefault(require("./routes/NotificationRoute
 const foodShowcaseRoutes_1 = __importDefault(require("./routes/foodShowcaseRoutes"));
 const TagRoutes_1 = __importDefault(require("./routes/TagRoutes")); // Import tag routes
 const ErrorHandlingMiddleware_1 = require("./middleware/ErrorHandlingMiddleware");
+const mailer_1 = require("./utils/mailer"); // <-- 导入邮件初始化函数
 // --- Remove direct imports, rely on userRoutes ---
 // import { UserController } from './controllers/UserController'; 
 // import { AuthMiddleware } from './middleware/AuthMiddleware';
@@ -91,14 +101,14 @@ app.use(express_1.default.urlencoded({ extended: true }));
 // --- Remove EARLY Mount / Restore Original Order ---
 // app.use('/api/posts', postRouter); // Remove potential early mount
 // --- Static Files for Public Assets ---
-// Calculate public dir based on project root (assuming cwd is project root)
-const publicDirectory = path_1.default.resolve(process.cwd(), 'backend', 'public');
-app.use('/static', express_1.default.static(publicDirectory));
-console.log(`[Server] Serving general static files from: ${publicDirectory} at /static`);
-// --- Static Files for User Uploads - Based on project root (cwd) ---
-const uploadsRootDirectory = path_1.default.resolve(process.cwd(), 'backend', 'storage', 'uploads');
+const publicDirectory = path_1.default.resolve(__dirname, '..', 'public');
+// Serve files directly from the root (e.g., /avatars/defaults/1.jpg maps to public/avatars/defaults/1.jpg)
+app.use(express_1.default.static(publicDirectory));
+console.log(`[Server] Serving static files from: ${publicDirectory}`);
+// --- Static Files for User Uploads (Keep as is or adjust if needed) ---
+// Assuming uploads are separate and served under /uploads
+const uploadsRootDirectory = path_1.default.resolve(__dirname, '..', 'storage', 'uploads');
 app.use('/uploads', express_1.default.static(uploadsRootDirectory));
-// Log the final absolute path being served
 console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /uploads`);
 // --- 静态文件服务中间件 (Keep for user uploads) ---
 // const uploadsDirectory = path.join(process.cwd(), 'uploads'); // Old version removed
@@ -125,9 +135,23 @@ app.use('/api/tags', TagRoutes_1.default); // Mount tag routes
 // --- 全局错误处理中间件 ---
 app.use(ErrorHandlingMiddleware_1.errorHandler);
 // --- End API Routes ---
-app.listen(port, () => {
-    // Keep this log
-    console.log(`[Server]: Server is running at http://localhost:${port}`);
-});
+// 异步启动函数
+function startServer() {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            yield (0, mailer_1.initializeMailer)(); // <-- 初始化邮件服务
+            app.listen(port, () => {
+                // Keep this log
+                console.log(`[Server]: Server is running at http://localhost:${port}`);
+            });
+        }
+        catch (error) {
+            console.error('Failed to start the server:', error);
+            process.exit(1); // 如果邮件服务初始化失败，则退出进程
+        }
+    });
+}
+// 调用启动函数
+startServer();
 exports.default = app;
 //# sourceMappingURL=server.js.map
