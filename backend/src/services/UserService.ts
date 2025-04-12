@@ -24,32 +24,20 @@ export class UserService {
         return user;
     }
 
-    // 更新用户个人资料
+    // 更新用户个人资料 (恢复旧签名和逻辑)
     public static async updateUserProfile(
         userId: number, 
-        profileData: { name?: string; username?: string; bio?: string | null; avatarUrl?: string | null }
+        data: Prisma.UserUpdateInput 
     ): Promise<Omit<User, 'password'> | null> {
-        // Optional: Log only when there is data to update
-        // console.log(`[UserService.updateUserProfile] User ${userId} updating profile with:`, profileData);
         
-        const dataToUpdate: Prisma.UserUpdateInput = {};
-        if (profileData.name !== undefined) { dataToUpdate.name = profileData.name; }
-        if (profileData.username !== undefined) { dataToUpdate.username = profileData.username; }
-        if (profileData.bio !== undefined) { dataToUpdate.bio = profileData.bio; }
-        if (profileData.avatarUrl !== undefined) { dataToUpdate.avatarUrl = profileData.avatarUrl; }
-
-        if (Object.keys(dataToUpdate).length === 0) {
-             // Optional: Log this case if needed
-             // console.log(`[UserService.updateUserProfile] No data provided for user ${userId}, returning current profile.`);
-             return await this.getUserById(userId);
+        if (Object.keys(data).length === 0) {
+             return await this.getUserById(userId); 
         }
 
         try {
-            // Optional: Log before database call
-            // console.log(`[UserService.updateUserProfile] Updating user ${userId} in DB with:`, dataToUpdate);
             const updatedUser = await prisma.user.update({
-                where: { id: userId },
-                data: dataToUpdate,
+                where: { id: userId }, 
+                data: data, 
                 select: { 
                     id: true, 
                     email: true, 
@@ -64,17 +52,16 @@ export class UserService {
                     emailVerificationToken: true
                 }
             });
-             // Optional: Log successful update details
-            // console.log(`[UserService.updateUserProfile] User ${userId} updated successfully. New avatarUrl:`, updatedUser.avatarUrl);
             return updatedUser;
         } catch (error: any) {
-             // Keep this error log
-            console.error(`[UserService.updateUserProfile] Error updating user ${userId}:`, error);
-            // Handle potential unique constraint violation for username if updated
-            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-                throw new Error("Username already taken.");
-            }
-            throw new Error("Failed to update user profile");
+             console.error(`[UserService.updateUserProfile] Error updating user ${userId}:`, error);
+             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                 throw new Error("Unique constraint failed."); 
+             }
+              if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                   throw new Error("User not found for update.");
+              }
+             throw new Error("Failed to update user profile");
         }
     }
 

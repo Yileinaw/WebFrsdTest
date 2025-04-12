@@ -44,8 +44,13 @@ export class NotificationService {
       whereClause.isRead = false;
     }
 
-    // Add debug log
-    console.log('[DEBUG] getNotifications called with simplified query (no includes).');
+    // Simplified query without includes if not needed
+    // REMOVING the problematic if/else structure introduced in previous edits
+    // if (!includeSender && !includePost) { ... } else { ... }
+
+    // Keep only the original logic using $transaction
+    // Original debug log (can be manually cleaned later if desired)
+    console.log('[DEBUG] getNotifications called with includes query.'); 
 
     const [notificationsData, totalCount] = await prisma.$transaction([
       prisma.notification.findMany({

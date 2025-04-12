@@ -71,7 +71,7 @@ export class AuthService {
     }
 
     // 用户登录
-    public static async login(credentials: LoginCredentials): Promise<{ token: string; user: Omit<User, 'password'> }> {
+    public static async login(credentials: LoginCredentials): Promise<{ token: string; user: any }> {
         const { email, username, password } = credentials;
 
         // 1. Validate input: ensure either email or username is provided
@@ -114,12 +114,51 @@ export class AuthService {
         }
 
         // 6. Generate JWT
-        const tokenPayload = { userId: user.id, role: user.role }; // Include necessary claims
+        const tokenPayload = { userId: user.id, role: user.role };
         const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: expiresInSeconds });
 
-        // 7. Return token and user info (excluding password)
-        const { password: _, ...userWithoutPassword } = user;
-        console.log(`User ${user.id} logged in successfully via ${email ? 'email' : 'username'}.`);
-        return { token, user: userWithoutPassword };
+        // 7. Fetch full user info including counts AFTER successful login
+        const fullUser = await prisma.user.findUnique({
+            where: { id: user.id }, // Use the validated user's ID
+            select: {
+                id: true,
+                email: true,
+                username: true,
+                name: true,
+                avatarUrl: true,
+                bio: true,
+                role: true,
+                isEmailVerified: true,
+                createdAt: true,
+                _count: {
+                    select: {
+                        posts: true,
+                        followers: true,
+                        following: true,
+                        favorites: true
+                    }
+                }
+            }
+        });
+
+        if (!fullUser) {
+            // Should not happen if login succeeded, but good to handle
+            console.error(`[AuthService.login] Failed to re-fetch user data for ID: ${user.id} after successful login.`);
+            throw new Error('Failed to retrieve user data after login');
+        }
+
+        // 8. Map counts and return token + full user info
+        const { _count, ...userData } = fullUser;
+        const responseUser = {
+            ...userData,
+            postCount: _count?.posts ?? 0,
+            followerCount: _count?.followers ?? 0,
+            followingCount: _count?.following ?? 0,
+            favoritesCount: _count?.favorites ?? 0,
+            joinedAt: fullUser.createdAt
+        };
+        
+        console.log(`[AuthService.login] User ${user.id} logged in successfully via ${email ? 'email' : 'username'}. Returning full profile.`);
+        return { token, user: responseUser };
     }
 } 

@@ -163,8 +163,19 @@ export class FavoriteService {
         return { posts, totalCount };
     }
 
-    // Wrapper method (remains the same)
-     public static async getMyFavorites(userId: number, options: { page?: number, limit?: number } = {}): Promise<PaginatedFavoritePostsResponse> {
-         return this.fetchUserFavoritesPage(userId, options);
-     }
+    /**
+     * Get posts favorited by the *currently logged-in* user.
+     */
+    public static async getMyFavorites(userId: number, options: { page?: number, limit?: number } = {}): Promise<PaginatedFavoritePostsResponse> {
+        // Directly call the fetching logic with the logged-in user's ID
+        return this.fetchUserFavoritesPage(userId, options);
+    }
+
+    /**
+     * Get posts favorited by a *specific* user (identified by targetUserId).
+     */
+    public static async getFavoritesByUserId(targetUserId: number, options: { page?: number, limit?: number } = {}): Promise<PaginatedFavoritePostsResponse> {
+        // Directly call the fetching logic with the target user's ID
+        return this.fetchUserFavoritesPage(targetUserId, options);
+    }
 } 

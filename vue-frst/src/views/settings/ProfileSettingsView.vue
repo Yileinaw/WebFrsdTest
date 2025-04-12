@@ -16,26 +16,8 @@
         </div>
       </div>
 
-      <!-- Avatar Upload - Keep outside modal for simplicity -->
-      <div class="setting-item avatar-upload">
-         <label>上传新头像</label>
-         <el-upload
-            class="avatar-uploader"
-            :action="uploadUrl" 
-            :show-file-list="false"
-            :headers="uploadHeaders"
-            :on-success="handleAvatarSuccess"
-            :before-upload="beforeAvatarUpload"
-            name="avatar" 
-          >
-            <el-button type="primary">点击上传</el-button>
-            <template #tip>
-              <div class="el-upload__tip">
-                只能上传 jpg/png 文件，且不超过 5MB
-              </div>
-            </template>
-          </el-upload>
-      </div>
+      <!-- Avatar Upload - REMOVED from here -->
+      <!-- <div class="setting-item avatar-upload"> ... </div> -->
       
       <!-- Profile Actions Section -->
       <div class="setting-item profile-actions">
@@ -61,6 +43,27 @@
             <div class="preview-section">
                 <label>预览</label>
                 <el-avatar :size="120" :src="resolveStaticAssetUrl(pendingAvatarUrl)" />
+            </div>
+
+            <!-- Upload New Avatar - MOVED HERE -->
+            <div class="setting-item avatar-upload-dialog">
+                <label>上传新头像</label>
+                <el-upload
+                    class="avatar-uploader-dialog"
+                    :action="uploadUrl"
+                    :show-file-list="false"
+                    :headers="uploadHeaders"
+                    :on-success="handleAvatarSuccess"
+                    :before-upload="beforeAvatarUpload"
+                    name="avatar"
+                >
+                    <el-button type="primary">点击上传</el-button>
+                    <template #tip>
+                    <div class="el-upload__tip">
+                        只能上传 jpg/png 文件，且不超过 5MB
+                    </div>
+                    </template>
+                </el-upload>
             </div>
 
             <!-- Default Avatars Selection - Use presetAvatarUrls -->
@@ -181,8 +184,10 @@ const handleAvatarSuccess: UploadProps['onSuccess'] = (
 ) => {
   console.log('[ProfileSettingsView] Avatar Upload Success Response:', response);
   if (response && response.avatarUrl) {
-    userStore.updateAvatarUrl(response.avatarUrl);
-    ElMessage.success('头像上传成功!');
+    // Update pending URL for preview, don't save yet
+    pendingAvatarUrl.value = response.avatarUrl;
+    ElMessage.success('头像上传成功! 请点击保存以应用更改。');
+    // userStore.updateAvatarUrl(response.avatarUrl); // REMOVED direct store update
   } else {
      ElMessage.error(response?.message || '头像上传失败，响应无效');
   }
@@ -430,6 +435,135 @@ const updateName = async () => {
              }
         }
     }
+}
+
+// Add styles for elements inside the dialog if needed
+.avatar-dialog {
+  .dialog-content {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+  }
+
+  .preview-section {
+    text-align: center;
+    margin-bottom: 10px;
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--el-text-color-secondary);
+      font-size: 0.9rem;
+    }
+  }
+
+  .avatar-upload-dialog {
+      display: flex;
+      flex-direction: column; // Align button and tip vertically
+      align-items: flex-start; // Align items to the left
+       .el-upload__tip {
+          margin-top: 8px;
+          font-size: 0.85rem;
+      }
+  }
+
+  .setting-item {
+     label {
+        display: block;
+        margin-bottom: 10px;
+        font-weight: 500;
+        color: var(--el-text-color-regular);
+     }
+  }
+
+  .default-avatars {
+    .avatar-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .preset-avatar {
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: border-color 0.2s ease;
+        &.selected {
+           border-color: var(--el-color-primary);
+        }
+        &:hover {
+            opacity: 0.8;
+        }
+    }
+     .remove-avatar-btn {
+         height: 60px; // Match avatar size
+         width: 60px; // Match avatar size
+         display: flex;
+         align-items: center;
+         justify-content: center;
+         border: 1px dashed var(--el-border-color);
+          &.selected {
+            border-style: solid;
+            border-color: var(--el-color-primary);
+            background-color: var(--el-color-primary-light-9);
+         }
+     }
+  }
+}
+
+// General setting item styles (if not already defined well)
+.setting-item {
+    margin-bottom: 25px;
+    label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600; // Make labels slightly bolder
+        color: var(--el-text-color-primary);
+        font-size: 0.95rem;
+    }
+}
+
+.current-avatar {
+  .avatar-container {
+    position: relative;
+    width: 100px; // Match avatar size
+    height: 100px;
+    cursor: pointer;
+    border-radius: 50%; // Make container round
+    overflow: hidden; // Hide overflow for overlay effect
+
+    .edit-icon-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.3); // Darker overlay
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      font-size: 24px; // Larger icon
+    }
+
+    &:hover .edit-icon-overlay {
+      opacity: 1;
+    }
+  }
+}
+
+// Adjust profile actions layout if needed
+.profile-actions {
+  .action-group {
+      display: flex;
+      flex-direction: column; // Stack actions vertically
+      gap: 15px;
+      align-items: flex-start;
+  }
+  .inline-form {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+  }
 }
 
 </style> 

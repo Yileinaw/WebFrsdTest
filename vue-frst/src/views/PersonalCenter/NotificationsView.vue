@@ -29,20 +29,20 @@
           v-for="notification in notifications" 
           :key="notification.id" 
           class="notification-item" 
-          :class="{ unread: !notification.read }"
+          :class="{ unread: !notification.isRead }"
           @click="goToPost(notification.postId)"
         >
           <!-- Unread indicator -->
-          <span class="unread-indicator" v-if="!notification.read"></span>
+          <span class="unread-indicator" v-if="!notification.isRead"></span>
           <!-- Pass string type to getNotificationIcon -->
           <el-icon class="type-icon" :size="20">
               <component :is="getNotificationIcon(notification.type)" />
           </el-icon>
-          <!-- Always use defaultAvatar for actor -->
-          <el-avatar :size="36" :src="resolveStaticAssetUrl(notification.actor?.avatarUrl)" class="actor-avatar" />
+          <!-- Use sender's avatar -->
+          <el-avatar :size="36" :src="resolveStaticAssetUrl(notification.sender?.avatarUrl)" class="actor-avatar" />
           <!-- Main Content -->
           <div class="content">
-             <span class="actor-name">{{ notification.actor?.name || '用户' }}</span>
+             <span class="actor-name">{{ notification.sender?.name || '未知用户' }}</span>
              <!-- Pass string type to getActionText -->
              <span class="action-text">{{ getActionText(notification.type) }}</span>
              <span class="post-title">《{{ notification.post?.title || '帖子' }}》</span>
@@ -51,9 +51,25 @@
           <!-- Meta and Actions -->
           <div class="meta">
             <span class="time">{{ formatTime(notification.createdAt) }}</span>
-            <el-button v-if="!notification.read" type="success" link size="small" @click.stop="markOneRead(notification.id)">标记已读</el-button>
+            <el-tooltip content="标记已读" placement="top" v-if="!notification.isRead">
+              <el-button 
+                type="success" 
+                circle 
+                size="small" 
+                :icon="Check" 
+                @click.stop="markOneRead(notification.id)"
+                class="action-button"
+              />
+            </el-tooltip>
             <el-tooltip content="删除通知" placement="top">
-                <el-button type="danger" link size="small" :icon="Delete" @click.stop="openDeleteConfirm(notification.id)"></el-button>
+                <el-button 
+                  type="danger" 
+                  circle 
+                  size="small" 
+                  :icon="Delete" 
+                  @click.stop="openDeleteConfirm(notification.id)"
+                  class="action-button"
+                />
             </el-tooltip>
           </div>
         </div>
@@ -79,7 +95,7 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Bell, Delete, Pointer, ChatDotRound, Star } from '@element-plus/icons-vue';
+import { Bell, Delete, Pointer, ChatDotRound, Star, Check } from '@element-plus/icons-vue';
 import { ElEmpty, ElSkeleton, ElAlert, ElPagination, ElButton, ElPopconfirm, ElMessage, ElAvatar, ElIcon, ElTooltip, ElMessageBox } from 'element-plus';
 import { NotificationService, type NotificationWithRelations, NotificationType } from '@/services/NotificationService';
 import { resolveStaticAssetUrl } from '@/utils/urlUtils';
@@ -94,7 +110,7 @@ const pagination = reactive({
 });
 const router = useRouter();
 
-const unreadCount = computed(() => notifications.value.filter((n: NotificationWithRelations) => !n.read).length);
+const unreadCount = computed(() => notifications.value.filter((n: NotificationWithRelations) => !n.isRead).length);
 
 const fetchNotifications = async (page: number = 1) => {
     isLoading.value = true;
@@ -103,8 +119,9 @@ const fetchNotifications = async (page: number = 1) => {
         const response = await NotificationService.getNotifications({ page, limit: pagination.pageSize });
         notifications.value = response.notifications.map((n: NotificationWithRelations) => ({
             ...n,
-            actor: n.actor || { id: -1, name: '未知用户', avatarUrl: '' },
-            post: n.post || { id: -1, title: '未知帖子' }
+            sender: n.sender || { id: -1, name: '未知用户', avatarUrl: '', email: '', createdAt: '', updatedAt: '' },
+            post: n.post || { id: -1, title: '未知帖子' },
+            comment: n.comment
         }));
         pagination.total = response.totalCount || 0;
         pagination.currentPage = page;
@@ -171,7 +188,7 @@ const markOneRead = async (id: number) => {
         await NotificationService.markAsRead(id);
         const index = notifications.value.findIndex((n: NotificationWithRelations) => n.id === id);
         if (index !== -1) {
-            notifications.value[index].read = true;
+            notifications.value[index].isRead = true;
         }
     } catch (err: any) {
         console.error('Error marking notification as read:', err);
@@ -182,7 +199,7 @@ const markOneRead = async (id: number) => {
 const markAllRead = async () => {
     try {
         const result = await NotificationService.markAllAsRead();
-        notifications.value.forEach((n: NotificationWithRelations) => n.read = true);
+        notifications.value.forEach((n: NotificationWithRelations) => n.isRead = true);
         ElMessage.success(`已将 ${result.count} 条未读通知标记为已读`);
     } catch (err: any) {
         console.error('Error marking all notifications as read:', err);
@@ -278,10 +295,6 @@ onMounted(() => {
     }
 }
 
-.notification-list {
-    // Container for all items
-}
-
 .notification-item {
     display: flex;
     align-items: center;
@@ -358,20 +371,19 @@ onMounted(() => {
     }
 
     .meta {
-        flex-shrink: 0;
         display: flex;
         align-items: center;
-        gap: 15px;
+        margin-left: auto;
+        color: var(--el-text-color-secondary);
+        font-size: 0.8rem;
+        flex-shrink: 0;
 
         .time {
-            font-size: 0.85rem;
-            color: #909399;
-            min-width: 70px;
-            text-align: right;
+            margin-right: 12px;
         }
-        .el-button {
-            padding: 0;
-            font-size: 1rem;
+        
+        .action-button {
+            margin-left: 6px;
         }
     }
 }

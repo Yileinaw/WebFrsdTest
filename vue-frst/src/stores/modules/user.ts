@@ -104,10 +104,18 @@ export const useUserStore = defineStore('user', () => {
 
     // --- 新增 Action: 设置用户信息 ---
     function setUser(userInfo: CurrentUserType) {
-        console.log('[setUser] Called with:', userInfo);
-        console.log('[setUser] UserInfo includes role?:', userInfo ? ('role' in userInfo) : 'N/A');
+        console.log('[setUser] Called with userInfo:', JSON.stringify(userInfo)); // Log input
+        console.log('[setUser] UserInfo includes counts?:',
+          userInfo ? `post: ${'postCount' in userInfo}, follower: ${'followerCount' in userInfo}, following: ${'followingCount' in userInfo}, favorites: ${'favoritesCount' in userInfo}` : 'N/A');
+        
+        const oldUserInfo = JSON.stringify(currentUser.value); // Log previous state
+        
         // Preserve existing token when only setting user
-        _setLoginInfo(token.value, userInfo);
+        _setLoginInfo(token.value, userInfo); 
+
+        // +++ Log the state AFTER update +++
+        console.log('[setUser] currentUser state BEFORE update:', oldUserInfo);
+        console.log('[setUser] currentUser state AFTER update:', JSON.stringify(currentUser.value));
     }
 
     // --- 新增 Action: 登录 ---
@@ -135,18 +143,14 @@ export const useUserStore = defineStore('user', () => {
             console.log('[fetchUserProfile] No token, aborting.');
             return; 
         }
-        // Optimization: If user info already exists, maybe don't fetch again?
-        // if (currentUser.value) {
-        //     console.log('[fetchUserProfile] User info already exists, skipping fetch.');
-        //     return;
-        // }
         try {
             const response = await AuthService.getCurrentUser();
-            console.log('[fetchUserProfile] API success, received user:', response.user);
+            // +++ Log the exact response from API +++
+            console.log('[fetchUserProfile] API success, received RAW user data:', JSON.stringify(response.user)); 
             setUser(response.user); // Use setUser to update state
         } catch (error) {
             console.error("[fetchUserProfile] Failed:", error);
-            logout(); // Logout on failure seems reasonable here
+            logout(); 
         }
     }
 
@@ -191,6 +195,39 @@ export const useUserStore = defineStore('user', () => {
         }
     }
 
+    // +++ 新增 Actions: 更新关注/粉丝数量 +++
+    function incrementFollowingCount() {
+        if (currentUser.value) {
+            currentUser.value.followingCount = (currentUser.value.followingCount ?? 0) + 1;
+            localStorage.setItem('currentUserInfo', JSON.stringify(currentUser.value));
+            console.log('[incrementFollowingCount] Updated following count in store:', currentUser.value.followingCount);
+        }
+    }
+
+    function decrementFollowingCount() {
+        if (currentUser.value && currentUser.value.followingCount) {
+            currentUser.value.followingCount = Math.max(0, currentUser.value.followingCount - 1);
+            localStorage.setItem('currentUserInfo', JSON.stringify(currentUser.value));
+            console.log('[decrementFollowingCount] Updated following count in store:', currentUser.value.followingCount);
+        }
+    }
+
+    function incrementFollowerCount() {
+        if (currentUser.value) {
+            currentUser.value.followerCount = (currentUser.value.followerCount ?? 0) + 1;
+            localStorage.setItem('currentUserInfo', JSON.stringify(currentUser.value));
+            console.log('[incrementFollowerCount] Updated follower count in store:', currentUser.value.followerCount);
+        }
+    }
+
+    function decrementFollowerCount() {
+        if (currentUser.value && currentUser.value.followerCount) {
+            currentUser.value.followerCount = Math.max(0, currentUser.value.followerCount - 1);
+            localStorage.setItem('currentUserInfo', JSON.stringify(currentUser.value));
+            console.log('[decrementFollowerCount] Updated follower count in store:', currentUser.value.followerCount);
+        }
+    }
+
     // --- Return --- 
     // 暴露 state, getters, 和 actions
     return {
@@ -207,6 +244,11 @@ export const useUserStore = defineStore('user', () => {
         updateUserInfo,
         updateAvatarUrl,
         logout,
-        isAdmin // Expose the new getter
+        isAdmin,
+        // +++ 暴露新的 actions +++
+        incrementFollowingCount,
+        decrementFollowingCount,
+        incrementFollowerCount,
+        decrementFollowerCount
     }
 }) 

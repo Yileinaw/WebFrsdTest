@@ -1,158 +1,172 @@
 // src/services/PostService.ts
-import http from '../http';
-import type { Post, User, Comment, PostPreview, Favorite, Notification } from '../types/models';
+import http from '@/http';
+import type { Post, Comment, PostPreview } from '@/types/models'; // Simplified imports for relevance
+import type { CreatePostResponse } from '@/types/payloads';
 
-// 定义创建帖子请求的数据类型
-interface CreatePostData {
-    title: string;
-    content?: string;
-    imageUrl?: string | null;
+// Define the specific Paginated response type needed for UserProfileView
+// Ensure this matches the structure your backend API actually returns for these endpoints
+export interface PaginatedUserPostsResponse {
+    posts: Post[];         // Array of Post objects
+    currentPage: number;   // Current page number
+    totalPages: number;    // Total number of pages
+    totalPosts: number;    // Total number of posts
 }
 
-// 定义更新帖子请求的数据类型
-interface UpdatePostData {
-    title?: string;
-    content?: string;
-    imageUrl?: string | null;
-}
+// Other necessary interfaces (adjust if needed based on actual usage elsewhere)
+interface GetPostsResponse { posts: PostPreview[]; totalCount: number; }
+interface GetPostResponse { post: Post; }
+interface PostMutationResponse { message: string; post: Post; }
+interface CreateCommentResponse { message: string; comment: Comment; }
+interface UpdatePostData { title?: string; content?: string; imageUrl?: string | null; }
 
-// 定义获取帖子列表的响应类型 (根据后端返回)
-interface GetPostsResponse {
-    posts: PostPreview[];
-    totalCount: number;
-}
+// --- Post Service Class ---
+export class PostService {
 
-// 定义获取单个帖子的响应类型
-interface GetPostResponse {
-    post: Post;
-}
-
-// 定义创建/更新/删除帖子的通用响应类型 (根据后端返回)
-interface PostMutationResponse {
-    message: string;
-    post: Post;
-}
-
-// Define type for getting comments (matches backend response)
-interface GetCommentsResponse {
-    comments: Comment[];
-    totalCount: number;
-}
-
-// Define type for creating a comment response (matches backend response)
-interface CreateCommentResponse {
-    message: string;
-    comment: Comment;
-}
-
-// Define type for paginated posts response
-interface PaginatedPostsResponse {
-    posts: Post[];
-    totalCount: number;
-}
-
-// Type for createPost response (adjust if backend response changed)
-interface CreatePostResponse {
-    message: string;
-    post: Post;
-}
-
-export const PostService = {
-    // 创建帖子 (需要认证)
-    async createPost(data: FormData): Promise<CreatePostResponse> {
+    /**
+     * 创建帖子 (需要认证)
+     */
+    static async createPost(data: FormData): Promise<CreatePostResponse> {
         const response = await http.post<CreatePostResponse>('/posts', data);
         return response.data;
-    },
+    }
 
-    // 获取帖子列表 (公开，支持分页)
-    async getAllPosts(params?: {
+    /**
+     * 获取帖子列表 (公开，支持分页等参数)
+     */
+    static async getAllPosts(params?: {
       page?: number;
       limit?: number;
       sortBy?: string;
       search?: string;
       showcase?: boolean;
       currentUserId?: number | null;
-    }): Promise<GetPostsResponse> {
+    }): Promise<GetPostsResponse> { // Adjust response type if needed
         const response = await http.get<GetPostsResponse>('/posts', { params });
         return response.data;
-    },
+    }
 
-    // 获取单个帖子 (公开)
-    async getPostById(id: number): Promise<GetPostResponse> {
+    /**
+     * 获取单个帖子 (公开)
+     */
+    static async getPostById(id: number): Promise<GetPostResponse> {
         const response = await http.get<GetPostResponse>(`/posts/${id}`);
         return response.data;
-    },
+    }
 
-    // 更新帖子 (需要认证)
-    async updatePost(id: number, data: UpdatePostData): Promise<PostMutationResponse> {
+    /**
+     * 更新帖子 (需要认证)
+     */
+    static async updatePost(id: number, data: UpdatePostData): Promise<PostMutationResponse> {
         const response = await http.put<PostMutationResponse>(`/posts/${id}`, data);
         return response.data;
-    },
-
-    // 删除帖子 (需要认证)
-    async deletePost(id: number): Promise<PostMutationResponse> {
-        const response = await http.delete<PostMutationResponse>(`/posts/${id}`);
-        return response.data; // 后端返回了被删除的帖子信息
-    },
-
-    // --- Like/Unlike functions ---
-    async likePost(postId: number): Promise<void> { // Returns 204 No Content
-        await http.post(`/posts/${postId}/like`);
-    },
-
-    async unlikePost(postId: number): Promise<void> { // Returns 204 No Content
-        await http.delete(`/posts/${postId}/like`);
-    },
-
-    // --- Add Favorite/Unfavorite functions ---
-    async favoritePost(postId: number): Promise<void> {
-        await http.post(`/posts/${postId}/favorite`);
-    },
-
-    async unfavoritePost(postId: number): Promise<void> {
-        await http.delete(`/posts/${postId}/favorite`);
-    },
-    // --- End Add Favorite/Unfavorite functions ---
-
-    // --- Comment functions ---
+    }
 
     /**
-     * Get comments for a specific post.
-     * Returns an array of Comment objects.
+     * 删除帖子 (需要认证)
      */
-    async getCommentsByPostId(postId: number): Promise<Comment[]> {
-        // Backend now returns the array directly
+    static async deletePost(id: number): Promise<void> { // Changed response to void, assuming backend returns 204 or similar
+        await http.delete(`/posts/${id}`);
+    }
+
+    /**
+     * 点赞帖子
+     */
+    static async likePost(postId: number): Promise<void> {
+        await http.post(`/posts/${postId}/like`);
+    }
+
+    /**
+     * 取消点赞帖子
+     */
+    static async unlikePost(postId: number): Promise<void> {
+        await http.delete(`/posts/${postId}/like`);
+    }
+
+    /**
+     * 收藏帖子
+     */
+    static async favoritePost(postId: number): Promise<void> {
+        await http.post(`/posts/${postId}/favorite`);
+    }
+
+    /**
+     * 取消收藏帖子
+     */
+    static async unfavoritePost(postId: number): Promise<void> {
+        await http.delete(`/posts/${postId}/favorite`);
+    }
+
+    /**
+     * 获取帖子的评论列表
+     */
+    static async getCommentsByPostId(postId: number): Promise<Comment[]> {
         const response = await http.get<Comment[]>(`/posts/${postId}/comments`);
         return response.data;
-    },
+    }
 
     /**
-     * Create a new comment or reply for a post.
-     * Requires text and optionally parentId.
+     * 创建评论或回复
      */
-    async createComment(postId: number, data: { text: string; parentId?: number | null }): Promise<CreateCommentResponse> {
+    static async createComment(postId: number, data: { text: string; parentId?: number | null }): Promise<CreateCommentResponse> {
         const response = await http.post<CreateCommentResponse>(`/posts/${postId}/comments`, data);
         return response.data;
-    },
+    }
 
     /**
-     * Delete a comment.
+     * 删除评论
      */
-    async deleteComment(commentId: number): Promise<void> { // Returns 204 No Content
+    static async deleteComment(commentId: number): Promise<void> {
         await http.delete(`/comments/${commentId}`);
-    },
+    }
 
-    // (如果需要) 创建用户个人资料更新服务
-    // async updateUserProfile(data: { name?: string }): Promise<{message: string, user: Omit<User, 'password'>}> {
-    //   const response = await http.put<{message: string, user: Omit<User, 'password'>}>('/users/profile', data);
-    //   return response.data;
-    // }
-
-    // --- Add method to get current user's posts --- 
-    async getMyPosts(params?: { page?: number; limit?: number }): Promise<PaginatedPostsResponse> {
-        // Call GET /api/users/me/posts
-        const response = await http.get<PaginatedPostsResponse>('/users/me/posts', { params });
+    /**
+     * 获取当前用户的帖子列表 (可能用于 MyPostsView)
+     */
+    static async getMyPosts(params?: { page?: number; limit?: number }): Promise<PaginatedUserPostsResponse> { // Use PaginatedUserPostsResponse for consistency if structure matches
+        const response = await http.get<PaginatedUserPostsResponse>('/users/me/posts', { params });
         return response.data;
     }
-    // --- End add method ---
-};
+
+    // --- Methods required by UserProfileView --- //
+
+    /**
+     * 获取指定用户的帖子列表 (用于 UserProfileView)
+     */
+    static async getPostsByUserId(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedUserPostsResponse> {
+        console.warn(`[PostService.getPostsByUserId] Fetching posts for user ${userId}, page: ${page}, limit: ${limit}`);
+        // Make sure the backend endpoint exists and returns the expected structure
+        try {
+           const response = await http.get<PaginatedUserPostsResponse>(`/users/${userId}/posts`, {
+               params: { page, limit }
+           });
+           console.log(`[PostService.getPostsByUserId] Received response for user ${userId}:`, response.data);
+           // Ensure the response structure matches PaginatedUserPostsResponse, especially the 'posts' array
+           return response.data || { posts: [], currentPage: 1, totalPages: 0, totalPosts: 0 };
+        } catch (error) {
+           console.error(`Error fetching posts for user ${userId}:`, error);
+           // Return empty structure on error to prevent breaking the UI
+           return { posts: [], currentPage: 1, totalPages: 0, totalPosts: 0 };
+        }
+    }
+
+    /**
+     * 获取指定用户收藏的帖子列表 (用于 UserProfileView)
+     */
+    static async getFavoritedPosts(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedUserPostsResponse> {
+        console.warn(`[PostService.getFavoritedPosts] Fetching favorites for user ${userId}, page: ${page}, limit: ${limit}`);
+        // Make sure the backend endpoint exists and returns the expected structure
+         try {
+            const response = await http.get<PaginatedUserPostsResponse>(`/users/${userId}/favorites`, {
+                params: { page, limit }
+            });
+            console.log(`[PostService.getFavoritedPosts] Received response for user ${userId}:`, response.data);
+             // Ensure the response structure matches PaginatedUserPostsResponse
+            return response.data || { posts: [], currentPage: 1, totalPages: 0, totalPosts: 0 };
+         } catch (error) {
+            console.error(`Error fetching favorites for user ${userId}:`, error);
+            // Return empty structure on error
+            return { posts: [], currentPage: 1, totalPages: 0, totalPosts: 0 };
+         }
+    }
+
+} // End of PostService class

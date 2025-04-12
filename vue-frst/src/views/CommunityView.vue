@@ -4,7 +4,7 @@
     <section class="action-bar">
       <!-- Placeholder for sorting/filtering tabs -->
        <el-tabs v-model="activeTab" class="tabs">
-        <el-tab-pane label="最新发布" name="latest"></el-tab-pane>
+        <el-tab-pane label="最新发布" name="createdAt"></el-tab-pane>
         <el-tab-pane label="热门讨论" name="popular"></el-tab-pane>
         <!-- Add more tabs if needed -->
       </el-tabs>
@@ -66,22 +66,27 @@ import { EditPen } from '@element-plus/icons-vue'
 import ShareCard from '@/components/common/ShareCard.vue' 
 // --- 新增导入 ---
 import { PostService } from '@/services/PostService';
-import type { Post } from '@/types/models';
-import { ElMessage } from 'element-plus'; // 导入 ElMessage
+// --- 移除对 Post 的直接导入，如果只使用 PostPreview ---
+// import type { Post } from '@/types/models';
+// + 导入 PostPreview
+import type { Post, PostPreview } from '@/types/models'; // Keep Post if handlePostUpdate needs it
 // --- 导入 PostEditor ---
 import PostEditor from '@/components/features/PostEditor.vue';
 // --- 新增导入 ---
 import { useUserStore } from '@/stores/modules/user';
 import { useRouter } from 'vue-router'; // 导入 useRouter
 import PostDetailModal from '@/components/common/PostDetailModal.vue'; // Import the modal
+// + Restore ElMessage import
+import { ElMessage, ElTabs, ElTabPane, ElButton, ElSkeleton, ElAlert, ElRow, ElCol, ElEmpty, ElPagination } from 'element-plus'; 
 
-const activeTab = ref('latest')
+const activeTab = ref('createdAt')
 
 // --- 新增状态控制编辑器显示 ---
 const isEditorVisible = ref(false);
 
 // --- 新增状态 ---
-const posts = ref<Post[]>([])
+// + Restore posts ref type to PostPreview[]
+const posts = ref<PostPreview[]>([])
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const pagination = reactive({
@@ -106,16 +111,21 @@ const communityPosts = ref([
 */
 
 // --- 修改获取帖子函数以接受 sortBy ---
-const fetchPosts = async (page: number = 1, sortBy: string = 'latest') => {
+const fetchPosts = async (page: number = 1, sortBy: string = 'createdAt') => {
   isLoading.value = true;
   error.value = null;
   try {
-    // --- 传递 sortBy 参数 --- 
+    // --- Determine correct sortBy value for API --- 
+    // Map 'popular' tab to a valid backend sort key, e.g., 'likesCount'
+    // Keep 'createdAt' as is.
+    const apiSortBy = sortBy === 'popular' ? 'likesCount' : sortBy;
+    
     const response = await PostService.getAllPosts({
       page: page,
       limit: pagination.pageSize,
-      sortBy: sortBy // 将 sortBy 传给 Service
+      sortBy: apiSortBy // Pass the mapped value
     });
+    // Now types match: PostPreview[] = PostPreview[]
     posts.value = response.posts;
     pagination.total = response.totalCount || 0;
     pagination.currentPage = page;
@@ -129,20 +139,19 @@ const fetchPosts = async (page: number = 1, sortBy: string = 'latest') => {
 };
 
 // --- 添加 watch 监听 activeTab 变化 ---
-watch(activeTab, (newSortBy) => {
-  // 当 tab 切换时，从第一页开始加载对应排序的数据
-  fetchPosts(1, newSortBy);
+watch(activeTab, (newTabName) => {
+  fetchPosts(1, newTabName); 
 });
 
 // --- 修改分页事件处理 (传递当前排序方式) ---
 const handlePageChange = (newPage: number) => {
     console.log('Current page:', newPage);
-    fetchPosts(newPage, activeTab.value); // 传递当前的 activeTab 作为 sortBy
+    fetchPosts(newPage, activeTab.value);
 };
 
 // --- 在 onMounted 中调用 (传递初始排序方式) ---
 onMounted(() => {
-  fetchPosts(pagination.currentPage, activeTab.value); // 传递初始的 activeTab
+  fetchPosts(pagination.currentPage, activeTab.value);
 });
 
 // --- 获取实例 ---
@@ -189,10 +198,22 @@ const handleFavorite = (id: number | string) => {
   console.log('Favorited post:', id)
 }
 
-const handlePostUpdate = (updatedPost: Post) => {
+// + Restore handlePostUpdate parameter type to Post
+const handlePostUpdate = (updatedPost: Post) => { 
   const index = posts.value.findIndex(p => p.id === updatedPost.id);
   if (index !== -1) {
-    posts.value[index] = { ...posts.value[index], ...updatedPost }; // Merge updates
+    const existingPreview = posts.value[index];
+    
+    existingPreview.title = updatedPost.title;
+    existingPreview.content = updatedPost.content ?? null; 
+    existingPreview.imageUrl = updatedPost.imageUrl ?? null; 
+    existingPreview.likesCount = updatedPost.likesCount;
+    existingPreview.commentsCount = updatedPost.commentsCount;
+    existingPreview.favoritesCount = updatedPost.favoritesCount; 
+    existingPreview.isLiked = updatedPost.isLiked;
+    existingPreview.isFavorited = updatedPost.isFavorited;
+    
+    posts.value[index] = existingPreview;
   }
 };
 
@@ -216,12 +237,12 @@ export default {
   align-items: center;
   margin-bottom: 20px;
   .tabs {
-    // Customize tab appearance if needed
+    // - Remove empty ruleset
   }
 }
 
 .posts-list-section {
-  // Style for the posts list area
+  // - Remove empty ruleset
 }
 
 .pagination-section {

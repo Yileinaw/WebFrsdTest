@@ -1,22 +1,37 @@
 <!-- vue-frst/src/components/common/ProfileDropdown.vue -->
 <template>
-  <el-card shadow="always" :body-style="{ padding: '0px' }" 
-    class="profile-dropdown">
-    <!-- Removed Re-added User Info Header -->
+  <!-- Use a plain div as the root container -->
+  <div class="profile-dropdown-content">
+    <!-- + Restore User Info Header -->
+    <div class="profile-header">
+      <el-avatar 
+        :size="40" 
+        :src="dropdownAvatarUrl"
+        class="header-avatar"
+       />
+      <div class="header-user-info">
+         <span class="header-username">{{ userStore.currentUser?.name || '用户' }}</span>
+         <span class="header-email">{{ userStore.currentUser?.email }}</span>
+      </div>
+    </div>
 
     <!-- Stats -->
     <div class="flex justify-around p-2 text-center text-sm border-b">
-      <router-link :to="{ name: 'UserProfile', params: { userId: userStore.currentUser?.id }, query: { tab: 'following' } }" class="stat-item">
-        <div>{{ userStore.currentUser?.followingCount ?? 0 }}</div>
-        <div class="text-xs">关注</div>
+      <router-link :to="{ name: 'UserProfile', params: { userId: userStore.currentUser?.id }, query: { tab: 'posts' } }" class="stat-item">
+         <div>{{ userStore.currentUser?.postCount ?? 0 }}</div>
+        <div class="text-xs">动态</div>
       </router-link>
       <router-link :to="{ name: 'UserProfile', params: { userId: userStore.currentUser?.id }, query: { tab: 'followers' } }" class="stat-item">
         <div>{{ userStore.currentUser?.followerCount ?? 0 }}</div>
         <div class="text-xs">粉丝</div>
       </router-link>
-      <router-link :to="{ name: 'UserProfile', params: { userId: userStore.currentUser?.id }, query: { tab: 'posts' } }" class="stat-item">
-         <div>{{ userStore.currentUser?.postCount ?? 0 }}</div>
-        <div class="text-xs">动态</div>
+      <router-link :to="{ name: 'UserProfile', params: { userId: userStore.currentUser?.id }, query: { tab: 'following' } }" class="stat-item">
+        <div>{{ userStore.currentUser?.followingCount ?? 0 }}</div>
+        <div class="text-xs">关注</div>
+      </router-link>
+      <router-link :to="{ name: 'UserProfile', params: { userId: userStore.currentUser?.id }, query: { tab: 'favorites' } }" class="stat-item">
+          <div>{{ userStore.currentUser?.favoritesCount ?? 0 }}</div>
+          <div class="text-xs">收藏</div>
       </router-link>
     </div>
 
@@ -26,7 +41,7 @@
         <span><el-icon><User /></el-icon> 个人中心</span>
         <el-icon class="arrow-right"><ArrowRight /></el-icon>
       </div>
-      <div @click="goToRoute({ name: 'ProfileSettings' })" class="dropdown-item">
+      <div @click="goToRoute({ name: 'EditProfile' })" class="dropdown-item">
         <span><el-icon><Setting /></el-icon> 账号设置</span>
          <el-icon class="arrow-right"><ArrowRight /></el-icon>
       </div>
@@ -46,7 +61,7 @@
        </el-link>
     </div>
 
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -55,9 +70,13 @@ import { useUserStore } from '@/stores/modules/user';
 import type { RouteLocationRaw, RouteLocationNamedRaw } from 'vue-router';
 // Import necessary Element Plus icons
 import { User, Setting, Platform, SwitchButton, ArrowRight } from '@element-plus/icons-vue';
+import { computed } from 'vue';
 
 const userStore = useUserStore();
 const router = useRouter();
+
+// Keep computed for avatar as it worked
+const dropdownAvatarUrl = computed(() => userStore.resolvedAvatarUrl);
 
 // Type guard to check if the route has params
 function isRouteWithParams(route: RouteLocationRaw): route is RouteLocationNamedRaw {
@@ -85,15 +104,48 @@ const goToRoute = (route: RouteLocationRaw) => {
 </script>
 
 <style scoped lang="scss">
-.profile-dropdown {
-  // Restore original border-radius and remove border
-  border-radius: var(--el-border-radius-base);
-  // Removed border
+// Apply card-like styles to the new root div
+.profile-dropdown-content {
   width: 256px;
+  background-color: var(--el-bg-color-overlay); // Use overlay background color
+  border-radius: var(--el-border-radius-base);
+  // border: 1px solid var(--el-border-color-lighter); // Keep border or remove based on popover style
+  overflow: hidden; // Prevent content overflow
+}
 
-  .el-card__body {
-      padding: 0 !important;
-  }
+// + Add styles for the restored profile header
+.profile-header {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--el-border-color-lighter); // Add separator
+}
+
+.header-avatar {
+  margin-right: 12px;
+  flex-shrink: 0; // Prevent avatar from shrinking
+}
+
+.header-user-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; // Prevent text overflow
+}
+
+.header-username {
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; // Handle long usernames
+}
+
+.header-email {
+  font-size: 0.85rem;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; // Handle long emails
 }
 
 .border-b {

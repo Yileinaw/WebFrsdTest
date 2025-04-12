@@ -16,6 +16,7 @@ interface PostWithRelations {
         id: number;
         name: string | null;
         avatarUrl?: string | null; 
+        isFollowing?: boolean;
     };
     likesCount: number;
     commentsCount: number;
@@ -59,9 +60,23 @@ interface CommentWithAuthor {
     };
 }
 
+// Define the specific Paginated response type needed for UserProfileView and MyPosts
+// Ensure this matches the structure your backend API actually returns
+interface PaginatedUserPostsResponse {
+    posts: Post[];
+    currentPage: number;
+    totalPages: number;
+    totalPosts: number;
+    totalCount: number; // Ensure totalCount is number
+}
+
 export class PostService {
     // Helper function to process Prisma query result into PostWithRelations
-    private static processPostResult(postData: PostQueryResult, currentUserId?: number | null): PostWithRelations {
+    private static processPostResult(
+        postData: PostQueryResult, 
+        currentUserId?: number | null, 
+        isFollowingAuthor?: boolean
+    ): PostWithRelations {
         const isLiked = !!(currentUserId && postData.likes?.length);
         const isFavorited = !!(currentUserId && postData.favoritedBy?.length);
 
@@ -74,7 +89,12 @@ export class PostService {
             createdAt: postData.createdAt,
             updatedAt: postData.updatedAt,
             authorId: postData.authorId,
-            author: postData.author,
+            author: {
+                id: postData.author.id,
+                name: postData.author.name,
+                avatarUrl: postData.author.avatarUrl,
+                isFollowing: isFollowingAuthor ?? false,
+            },
             likesCount: postData._count.likes,
             commentsCount: postData._count.comments,
             favoritesCount: postData._count.favoritedBy,
@@ -181,7 +201,20 @@ export class PostService {
 
         if (!postData) return null;
 
-        return this.processPostResult(postData as PostQueryResult, currentUserId);
+        let isFollowingAuthor = false;
+        if (currentUserId && postData.authorId && currentUserId !== postData.authorId) {
+            const follow = await prisma.follows.findUnique({
+                where: {
+                    followerId_followingId: {
+                        followerId: currentUserId,
+                        followingId: postData.authorId,
+                    },
+                },
+            });
+            isFollowingAuthor = !!follow;
+        }
+
+        return this.processPostResult(postData as PostQueryResult, currentUserId, isFollowingAuthor);
     }
 
     // 更新帖子

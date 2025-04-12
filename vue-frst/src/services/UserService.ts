@@ -7,22 +7,23 @@ import type { SuccessMessageResponse } from '@/types/payloads';
 
 // --- 类型接口定义 ---
 // 用于获取用户信息的接口，与后端 getUserById 返回一致
-// export interface UserProfileData {
-//     id: number;
-//     username: string | null;
-//     name: string | null;
-//     avatarUrl: string | null;
-//     bio: string | null;
-//     joinedAt: string; // ISO Date String
-//     postCount: number;
-//     followerCount: number;
-//     followingCount: number;
-//     isFollowing: boolean;
-//     // 可能还包含 email, role, isEmailVerified 用于个人设置页
-//     email?: string;
-//     role?: string;
-//     isEmailVerified?: boolean;
-// }
+export interface UserProfileData {
+    id: number;
+    username: string | null;
+    name: string | null;
+    avatarUrl: string | null;
+    bio: string | null;
+    joinedAt: string; // ISO Date String
+    postCount: number;
+    followerCount: number;
+    followingCount: number;
+    isFollowing: boolean;
+    favoritesCount?: number; // 添加收藏数 (可选，因为后端刚加)
+    // 可能还包含 email, role, isEmailVerified 用于个人设置页
+    email?: string;
+    role?: string;
+    isEmailVerified?: boolean;
+}
 
 // 用于更新个人资料后，后端返回的数据结构
 // Ensure the user property type matches the store
@@ -45,11 +46,13 @@ export interface PaginatedUserListResponse {
 // 导入 UserPublicListData (如果它在 models.ts 中定义)
 // import type { UserPublicListData } from '@/types/models';
 // 如果 UserPublicListData 只在此处使用，保持上面的定义即可
-type UserPublicListData = {
+export type UserPublicListData = {
     id: number;
     username: string | null;
+    name: string | null;
     avatarUrl: string | null;
     bio: string | null;
+    isFollowing?: boolean;
 }
 
 // Remove unused UserProfileResponse interface
@@ -73,12 +76,10 @@ export class UserService {
         return response.data;
     }
 
-    // 获取特定用户信息 (返回 Omit<User, 'password'>)
-    // NOTE: Backend /users/:userId needs to return the full Omit<User,'password'> structure
-    // OR this function needs to construct it if backend only returns public data.
-    // Assuming backend /users/:userId returns full structure for now.
-    static async getUserProfile(userId: number): Promise<Omit<User, 'password'>> {
-        const response = await http.get<Omit<User, 'password'>>(`/users/${userId}`);
+    // 获取特定用户信息 (返回 UserProfileData)
+    // NOTE: Backend /users/:userId should return the public UserProfileData structure.
+    static async getUserProfile(userId: number): Promise<UserProfileData> {
+        const response = await http.get<UserProfileData>(`/users/${userId}`);
         return response.data;
     }
 

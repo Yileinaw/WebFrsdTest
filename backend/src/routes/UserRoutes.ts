@@ -6,6 +6,7 @@ import { AuthMiddleware } from '../middleware/AuthMiddleware';
 import { AuthenticatedRequest } from '../middleware/AuthMiddleware';
 import { PostService } from '../services/PostService';
 import upload from '../config/multerConfig';
+import { OptionalAuthMiddleware } from '../middleware/OptionalAuthMiddleware'; // Import OptionalAuthMiddleware
 
 // console.log('[UserRoutes.ts] File executing...'); // Remove log
 
@@ -14,7 +15,12 @@ const userRouter = Router();
 // Public routes (if any specific user routes need to be public)
 // router.get('/:id', UserController.getUserById); // Example public route
 
-// --- Get Default Avatars (Public) ---
+// --- Public User Routes ---
+// GET /api/users/:userId - 获取特定用户信息 (公开，但需OptionalAuth判断关注状态)
+// Apply OptionalAuthMiddleware here
+userRouter.get('/:userId', OptionalAuthMiddleware, UserController.getUserById);
+
+// GET /api/users/avatars/defaults - 获取预设头像列表 (公开)
 userRouter.get('/avatars/defaults', UserController.getDefaultAvatars);
 
 // Routes requiring authentication
@@ -84,4 +90,20 @@ userRouter.get('/:userId/followers', UserController.getFollowers);
 userRouter.get('/:userId/following', UserController.getFollowing);
 // --- 结束新增路由 ---
 
+// --- Specific User Routes (/api/users/:userId/...) ---
+// GET /api/users/:userId/followers - 获取特定用户的粉丝列表 (公开)
+userRouter.get('/:userId/followers', UserController.getFollowers);
+
+// GET /api/users/:userId/following - 获取特定用户关注的列表 (公开)
+userRouter.get('/:userId/following', UserController.getFollowing);
+
+// + Add routes for getting a specific user's posts and favorites
+userRouter.get('/:userId/posts', UserController.getUserPosts);       // 公开?
+userRouter.get('/:userId/favorites', UserController.getUserFavorites); // 公开?
+
+// --- Follow/Unfollow Routes (Require Auth) ---
+userRouter.post('/:userId/follow', AuthMiddleware, UserController.followUser);
+userRouter.delete('/:userId/follow', AuthMiddleware, UserController.unfollowUser);
+
+// Changed back to named export
 export { userRouter }; 

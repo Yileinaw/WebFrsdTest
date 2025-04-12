@@ -76,7 +76,7 @@ import { defineProps, defineEmits, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElCard, ElAvatar, ElButton, ElMessage, ElIcon, ElImage, ElTooltip } from 'element-plus'; // Added ElImage
 import { Star, ChatDotSquare, CollectionTag, MoreFilled, Picture } from '@element-plus/icons-vue'; // Added Picture
-import type { Post } from '@/types/models';
+import type { Post, PostPreview } from '@/types/models';
 import { useUserStore } from '@/stores/modules/user';
 import { PostService } from '@/services/PostService'; 
 import { formatTimeAgo, truncateText } from '@/utils/formatters'; // Assuming you have these helpers
@@ -85,7 +85,7 @@ import { resolveStaticAssetUrl } from '@/utils/urlUtils'; // Import the new util
 // ... (rest of the script setup remains largely the same)
 
 interface Props {
-  post: Post;
+  post: PostPreview;
 }
 const props = defineProps<Props>();
 
@@ -117,14 +117,10 @@ const toggleLike = async () => {
 
         // Fetch the updated post data from the backend
         const response = await PostService.getPostById(props.post.id);
-        const updatedPostData = response.post; // Assuming getPostById returns { post: Post }
+        const updatedPostData = response.post; // This is the full Post object
         
-        // Emit the fully updated post data
-        emit('update:post', { 
-            ...props.post, // Keep existing fields not returned by getPostById if any
-            isLiked: updatedPostData.isLiked, 
-            likesCount: updatedPostData.likesCount 
-        });
+        // Emit the fully updated Post object directly
+        emit('update:post', updatedPostData);
 
     } catch (error: any) {
         console.error("Toggle like error:", error);
@@ -152,14 +148,10 @@ const toggleFavorite = async () => {
 
         // Fetch the updated post data from the backend
         const response = await PostService.getPostById(props.post.id);
-        const updatedPostData = response.post;
+        const updatedPostData = response.post; // This is the full Post object
 
-        // Emit the fully updated post data
-        emit('update:post', { 
-             ...props.post,
-             isFavorited: updatedPostData.isFavorited,
-             favoritesCount: updatedPostData.favoritesCount
-        });
+        // Emit the fully updated Post object directly
+        emit('update:post', updatedPostData);
         
     } catch (error: any) {
         console.error("Toggle favorite error:", error);

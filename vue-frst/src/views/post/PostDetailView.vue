@@ -15,11 +15,26 @@
         <h1>{{ post.title }}</h1>
         <div class="meta-bar"> 
           <div class="author-info">
-            <el-avatar :size="32" :src="resolveStaticAssetUrl(post.author?.avatarUrl)" class="author-avatar" />
+            <router-link :to="{ name: 'UserProfile', params: { userId: post.author?.id } }">
+               <el-avatar :size="32" :src="resolveStaticAssetUrl(post.author?.avatarUrl)" class="author-avatar" />
+            </router-link>
             <div class="info-text">
-              <span class="author-name">{{ post.author?.name || '匿名用户' }}</span>
+              <router-link :to="{ name: 'UserProfile', params: { userId: post.author?.id } }" class="author-name-link">
+                 <span class="author-name">{{ post.author?.name || '匿名用户' }}</span>
+              </router-link>
               <span class="publish-time">发布于 {{ formatTime(post.createdAt) }}</span>
             </div>
+             <!-- + Add Follow Button Here -->
+            <el-button
+                v-if="showFollowAuthorButton"
+                size="small"
+                :type="post.author?.isFollowing ? 'default' : 'primary'"
+                class="follow-button-inline"
+                @click="handleFollowAuthor"
+                :loading="followAuthorLoading"
+            >
+                {{ post.author?.isFollowing ? '已关注' : '关注' }}
+            </el-button>
           </div>
           <!-- Moved Actions Here -->
           <div class="post-actions-inline">
@@ -128,6 +143,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElSkeleton, ElAlert, ElEmpty, ElAvatar, ElButton, ElInput, ElMessage, ElDivider } from 'element-plus';
 import { Star, StarFilled, ChatLineSquare, Delete, Back } from '@element-plus/icons-vue';
 import { PostService } from '@/services/PostService';
+import { UserService } from '@/services/UserService';
 import type { Post, Comment, User } from '@/types/models';
 import MarkdownIt from 'markdown-it';
 import { resolveStaticAssetUrl } from '@/utils/urlUtils';
@@ -159,6 +175,9 @@ const newCommentText = ref('');
 
 // --- Reply State ---
 const replyingToCommentId = ref<number | null>(null);
+
+// --- Follow Author State ---
+const followAuthorLoading = ref(false);
 
 // 使用 provide 提供状态
 provide('replyingToCommentId', replyingToCommentId);
@@ -267,45 +286,32 @@ const fetchComments = async () => {
     }
 };
 
-const fetchPostDetails = async () => {
-  const idString = route.params.id as string; // Get id as string first
-  // Check if idString is actually a valid number string before parsing
-  if (!idString || isNaN(Number(idString))) { 
+const fetchPostDetails = async (id: number) => {
+  if (!id) {
     error.value = '无效的帖子 ID';
     isLoading.value = false;
-    post.value = null; // Ensure post is null on invalid ID
-    comments.value = []; // Clear comments as well
     return;
   }
-  const id = parseInt(idString, 10);
-  
-  postId.value = id;
+  console.log(`[PostDetailView] fetchPostDetails started for ID: ${id}`);
   isLoading.value = true;
   error.value = null;
-  post.value = null; // Reset post before fetching
-  comments.value = []; // Reset comments before fetching
-
+  post.value = null; // Reset post data
   try {
-    const responseWrapper = await PostService.getPostById(id);
-    console.log('[fetchPostDetails] API Response Wrapper:', responseWrapper);
-    
-    const fetchedPost = responseWrapper?.post; // Safe access
-
-    if (fetchedPost) { 
-      post.value = fetchedPost;
-      console.log('[fetchPostDetails] Assigned post.value.author:', JSON.stringify(post.value.author)); 
-      // Fetch comments only after successfully fetching post
-      await fetchComments(); 
-    } else {
-      // Keep post.value as null
-      error.value = '帖子未找到或数据格式错误'; 
-    }
+    // Add logging before API call
+    console.log(`[PostDetailView] Calling PostService.getPostById(${id})...`);
+    const response = await PostService.getPostById(id);
+    // Add logging after API call
+    console.log(`[PostDetailView] API Response received:`, response);
+    post.value = response.post;
+    // Trigger comment loading after post details are fetched
+    await fetchComments();
   } catch (err: any) {
-     console.error('Error fetching post details:', err);
-     // Keep post.value as null
-     error.value = err.response?.data?.message || '加载帖子详情失败';
+    console.error(`[PostDetailView] Error fetching post details for ID ${id}:`, err);
+    error.value = err.response?.data?.message || '加载帖子详情失败';
+    post.value = null;
   } finally {
     isLoading.value = false;
+    console.log(`[PostDetailView] fetchPostDetails finished for ID: ${id}. Loading: ${isLoading.value}, Error: ${error.value}`);
   }
 };
 
@@ -508,9 +514,37 @@ const deleteComment = async (id: number) => {
     }
 };
 
-// --- Lifecycle Hook --- MERGED onMounted
-onMounted(async () => {
-  await fetchPostDetails();
+// --- Lifecycle Hooks ---
+onMounted(() => {
+  console.log(`[PostDetailView] Component onMounted. Route params ID: ${route.params.id}`);
+  const idFromRoute = Number(route.params.id);
+  if (!isNaN(idFromRoute)) {
+    postId.value = idFromRoute;
+    fetchPostDetails(idFromRoute);
+  } else {
+    error.value = '无效的帖子 ID';
+    isLoading.value = false;
+    console.error('[PostDetailView] Invalid post ID in route on mount.');
+  }
+});
+
+// Watch for route parameter changes
+watch(() => route.params.id, (newId) => {
+  console.log(`[PostDetailView] Watch triggered: route.params.id changed to ${newId}`);
+  const numericId = Number(newId);
+  if (newId && !isNaN(numericId) && numericId !== postId.value) {
+    postId.value = numericId;
+    console.log(`[PostDetailView] Watch: Calling fetchPostDetails for new ID: ${numericId}`);
+    fetchPostDetails(numericId);
+  } else if (newId && numericId === postId.value) {
+    console.warn(`[PostDetailView] Watch: newId (${numericId}) is the same as current postId (${postId.value}), skipping fetch.`);
+  } else if (!newId || isNaN(numericId)) {
+    console.error(`[PostDetailView] Watch: Invalid newId received: ${newId}`);
+    error.value = '无效的帖子 ID';
+    isLoading.value = false;
+    post.value = null;
+    comments.value = [];
+  }
 });
 
 // --- Navigation --- REMOVED DUPLICATE PLACEHOLDER
@@ -521,6 +555,40 @@ const goBack = () => {
   } else {
      router.push('/'); // Navigate to home or another default page
   }
+};
+
+// + Computed property to show follow button
+const showFollowAuthorButton = computed(() => {
+    return (
+        userStore.isLoggedIn &&
+        post.value?.author?.id &&
+        userStore.currentUser?.id !== post.value.author.id
+    );
+});
+
+// + Method to handle follow/unfollow button click
+const handleFollowAuthor = async () => {
+    if (!post.value?.author?.id || !showFollowAuthorButton.value) return;
+    followAuthorLoading.value = true;
+    const targetUserId = post.value.author.id;
+    try {
+        if (post.value.author.isFollowing) {
+            await UserService.unfollowUser(targetUserId);
+            if (post.value.author) post.value.author.isFollowing = false;
+            // Optionally update follower count if the backend provides it here or refetch post
+            ElMessage.success('已取消关注');
+        } else {
+            await UserService.followUser(targetUserId);
+            if (post.value.author) post.value.author.isFollowing = true;
+            // Optionally update follower count
+            ElMessage.success('关注成功');
+        }
+    } catch (error: any) {
+        console.error("Follow/Unfollow failed:", error);
+        ElMessage.error('操作失败');
+    } finally {
+        followAuthorLoading.value = false;
+    }
 };
 
 </script>
@@ -553,42 +621,59 @@ const goBack = () => {
 
   .meta-bar {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding-bottom: 15px; // Add padding below the meta bar
-      border-bottom: 1px solid var(--el-border-color-lighter); // Add border below meta bar
-      margin-top: 10px; // Space between title and meta bar
+      justify-content: space-between; // Distribute space
+      margin-bottom: 20px;
+      flex-wrap: wrap; // Allow wrapping on small screens
+      gap: 10px;
   }
 
   .author-info {
     display: flex;
     align-items: center;
+    gap: 8px; // Gap between avatar, text, button
+    flex-grow: 1; // Allow author info to grow
+    min-width: 150px; // Prevent excessive shrinking
+  }
 
-    .author-avatar {
-      margin-right: 12px;
-    }
+  .author-avatar {
+    margin-right: 12px;
+  }
 
-    .info-text {
-      display: flex;
-      flex-direction: column;
-      .author-name {
-        font-weight: 500;
-        color: #555;
-        margin-bottom: 2px;
-      }
-      .publish-time {
-        font-size: 0.85rem;
-        color: #909399;
-      }
+  .info-text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .author-name-link {
+    text-decoration: none;
+    color: inherit;
+    &:hover .author-name {
+         color: var(--el-color-primary);
     }
+  }
+
+  .author-name {
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: var(--el-text-color-primary);
+  }
+
+  .publish-time {
+    font-size: 0.8rem;
+    color: var(--el-text-color-secondary);
   }
 
   // Styles for the inline actions
   .post-actions-inline {
       display: flex;
-      gap: 15px; 
+      align-items: center;
+      gap: 15px;
+      flex-shrink: 0; // Prevent shrinking
+
       .el-button {
-          padding: 0 5px; // Adjust padding if needed
+          // Ensure text buttons align nicely
+          padding: 0; // Remove default padding if using text buttons
       }
   }
 }
@@ -764,4 +849,11 @@ const goBack = () => {
   background-color: #f0f2f5; // Placeholder background
 }
 /* --- END ADD STYLES --- */
+
+// + Style for the inline follow button
+.follow-button-inline {
+    margin-left: 12px; // Add some space from the author text
+    padding: 4px 8px; // Make it smaller
+    font-size: 0.75rem;
+}
 </style> 

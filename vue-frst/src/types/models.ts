@@ -7,12 +7,14 @@ export interface User {
   name: string | null; // Prisma String? maps to string | null
   role?: string; // Add role field, make optional for flexibility
   avatarUrl?: string | null; // 头像 URL (可选)
+  bio?: string | null; // Add bio field
   createdAt: string; // Prisma DateTime maps to string
   updatedAt: string;
   // Add count fields (optional)
   postCount?: number;
   followerCount?: number;
   followingCount?: number;
+  favoritesCount?: number;
   // posts?: Post[]; // Keep optional, only include if an API endpoint actually populates this
 }
 
@@ -26,7 +28,7 @@ export interface Post {
   updatedAt: string;
   authorId: number;
   // Use Pick for consistency, selecting fields commonly needed for display
-  author?: Pick<User, 'id' | 'name' | 'avatarUrl'>;
+  author?: Pick<User, 'id' | 'name' | 'avatarUrl'> & { isFollowing?: boolean };
   likesCount?: number; // Optional count fields
   commentsCount?: number;
   favoritesCount?: number;
@@ -110,6 +112,7 @@ export interface PostPreview {
   // Add other fields if FoodCard or other components need them (e.g., counts)
   likesCount?: number;
   commentsCount?: number;
+  favoritesCount?: number;
   isLiked?: boolean;
   isFavorited?: boolean;
 }

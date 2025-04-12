@@ -4,17 +4,12 @@ import LoginView from '@/views/auth/LoginView.vue'
 import { useUserStore } from '@/stores/modules/user'
 import type { RouteRecordRaw } from 'vue-router'
 
-// Import the new layout and view
-import PersonalCenterLayout from '@/views/PersonalCenter/PersonalCenterLayout.vue';
-import MyFavoritesView from '@/views/PersonalCenter/MyFavoritesView.vue';
-
 // Import the Admin layout
 import AdminLayout from '@/components/layout/AdminLayout.vue';
 
 // Correct the import path using @ alias
 import UnderDevelopment from '@/views/admin/common/UnderDevelopment.vue' 
 import PostDetailView from '@/views/post/PostDetailView.vue' 
-import UserProfileView from '@/views/PersonalCenter/ProfileSettingsView.vue' 
 import RegisterView from '@/views/auth/RegisterView.vue';
 import ResetPasswordView from '@/views/auth/ResetPasswordView.vue';
 import VerifyEmailView from '@/views/auth/VerifyEmailView.vue';
@@ -47,37 +42,7 @@ const routes: Array<RouteRecordRaw> = [
         name: 'Community',
         component: () => import('@/views/CommunityView.vue')
       },
-      // --- Personal Center Routes - Refactored ---
-      {
-        path: '/personal-center',
-        component: PersonalCenterLayout, // Use the new layout
-        // meta: { requiresAuth: true }, // Ensure guards are handled globally or fix import
-        redirect: '/personal-center/profile', 
-        children: [
-              {
-                path: 'profile',
-                name: 'ProfileSettings', // Rename for clarity
-                component: UserProfileView // Use corrected import (ProfileSettingsView)
-              },
-              {
-                path: 'posts', // Simpler path
-                name: 'MyPosts',
-                component: () => import('@/views/PersonalCenter/MyPostsView.vue'),
-              },
-               {
-                path: 'favorites', // Simpler path
-                name: 'MyFavorites',
-                component: MyFavoritesView,
-              },
-              {
-                path: 'notifications', // Simpler path
-                name: 'Notifications',
-                component: () => import('@/views/PersonalCenter/NotificationsView.vue'),
-              }
-              // Remove the old nested Index.vue and its children if they are no longer needed
-            ]
-      },
-      // --- End Personal Center Routes ---
+      // Removed the old Personal Center Routes group
     ]
   },
   {
@@ -116,19 +81,56 @@ const routes: Array<RouteRecordRaw> = [
      component: VerifyEmailView,
      meta: { requiresGuest: true }
    },
-  // Route for viewing a specific user's profile
+  // Keep the User Profile route
   {
     path: '/user/:userId',
-    component: MainLayout, // Assuming main layout is appropriate
+    component: MainLayout,
     children: [
       {
         path: '',
-        name: 'UserProfile', // Name is now here
-        component: () => import('@/views/PersonalCenter/UserProfile.vue'), // Component to display profile
-        props: true // Pass route params (userId) as props to the component
+        name: 'UserProfile', 
+        component: () => import('@/views/profile/UserProfileView.vue'), // Point to the new component
+        props: true
       }
     ],
-    meta: { requiresAuth: false } // Public profile view
+    meta: { requiresAuth: false }
+  },
+  // Add new Settings route group
+  {
+    path: '/settings',
+    component: MainLayout,
+    meta: { requiresAuth: true }, // Settings require login
+    redirect: '/settings/profile', // Default redirect to profile editing
+    children: [
+      {
+        path: 'profile',
+        name: 'EditProfile',
+        component: () => import('@/views/settings/EditProfileView.vue')
+      },
+      {
+        path: 'account',
+        name: 'AccountSettings',
+        component: () => import('@/views/PersonalCenter/AccountSettings.vue') // Corrected import path
+      },
+      // Add the Notifications route here
+      {
+        path: 'notifications',
+        name: 'Notifications',
+        component: () => import('@/views/PersonalCenter/NotificationsView.vue')
+      },
+      // Add My Posts route
+      {
+        path: 'my-posts',
+        name: 'MyPosts',
+        component: () => import('@/views/PersonalCenter/MyPostsView.vue')
+      },
+      // Add My Favorites route
+      {
+        path: 'my-favorites',
+        name: 'MyFavorites',
+        component: () => import('@/views/PersonalCenter/MyFavoritesView.vue')
+      }
+    ]
   },
   // Add Admin Routes
   {

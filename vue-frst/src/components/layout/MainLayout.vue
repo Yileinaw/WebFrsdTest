@@ -1,23 +1,31 @@
 <template>
   <el-container class="main-layout">
-    <AppHeader />
+    <Header />
     <el-main class="main-content">
-      <!-- Wrap router-view with keep-alive and transition -->
-      <router-view v-slot="{ Component }">
-        <keep-alive include="HomeView,DiscoverView,CommunityView,MyPostsView,MyFavoritesView">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </keep-alive>
-      </router-view>
+      <!-- Original structure with KeepAlive and Transition -->
+      <!-- <RouterView v-slot="{ Component }">
+        <Transition name="fade" mode="out-in">
+          <KeepAlive :include="['HomeView', 'DiscoverView', 'CommunityView', 'MyPostsView', 'MyFavoritesView']">
+            <component :is="Component" :key="$route.fullPath" />
+          </KeepAlive>
+        </Transition>
+      </RouterView> -->
+
+      <!-- Temporarily use plain RouterView -->
+      <RouterView :key="$route.fullPath" />
     </el-main>
-    <AppFooter />
+    <Footer v-if="!isAdminRoute" />
   </el-container>
 </template>
 
-<script setup>
-import AppHeader from './Header.vue'
-import AppFooter from './Footer.vue'
+<script setup lang="ts">
+import Header from './Header.vue'
+import Footer from './Footer.vue'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+const isAdminRoute = computed(() => route.matched.some(record => record.meta.isAdmin))
 </script>
 
 <style scoped lang="scss">

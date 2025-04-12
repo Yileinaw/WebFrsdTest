@@ -12,6 +12,7 @@ import foodShowcaseRouter from './routes/foodShowcaseRoutes';
 import tagRouter from './routes/TagRoutes'; // Import tag routes
 import { errorHandler } from './middleware/ErrorHandlingMiddleware';
 import { initializeMailer } from './utils/mailer'; // <-- 导入邮件初始化函数
+// import morgan from 'morgan'; // Removed morgan import
 // --- Remove direct imports, rely on userRoutes ---
 // import { UserController } from './controllers/UserController'; 
 // import { AuthMiddleware } from './middleware/AuthMiddleware';

@@ -1,6 +1,19 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
+import { onMounted } from 'vue';
+import { useUserStore } from '@/stores/modules/user';
+
+const userStore = useUserStore();
+
+onMounted(() => {
+  if (userStore.isLoggedIn) {
+    console.log('[App.vue onMounted] User is logged in, fetching profile...');
+    userStore.fetchUserProfile();
+  } else {
+    console.log('[App.vue onMounted] User is not logged in.');
+  }
+});
 </script>
 
 <template>

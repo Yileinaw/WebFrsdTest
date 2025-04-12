@@ -19,10 +19,18 @@
           <el-button @click="goToRegister">注册</el-button>
         </template>
         <template v-else>
+           <!-- Notification Bell -->
+           <el-badge :value="unreadCount > 0 ? unreadCount : ''" :max="99" class="notification-badge" @click="goToNotifications" is-dot>
+               <el-icon :size="22" class="notification-icon"><Bell /></el-icon>
+           </el-badge>
+
            <!-- Reverted to ElPopover triggered by click -->
            <el-popover
              placement="bottom-end"
-             trigger="click" 
+             trigger="click"
+             :width="256"
+             :show-arrow="false"
+             :offset="10"
            >
              <template #reference>
                <!-- Restore trigger with username and arrow -->
@@ -42,13 +50,55 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user' // 引入 User Store
-import { ArrowDown } from '@element-plus/icons-vue'; // Re-add ArrowDown icon
+import { ArrowDown, Bell } from '@element-plus/icons-vue'; // Re-add ArrowDown icon and Bell icon
 import ProfileDropdown from '../common/ProfileDropdown.vue'; // 导入自定义下拉菜单组件
+import { NotificationService } from '@/services/NotificationService'; // Import NotificationService
+import { ElBadge, ElIcon } from 'element-plus'; // Import ElBadge, ElIcon
 
 const router = useRouter()
 const userStore = useUserStore() // 获取 Store 实例
+
+const unreadCount = ref(0); // State for unread count
+
+// Fetch unread count when component mounts and user is logged in
+const fetchUnreadCount = async () => {
+  if (!userStore.isLoggedIn) return;
+  try {
+    // Call service to get notifications, focusing on unread count
+    // Optimization: Backend could provide a dedicated endpoint for just the count
+    const response = await NotificationService.getNotifications({ limit: 1, unreadOnly: true }); 
+    unreadCount.value = response.unreadCount ?? 0; 
+    console.log('[Header] Unread notifications count:', unreadCount.value);
+  } catch (error) {
+    console.error('Error fetching unread notification count:', error);
+    unreadCount.value = 0; // Reset on error
+  }
+};
+
+// Function to navigate to notifications page
+const goToNotifications = () => {
+    router.push({ name: 'Notifications' }); // Assuming route name is 'Notifications'
+    // Optionally reset count optimistically or refetch after navigation
+    // unreadCount.value = 0; 
+};
+
+// --- Lifecycle and Watchers ---
+onMounted(() => {
+  fetchUnreadCount();
+  // TODO: Implement polling or WebSocket updates for real-time count
+});
+
+// Watch for login/logout to refetch count
+watch(() => userStore.isLoggedIn, (loggedIn) => {
+  if (loggedIn) {
+    fetchUnreadCount();
+  } else {
+    unreadCount.value = 0; // Clear count on logout
+  }
+});
 
 const goToHome = () => {
   router.push('/')
@@ -130,7 +180,7 @@ const goToRegister = () => {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  // Remove styles related to el-dropdown-link if they exist
+  gap: 20px; // Add gap between elements
 }
 
 // Restore user-menu-trigger styles if they were removed
@@ -144,17 +194,19 @@ const goToRegister = () => {
   .el-icon--right { margin-left: auto; } // Push arrow right if needed
 }
 
-</style>
-
-<!-- Add global style for the popper to remove padding -->
-<!-- This might need to go in App.vue or a global CSS file -->
-<style lang="scss">
-.profile-popover.el-popper {
-  padding: 0 !important;
-  border: none !important;
-  box-shadow: var(--el-box-shadow-light); 
-  border-radius: var(--el-border-radius-base); 
-  background-color: var(--el-bg-color-overlay); 
-  // Removed transform
+.notification-badge {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  height: 100%; // Align vertically
 }
+
+.notification-icon {
+  color: var(--el-text-color-regular);
+  transition: color 0.2s ease;
+  &:hover {
+      color: var(--el-color-primary);
+  }
+}
+
 </style> 

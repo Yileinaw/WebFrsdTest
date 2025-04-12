@@ -10,6 +10,7 @@ import { Prisma, PrismaClient, User } from '@prisma/client'; // <-- Import Prism
 import { sendMail } from '../utils/mailer'; // <-- Import mailer
 import crypto from 'crypto'; // <-- Import crypto
 import bcrypt from 'bcrypt'; // <-- Import bcrypt
+import { UserService } from '../services/UserService';
 
 // Define a type for the response of getDefaultAvatars
 interface DefaultAvatarsResponse {
@@ -78,12 +79,12 @@ export class UserController {
     // 获取特定用户信息
     public static async getUserById(req: AuthenticatedRequest, res: Response): Promise<any> {
         try {
+            // + Restore old manual validation
             const targetUserId = parseInt(req.params.userId, 10);
-            const currentUserId = req.userId;
-
             if (isNaN(targetUserId)) {
                 return res.status(400).json({ message: 'Invalid user ID' });
             }
+            const currentUserId = req.userId;
 
             const user = await prisma.user.findUnique({
                 where: { id: targetUserId },
@@ -104,6 +105,7 @@ export class UserController {
                             posts: true,
                             followers: true,
                             following: true,
+                            favorites: true
                         }
                     },
                 }
@@ -128,6 +130,7 @@ export class UserController {
                 postCount: user._count?.posts ?? 0,
                 followerCount: user._count?.followers ?? 0,
                 followingCount: user._count?.following ?? 0,
+                favoritesCount: user._count?.favorites ?? 0,
                 isFollowing: isFollowing,
             };
             delete (userData as any)._count;
@@ -208,23 +211,27 @@ export class UserController {
 
     // 更新用户个人资料
     public static async updateUserProfile(req: AuthenticatedRequest, res: Response): Promise<any> {
-            const userId = req.userId;
-            if (!userId) {
+        const currentUserId = req.userId; // Keep using currentUserId
+        if (!currentUserId) {
             return res.status(401).json({ message: 'Unauthorized: User ID not found in request' });
         }
 
-        const { username, name, bio } = req.body;
-        let { avatarUrl } = req.body;
-        const updateData: Prisma.UserUpdateInput = {};
+        // + Restore old targetUserId parsing and body extraction
+        const targetUserId = parseInt(req.params.userId, 10); // Assuming route is /users/:userId
+        if (isNaN(targetUserId)) { 
+            return res.status(400).json({ message: 'Invalid user ID' });
+        }
+        const { username, name, bio, avatarUrl } = req.body;
 
-        // Validation and building updateData
+        // + Restore old manual validation for body fields
+        const updateData: Prisma.UserUpdateInput = {};
         if (username !== undefined) {
             if (typeof username !== 'string') {
                 return res.status(400).json({ message: 'Username must be a string' });
             }
             updateData.username = username;
         }
-            if (name !== undefined) {
+        if (name !== undefined) {
             if (typeof name !== 'string' && name !== null) {
                 return res.status(400).json({ message: 'Name must be a string or null' });
             }
@@ -237,76 +244,52 @@ export class UserController {
             updateData.bio = bio;
         }
         if (avatarUrl !== undefined) {
-            if (avatarUrl === null || (typeof avatarUrl === 'string' && avatarUrl.startsWith('/avatars/defaults/'))) {
-                updateData.avatarUrl = avatarUrl;
-            } else {
-                console.warn(`[UserController.updateUserProfile] Invalid default avatarUrl received: ${avatarUrl}. Ignoring.`);
-            }
+             if (avatarUrl === null || (typeof avatarUrl === 'string' && avatarUrl.startsWith('/avatars/defaults/'))) {
+                 updateData.avatarUrl = avatarUrl;
+             } else {
+                 console.warn(`[UserController.updateUserProfile] Invalid default avatarUrl received: ${avatarUrl}. Ignoring.`);
+                 // If avatarUrl is provided but invalid, don't include it in updateData
+             }
         }
 
         if (Object.keys(updateData).length === 0) {
-            if (req.body.avatarUrl && !updateData.hasOwnProperty('avatarUrl')) {
-                console.warn('[UserController.updateUserProfile] Called likely from uploadAvatar but avatarUrl was invalid and ignored.');
-                try {
-                    // Fetch current data in consistent format
-                    const currentUser = await prisma.user.findUnique({
-                        where: {id: userId},
-                        select: { // Match getUserById select
-                            id: true, username: true, name: true, avatarUrl: true, bio: true, createdAt: true,
-                            email: true, role: true, isEmailVerified: true,
-                            _count: { select: { posts: true, followers: true, following: true } }
-                        }
-                    });
-                    if (!currentUser) {
-                        return res.status(404).json({ message: 'User not found' });
-                    }
-                    const responseData = {
-                        id: currentUser.id, username: currentUser.username, name: currentUser.name,
-                        avatarUrl: currentUser.avatarUrl, bio: currentUser.bio, joinedAt: currentUser.createdAt,
-                        postCount: currentUser._count?.posts ?? 0, followerCount: currentUser._count?.followers ?? 0,
-                        followingCount: currentUser._count?.following ?? 0, isFollowing: false,
-                        email: currentUser.email, role: currentUser.role, isEmailVerified: currentUser.isEmailVerified
-                    };
-                    return res.status(200).json({ message: 'Profile update skipped (invalid avatar URL), returning current user data.', user: responseData });
-                } catch (findError: any) {
-                    console.error("Error finding user after invalid avatar upload:", findError);
-                    return res.status(500).json({ message: 'Internal server error fetching user data after failed update attempt.' });
-                }
-            }
-            return res.status(400).json({ message: 'No valid update data provided' });
+             // Keep check for empty update
+             return res.status(400).json({ message: 'No valid fields provided for update' });
         }
 
         try {
-            const updatedUser = await prisma.user.update({
-                where: { id: userId },
-                data: updateData,
-                select: { 
-                    id: true, 
-                    email: true, 
-                    username: true, 
-                    name: true, 
-                    avatarUrl: true, 
-                    bio: true, 
-                    role: true, 
-                    createdAt: true,
-                    updatedAt: true,
-                    isEmailVerified: true, 
-                    emailVerificationToken: true 
-                 }
-            });
+            // + Call service with potentially different signature (will be reverted later)
+            // Assuming UserService.updateUserProfile will be reverted to accept only targetUserId and data
+            // We need to pass targetUserId here, not currentUserId
+            const updatedUser = await UserService.updateUserProfile(targetUserId, updateData);
+            
+            // ... rest of try block (processing updatedUser) ...
+             if (!updatedUser) { // Restore simple check
+                 return res.status(404).json({ message: 'User not found or update failed' });
+             }
+            // Process response data (assuming service returns necessary data)
+             const userData = {
+                 ...updatedUser,
+                 // Manually add counts if service doesn't return them (needs fetch)
+             };
+             // delete (userData as any)._count;
+             return res.status(200).json({ message: 'Profile updated successfully', user: userData });
 
-            return res.status(200).json({ message: 'Profile updated successfully', user: updatedUser });
-         } catch (error: any) {
-             console.error("Update User Profile Error:", error);
-            if (error instanceof Prisma.PrismaClientKnownRequestError) {
-                 if (error.code === 'P2002') {
-                     return res.status(400).json({ message: 'Username already exists.' });
-                 }
-                 if (error.code === 'P2025') {
-                     return res.status(404).json({ message: 'User not found' });
-                 }
-            }
-             return res.status(500).json({ message: error.message || 'Failed to update user profile' });
+        } catch (error: any) {
+             // - Remove specific error handling for ForbiddenError etc.
+             // + Restore simpler catch block
+             if (error instanceof Prisma.PrismaClientKnownRequestError) {
+                  if (error.code === 'P2002') { 
+                      return res.status(409).json({ message: 'Username already taken' });
+                  } else if (error.code === 'P2025') {
+                       return res.status(404).json({ message: 'User not found' });
+                  }
+                 console.error('[UserController.updateUserProfile] Prisma Error:', error.code, error.meta);
+                 return res.status(500).json({ message: `Database error (Code: ${error.code})` });
+                 } else {
+                 console.error('[UserController.updateUserProfile] Unknown Error:', error);
+                 return res.status(500).json({ message: 'Internal server error updating profile' });
+             }
          }
      }
 
@@ -371,13 +354,17 @@ export class UserController {
     // 关注用户
     public static async followUser(req: AuthenticatedRequest, res: Response): Promise<any> {
         const followerId = req.userId;
-        const followingId = parseInt(req.params.userId, 10);
         if (!followerId) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
+
+        // + Restore old validation
+        const followingId = parseInt(req.params.userId, 10);
         if (isNaN(followingId)) {
             return res.status(400).json({ message: 'Invalid user ID to follow' });
         }
+
+        // Keep self-follow check
         if (followerId === followingId) {
             return res.status(400).json({ message: 'Cannot follow yourself' });
         }
@@ -385,18 +372,17 @@ export class UserController {
         try {
             const followingUser = await prisma.user.findUnique({ where: { id: followingId }, select: { id: true } });
             if (!followingUser) {
-                return res.status(404).json({ message: 'User to follow not found' });
+                return res.status(404).json({ message: '要关注的用户不存在' });
             }
 
-            // Use prisma.follows
             await prisma.follows.create({ data: { followerId: followerId, followingId: followingId } });
-            return res.status(201).json({ message: 'Successfully followed user' });
+            return res.status(201).json({ message: '关注成功' });
         } catch (error: any) {
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-                return res.status(409).json({ message: 'Already following this user' });
+                return res.status(409).json({ message: '已经关注了该用户' });
             } else {
-                console.error('Follow User Error:', error);
-                return res.status(500).json({ message: 'Internal server error' });
+                console.error('[UserController.followUser] Error:', error);
+                return res.status(500).json({ message: '关注用户时发生内部错误' });
             }
         }
     }
@@ -404,24 +390,31 @@ export class UserController {
     // 取消关注用户
     public static async unfollowUser(req: AuthenticatedRequest, res: Response): Promise<any> {
         const followerId = req.userId;
-        const followingId = parseInt(req.params.userId, 10);
         if (!followerId) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
+
+        // + Restore old validation
+        const followingId = parseInt(req.params.userId, 10);
         if (isNaN(followingId)) {
             return res.status(400).json({ message: 'Invalid user ID to unfollow' });
         }
 
+        // Keep self-unfollow check
+        if (followerId === followingId) {
+             return res.status(400).json({ message: '不能取消关注自己' });
+        }
+
         try {
-             // Use prisma.follows
             await prisma.follows.delete({ where: { followerId_followingId: { followerId: followerId, followingId: followingId } } });
-            return res.status(200).json({ message: 'Successfully unfollowed user' });
+            return res.status(200).json({ message: '取消关注成功' });
         } catch (error: any) {
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-                return res.status(404).json({ message: 'Not following this user' });
+                // Record not found, means the user wasn't following them in the first place
+                return res.status(404).json({ message: '未关注该用户' });
             } else {
-                console.error('Unfollow User Error:', error);
-                return res.status(500).json({ message: 'Internal server error' });
+                console.error('[UserController.unfollowUser] Error:', error);
+                return res.status(500).json({ message: '取消关注时发生内部错误' });
             }
         }
     }
@@ -429,13 +422,15 @@ export class UserController {
     // 获取关注者列表
     public static async getFollowers(req: AuthenticatedRequest, res: Response): Promise<any> {
         try {
+            // + Restore old validation and parsing
             const targetUserId = parseInt(req.params.userId, 10);
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 10;
-            const skip = (page - 1) * limit;
             if (isNaN(targetUserId)) {
                 return res.status(400).json({ message: 'Invalid user ID' });
             }
+            const currentUserId = req.userId;
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 10;
+            const skip = (page - 1) * limit;
 
             // Use prisma.follows
             const [followersData, totalFollowers] = await prisma.$transaction([
@@ -452,8 +447,27 @@ export class UserController {
                 .map((f: { follower: UserPublicListData | null }) => f.follower)
                 .filter((u): u is UserPublicListData => u != null);
 
+            // Check follow status if current user exists
+            let followersWithStatus = followers.map(f => ({ ...f, isFollowing: false }));
+            if (currentUserId && followers.length > 0) {
+                const followerIds = followers.map(f => f.id);
+                const followingSet = new Set(
+                    (await prisma.follows.findMany({
+                        where: {
+                            followerId: currentUserId,
+                            followingId: { in: followerIds },
+                        },
+                        select: { followingId: true },
+                    })).map(follow => follow.followingId)
+                );
+                followersWithStatus = followers.map(f => ({
+                    ...f,
+                    isFollowing: followingSet.has(f.id),
+                }));
+            }
+
             const totalPages = Math.ceil(totalFollowers / limit);
-            return res.status(200).json({ followers, currentPage: page, totalPages, totalFollowers });
+            return res.status(200).json({ followers: followersWithStatus, currentPage: page, totalPages, totalFollowers });
         } catch (error: any) {
             console.error('Get Followers Error:', error);
             return res.status(500).json({ message: 'Internal server error' });
@@ -463,15 +477,17 @@ export class UserController {
     // 获取正在关注列表
     public static async getFollowing(req: AuthenticatedRequest, res: Response): Promise<any> {
         try {
+            // + Restore old validation and parsing
             const targetUserId = parseInt(req.params.userId, 10);
+             if (isNaN(targetUserId)) {
+                 return res.status(400).json({ message: 'Invalid user ID' });
+             }
+            const currentUserId = req.userId;
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 10;
             const skip = (page - 1) * limit;
-            if (isNaN(targetUserId)) {
-                return res.status(400).json({ message: 'Invalid user ID' });
-            }
 
-             // Use prisma.follows
+            // Use prisma.follows
             const [followingData, totalFollowing] = await prisma.$transaction([
                  prisma.follows.findMany({
                     where: { followerId: targetUserId },
@@ -486,8 +502,27 @@ export class UserController {
                 .map((f: { following: UserPublicListData | null }) => f.following)
                 .filter((u): u is UserPublicListData => u != null);
 
+            // Check follow status if current user exists
+            let followingWithStatus = following.map(f => ({ ...f, isFollowing: false }));
+            if (currentUserId && following.length > 0) {
+                const followingIds = following.map(f => f.id);
+                const followingSet = new Set(
+                    (await prisma.follows.findMany({
+                        where: {
+                            followerId: currentUserId,
+                            followingId: { in: followingIds },
+                        },
+                        select: { followingId: true },
+                    })).map(follow => follow.followingId)
+                );
+                followingWithStatus = following.map(f => ({
+                    ...f,
+                    isFollowing: followingSet.has(f.id),
+                }));
+            }
+
             const totalPages = Math.ceil(totalFollowing / limit);
-            return res.status(200).json({ following, currentPage: page, totalPages, totalFollowing });
+            return res.status(200).json({ following: followingWithStatus, currentPage: page, totalPages, totalFollowing });
         } catch (error: any) {
             console.error('Get Following Error:', error);
             return res.status(500).json({ message: 'Internal server error' });
@@ -497,13 +532,15 @@ export class UserController {
     // 获取用户收藏夹
     public static async getUserFavorites(req: AuthenticatedRequest, res: Response): Promise<any> {
         try {
-            const userId = req.userId;
-            if (!userId) {
-                return res.status(401).json({ message: 'Unauthorized' });
+            // + Restore old validation and parsing
+            const targetUserId = parseInt(req.params.userId, 10);
+            if (isNaN(targetUserId)) {
+                return res.status(400).json({ message: 'Invalid user ID' });
             }
             const page = parseInt(req.query.page as string) || 1; 
             const limit = parseInt(req.query.limit as string) || 10; 
-            const result = await FavoriteService.getMyFavorites(userId, { page, limit });
+
+            const result = await FavoriteService.getFavoritesByUserId(targetUserId, { page, limit });
             return res.status(200).json(result);
         } catch (error: any) {
             console.error("Get User Favorites Error:", error);
@@ -518,26 +555,30 @@ export class UserController {
              if (!userId) {
                 return res.status(401).json({ message: 'Unauthorized: User ID not found' });
              }
+            // + Restore old parsing
              const page = parseInt(req.query.page as string) || 1; 
              const limit = parseInt(req.query.limit as string) || 10; 
+
             const result = await PostService.getAllPosts({ page, limit, authorId: userId, currentUserId: userId });
             return res.status(200).json(result);
          } catch (error: any) {
             console.error('[UserController] Get My Posts Error:', error);
-            return res.status(500).json({ message: 'Internal server error retrieving your posts' });
+            return res.status(500).json({ message: 'Internal server error retrieving my posts' });
         }
     }
 
     // 获取特定用户的帖子列表
     public static async getUserPosts(req: AuthenticatedRequest, res: Response): Promise<any> {
         try {
+            // + Restore old validation and parsing
             const targetUserId = parseInt(req.params.userId, 10);
-            const currentUserId = req.userId;
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 10;
             if (isNaN(targetUserId)) {
                 return res.status(400).json({ message: 'Invalid user ID' });
             }
+            const currentUserId = req.userId;
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 10;
+
             const result = await PostService.getAllPosts({ page, limit, authorId: targetUserId, currentUserId: currentUserId });
             return res.status(200).json(result);
         } catch (error: any) {
@@ -553,9 +594,11 @@ export class UserController {
              if (!userId) {
                 return res.status(401).json({ message: 'Unauthorized' });
              }
+             // + Restore old parsing
              const page = parseInt(req.query.page as string) || 1; 
              const limit = parseInt(req.query.limit as string) || 10; 
-            const filter = req.query.filter as string | undefined;
+             const filter = req.query.filter as string | undefined;
+
             const options: { page?: number; limit?: number; unreadOnly?: boolean } = { page, limit };
             if (filter === 'unread') {
                 options.unreadOnly = true;
@@ -563,7 +606,7 @@ export class UserController {
             const result = await NotificationService.getNotifications(userId, options);
             return res.status(200).json(result);
         } catch (error: any) {
-            console.error("Get User Notifications Error:", error);
+            console.error('[UserController] Get User Notifications Error:', error);
             return res.status(500).json({ message: 'Internal server error fetching notifications' });
         }
     }
@@ -621,43 +664,38 @@ export class UserController {
          }
     }
 
-    // 删除用户 (使用 as any 绕过类型检查)
+    // 删除用户
     public static async deleteUser(req: AuthenticatedRequest, res: Response): Promise<Response | void> {
-         const targetUserId = parseInt(req.params.userId, 10);
          const currentUserId = req.userId;
          if (!currentUserId) {
               return res.status(401).json({ message: "Unauthorized" }) as any;
          }
+         // + Restore old validation
+         const targetUserId = parseInt(req.params.userId, 10);
          if (isNaN(targetUserId)) {
-              return res.status(400).json({ message: "Invalid user ID" }) as any;
-        }
+             return res.status(400).json({ message: "Invalid user ID" }) as any;
+         }
+         
+         // Keep TODO for permission check
+         // TODO: Add proper permission check here (e.g., only admin or self)
 
         try {
              await prisma.user.delete({ where: { id: targetUserId } });
              res.status(204).send();
          } catch (error: any) {
-             if (error instanceof Prisma.PrismaClientKnownRequestError) {
-                 if (error.code === 'P2025') {
-                     return res.status(404).json({ message: "User not found" }) as any;
-                 }
-                 else if (error.code === 'P2003') {
-                      console.error("Delete User Foreign Key Error:", error);
-                      return res.status(409).json({ message: "Cannot delete user, associated data exists." }) as any;
-                 } else {
-                      console.error("Delete User Prisma Error:", error);
-                      return res.status(500).json({ message: "Database error deleting user" }) as any;
-                 }
+             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                 return res.status(404).json({ message: "User not found" }) as any;
              } else {
-                 console.error("Delete User Unknown Error:", error);
-                 return res.status(500).json({ message: "Internal server error deleting user" }) as any;
+                 console.error('Delete User Error:', error);
+                 return res.status(500).json({ message: "Internal server error" }) as any;
              }
          }
     }
 }
 
-// --- 移除类外部的重复定义 ---
-// Ensure these functions are NOT defined outside the class if they are static methods
-// --- 结束移除 ---
+// Remove standalone functions if they are already static methods in the class
+// export const getAllUsers = ...
+// export const deleteUser = ...
 
 // 注意：原始文件中 updateUserProfile 和 uploadAvatar 是静态方法，保持一致。
 // 注意：原始文件没有 getAllUsers 和 deleteUser 方法，如果 UserRoutes 中引用了，这里需要添加。
@@ -695,9 +733,7 @@ export const deleteUser = async (req: AuthenticatedRequest, res: Response): Prom
 
      try {
          // 注意：删除用户可能会因外键约束失败，需要处理关联数据或调整 schema
-         await prisma.user.delete({
-             where: { id: targetUserId }
-         });
+         await prisma.user.delete({ where: { id: targetUserId } });
          res.status(204).send(); // No Content
      } catch (error: any) {
          if (error.code === 'P2025') {

@@ -10,13 +10,9 @@ export enum NotificationType {
 }
 
 export interface NotificationWithRelations extends Notification {
-  actor: { 
-    id: number; 
-    name: string | null; 
-    avatarUrl: string | null;
-  }; 
-  post: { id: number; title: string };       
-  comment?: { id: number; text: string };    
+  // sender: { ... } | null; // REMOVED - Inherited from Notification
+  // post: { ... } | null; // REMOVED - Inherited from Notification
+  // comment?: { ... } | null; // REMOVED - Inherited from Notification
 }
 
 export interface PaginatedNotificationsResponse {
