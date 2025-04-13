@@ -75,12 +75,12 @@
                     :key="presetUrl" 
                     :size="60" 
                     :src="resolveStaticAssetUrl(presetUrl)" 
-                    @click="pendingAvatarUrl = presetUrl"  
+                    @click="selectPresetOrRemove(presetUrl)"  
                     class="preset-avatar"
                     :class="{ 'selected': pendingAvatarUrl === presetUrl }"
                     />
                     <!-- Button to select removing avatar -->
-                    <el-button text @click="pendingAvatarUrl = null" class="preset-avatar remove-avatar-btn" :class="{ 'selected': pendingAvatarUrl === null }">移除头像</el-button>
+                    <el-button text @click="selectPresetOrRemove(null)" class="preset-avatar remove-avatar-btn" :class="{ 'selected': pendingAvatarUrl === null }">移除头像</el-button>
                 </div>
             </div>
         </div>
@@ -114,6 +114,7 @@ const editableName = ref('');
 const isUpdatingName = ref(false);
 const avatarDialogVisible = ref(false);
 const pendingAvatarUrl = ref<string | null>(null);
+const isNewUploadPending = ref(false);
 const presetAvatarUrls = ref<string[]>([]);
 const showPasswordModal = ref(false); // <-- Define state for modal
 
@@ -184,10 +185,9 @@ const handleAvatarSuccess: UploadProps['onSuccess'] = (
 ) => {
   console.log('[ProfileSettingsView] Avatar Upload Success Response:', response);
   if (response && response.avatarUrl) {
-    // Update pending URL for preview, don't save yet
     pendingAvatarUrl.value = response.avatarUrl;
+    isNewUploadPending.value = true;
     ElMessage.success('头像上传成功! 请点击保存以应用更改。');
-    // userStore.updateAvatarUrl(response.avatarUrl); // REMOVED direct store update
   } else {
      ElMessage.error(response?.message || '头像上传失败，响应无效');
   }
@@ -210,38 +210,69 @@ const beforeAvatarUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile)
 // Open avatar dialog
 const openAvatarDialog = () => {
   pendingAvatarUrl.value = userStore.currentUser?.avatarUrl || null;
-  // Ensure presets are loaded before opening, or show loading state
+  isNewUploadPending.value = false;
   if (presetAvatarUrls.value.length === 0) {
-      // Optionally fetch again or show loading inside dialog
-      // fetchPresetAvatars(); 
+      fetchPresetAvatars();
   }
   avatarDialogVisible.value = true;
 };
 
-// Save avatar selection from dialog (preset or remove)
+// 保存头像选择 (包括上传的、预设的或移除)
 const saveAvatarSelection = async () => {
   const currentStoredUrl = userStore.currentUser?.avatarUrl || null;
   const urlToSave = pendingAvatarUrl.value; 
 
   if (urlToSave === currentStoredUrl) {
+    ElMessage.info('头像未更改');
     avatarDialogVisible.value = false;
     return; 
   }
 
-  console.log('[ProfileSettingsView] Saving avatar selection. New URL:', urlToSave);
-  try {
-    // Call the unified update method
-    const response = await UserService.updateMyProfile({ avatarUrl: urlToSave }); 
-    if (response && response.user) {
-      userStore.setUser(response.user); 
-      ElMessage.success('头像更新成功!');
-      avatarDialogVisible.value = false;
-    } else {
-      throw new Error('Invalid response after updating profile');
-    }
-  } catch (error: any) {
-    console.error('Failed to update avatar:', error);
-    ElMessage.error(error.response?.data?.message || error.message || '头像更新失败');
+  console.log('[ProfileSettingsView] Saving avatar selection. New URL:', urlToSave, 'Is new upload:', isNewUploadPending.value);
+
+  // --- 修正逻辑 --- 
+  if (isNewUploadPending.value) {
+      // 如果是新上传的头像，后端 POST 已处理。只需更新本地 Store 并关闭。
+      console.log('[ProfileSettingsView] New upload detected. Updating local store and closing.');
+      if (userStore.currentUser && urlToSave) { // 确保 user 存在且 URL 不为 null
+          // 使用 Pinia store 的 action 直接更新头像 URL
+          userStore.updateAvatarUrl(urlToSave);
+          ElMessage.success('新头像已保存!');
+          avatarDialogVisible.value = false;
+          isNewUploadPending.value = false; // 重置标记
+      } else {
+          console.error('[ProfileSettingsView] Cannot update local store after upload: user or URL missing.');
+          // 如果本地更新失败，可以尝试重新获取，但这应该是备选方案
+          try { 
+              await userStore.fetchUserProfile(); 
+              ElMessage.success('新头像已保存! (通过刷新信息)');
+              avatarDialogVisible.value = false;
+              isNewUploadPending.value = false;
+          } catch (fetchError) {
+                console.error('Fallback fetchUserProfile failed:', fetchError);
+                ElMessage.error('保存新头像后同步信息失败');
+                // 即使同步失败，也关闭对话框
+                avatarDialogVisible.value = false;
+                isNewUploadPending.value = false; 
+          } 
+      }
+  } else {
+      // 如果是选择预设或移除，调用 PUT /me/profile
+      console.log('[ProfileSettingsView] Preset/Remove selected, calling updateMyProfile API.');
+      try {
+          const response = await UserService.updateMyProfile({ avatarUrl: urlToSave }); 
+          if (response && response.user) {
+              userStore.setUser(response.user); // 使用后端返回的完整用户信息更新 store
+              ElMessage.success('头像更新成功!');
+              avatarDialogVisible.value = false;
+          } else {
+              throw new Error('更新头像后响应无效');
+          }
+      } catch (error: any) {
+          console.error('Failed to update avatar (preset/null):', error);
+          // 显示后端返回的错误信息（如果存在）
+          ElMessage.error(error.response?.data?.message || error.message || '头像更新失败');
+      }
   }
 };
 
@@ -267,6 +298,11 @@ const updateName = async () => {
     } finally {
          isUpdatingName.value = false;
     }
+};
+
+const selectPresetOrRemove = (url: string | null) => {
+    pendingAvatarUrl.value = url;
+    isNewUploadPending.value = false;
 };
 
 </script>

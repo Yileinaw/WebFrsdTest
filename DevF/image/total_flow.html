@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebFrsdTest 业务流程图</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: true });</script>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+        details {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            background-color: #f9f9f9;
+        }
+        summary {
+            padding: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            background-color: #eee;
+            border-bottom: 1px solid #ccc;
+        }
+        details[open] summary {
+            border-bottom: 1px solid #ccc;
+        }
+        .diagram-container {
+            padding: 15px;
+            overflow-x: auto; /* Ensure horizontal scroll if diagram is too wide */
+        }
+        pre.mermaid {
+            background-color: white;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>WebFrsdTest 业务流程图</h1>
+
+    <details open>
+        <summary>1. 总业务流程图</summary>
+        <div class="diagram-container">
+            <pre class="mermaid">
+graph TD
+    A[用户] --> B{"WebFrsdTest 前端 (Vue.js)"};
+    B --> C{"浏览器交互/界面展示"};
+    B --> D["向后端发送 API 请求"];
+    D --> E{"WebFrsdTest 后端 (Node.js/Express)"};
+    E --> F["身份验证 (JWT)"];
+    F -- 验证通过 --> G["处理业务逻辑"];
+    G --> H["数据库交互 (Prisma)"];
+    H --> G;
+    G --> E;
+    E --> I["向前端返回 API 响应"];
+    I --> B;
+    B --> C;
+
+    subgraph "前端 (vue-frst)"
+        direction LR
+        B
+        C
+    end
+
+    subgraph "后端 (backend)"
+        direction LR
+        D
+        E
+        F
+        G
+        H
+        I
+    end
+
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#ccf,stroke:#333,stroke-width:2px
+    style E fill:#9cf,stroke:#333,stroke-width:2px
+            </pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>2. 用户注册/登录流程图</summary>
+        <div class="diagram-container">
+            <pre class="mermaid">
+graph TD
+    subgraph "注册流程"
+        RegA["开始: 用户访问注册页面"] --> RegB["输入注册信息 (用户名, 密码, 邮箱等)"];
+        RegB --> RegC["前端发送注册请求到 /auth/register"];
+        RegC --> RegD{"后端验证输入信息"};
+        RegD -- 验证失败 --> RegE["返回错误信息给前端"] --> RegF["结束: 注册失败"];
+        RegD -- 验证成功 --> RegG{"查询用户是否已存在"};
+        RegG -- 用户已存在 --> RegE;
+        RegG -- 用户不存在 --> RegH["密码哈希处理"];
+        RegH --> RegI["在数据库中创建新用户 (Prisma)"];
+        RegI --> RegJ["生成 JWT"];
+        RegJ --> RegK["返回成功响应 (含 JWT) 给前端"];
+        RegK --> RegL["前端存储 JWT, 跳转页面"] --> RegM["结束: 注册成功"];
+    end
+
+    subgraph "登录流程"
+        LogN["开始: 用户访问登录页面"] --> LogO["输入登录凭据 (用户名/邮箱, 密码)"];
+        LogO --> LogP["前端发送登录请求到 /auth/login"];
+        LogP --> LogQ{"后端验证输入信息"};
+        LogQ -- 验证失败 --> LogR["返回错误信息给前端"] --> LogS["结束: 登录失败"];
+        LogQ -- 验证成功 --> LogT{"查询用户是否存在"};
+        LogT -- 用户不存在 --> LogR;
+        LogT -- 用户存在 --> LogU{"验证密码是否匹配"};
+        LogU -- 密码不匹配 --> LogR;
+        LogU -- 密码匹配 --> LogV["生成 JWT"];
+        LogV --> LogW["返回成功响应 (含 JWT) 给前端"];
+        LogW --> LogX["前端存储 JWT, 跳转页面"] --> LogY["结束: 登录成功"];
+    end
+            </pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>3. 用户发布帖子流程图</summary>
+        <div class="diagram-container">
+            <pre class="mermaid">
+graph TD
+    PostA["开始: 用户进入发帖界面/打开弹窗"] --> PostB["输入帖子内容 (文本)"];
+    PostB --> PostC{"是否需要上传图片?"};
+    PostC -- 是 --> PostD["选择图片文件"];
+    PostD --> PostE["前端上传图片到 /upload/image"];
+    PostE --> PostF{"后端处理图片上传"};
+    PostF --> PostG["保存图片到服务器/云存储"];
+    PostG --> PostH["返回图片 URL 给前端"];
+    PostH --> PostI["前端将图片 URL 附加到帖子数据"];
+    PostC -- 否 --> PostI;
+    PostI --> PostJ["前端发送发帖请求到 /posts (携带 JWT 和帖子数据)"];
+    PostJ --> PostK{"后端验证 JWT 和帖子数据"};
+    PostK -- 验证失败 --> PostL["返回错误信息给前端"] --> PostM["结束: 发布失败"];
+    PostK -- 验证成功 --> PostN["将帖子数据 (关联用户 ID) 保存到数据库 (Prisma)"];
+    PostN --> PostO["返回成功响应给前端"];
+    PostO --> PostP["前端显示成功提示, 更新帖子列表或跳转"] --> PostQ["结束: 发布成功"];
+
+    style PostF fill:#ddd,stroke:#333,stroke-width:1px
+    style PostG fill:#ddd,stroke:#333,stroke-width:1px
+            </pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>4. 用户关注流程图</summary>
+        <div class="diagram-container">
+            <pre class="mermaid">
+graph TD
+    FolA["开始: 用户浏览其他用户 B 的个人主页"] --> FolB["界面显示关注/已关注按钮"];
+    FolB --> FolC{"用户点击 '关注' 按钮"};
+    FolC --> FolD["前端发送关注请求到 /users/{userId}/follow (携带 JWT)"];
+    FolD --> FolE{"后端验证 JWT 和目标用户 ID"};
+    FolE -- 验证失败 --> FolF["返回错误信息"] --> FolG["结束: 关注失败"];
+    FolE -- 验证成功 --> FolH{"检查是否已关注"};
+    FolH -- 是 --> FolI["可能返回特定状态码或错误"] --> FolG;
+    FolH -- 否 --> FolJ["在数据库中创建关注关系记录 (Prisma)"];
+    FolJ --> FolK["返回成功响应"];
+    FolK --> FolL["前端更新按钮状态为 '已关注'"] --> FolM["结束: 关注成功"];
+            </pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>5. 查看通知流程图</summary>
+        <div class="diagram-container">
+            <pre class="mermaid">
+graph TD
+    NotifA["开始: 用户点击通知图标/链接"] --> NotifB["前端发送获取通知请求到 /notifications (携带 JWT)"];
+    NotifB --> NotifC{"后端验证 JWT"};
+    NotifC -- 验证失败 --> NotifD["返回错误信息"] --> NotifE["结束: 获取失败"];
+    NotifC -- 验证成功 --> NotifF["后端查询数据库, 获取该用户的通知列表"];
+    NotifF --> NotifG["后端返回通知列表数据给前端"];
+    NotifG --> NotifH["前端在界面上渲染并展示通知列表"];
+    NotifH --> NotifI{"用户点击某条通知?"};
+    NotifI -- 是 --> NotifJ["前端处理点击事件 (如标记已读, 跳转到相关页面)"];
+    NotifJ --> NotifH;
+    NotifI -- 否 --> NotifK["结束: 查看完成"];
+
+    style NotifF fill:#ddd,stroke:#333,stroke-width:1px
+            </pre>
+        </div>
+    </details>
+
+</body>
+
+</html>

@@ -5,8 +5,8 @@
       <div class="hero-content container">
         <h1>探索舌尖上的世界</h1>
         <p>发现、分享、品味生活中的每一道佳肴</p>
-        <router-link to="/discover">
-          <el-button type="primary" size="large" icon="el-icon-search">立即探索美食</el-button>
+        <router-link to="/discover" class="hero-button-link">
+          <el-button type="primary" size="large">立即探索美食</el-button>
         </router-link>
       </div>
     </section>
@@ -244,5 +244,11 @@ onMounted(() => {
 
 .latest-post-card {
   width: 100%;
+}
+
+/* Add style for the router-link containing the button */
+.hero-button-link {
+  display: inline-block; /* Ensure it behaves correctly with text-align: center */
+  margin-top: 1em; /* Add some space above the button */
 }
 </style>

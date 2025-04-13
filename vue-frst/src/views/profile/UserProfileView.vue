@@ -35,14 +35,17 @@
     <!-- User Content (e.g., Posts) -->
     <el-tabs v-model="activeTab" class="profile-tabs">
       <el-tab-pane label="动态" name="posts">
-        <div v-if="postsLoading && postsCurrentPage === 1" class="loading-placeholder">正在加载帖子...</div>
-        <div v-else-if="!postsLoading && userPosts.length === 0" class="empty-placeholder">该用户还没有发布任何动态哦~</div>
+        <div v-if="postsLoading && postsCurrentPage === 1" class="tab-placeholder">正在加载帖子...</div>
+        <div v-else-if="!postsLoading && userPosts.length === 0" class="tab-placeholder">该用户还没有发布任何动态哦~</div>
         <div v-else class="post-list">
            <PostCard
              v-for="post in userPosts"
              :key="post.id"
              :post="post"
              @card-click="goToPostDetail"
+             :is-author="logIsAuthor(post)"
+             @delete="handleDeletePost"
+             @edit="handleEditPost"
              class="profile-post-card"
            />
            <div v-if="postsLoading && postsCurrentPage > 1" class="loading-more">加载更多...</div>
@@ -154,6 +157,13 @@
       </span>
     </template>
   </el-dialog>
+
+  <!-- + Add Post Edit Modal -->
+  <PostEditModal 
+    v-model:visible="isEditModalVisible"
+    :post-data="editingPostData"
+    @post-updated="handlePostUpdated"
+  />
 </template>
 
 <script setup lang="ts">
@@ -172,6 +182,7 @@ import PostCard from '@/components/PostCard.vue';
 import { Edit, Delete, EditPen } from '@element-plus/icons-vue';
 import UserListItem from '@/components/user/UserListItem.vue'; // + Import UserListItem
 import type { UserPublicListData } from '@/services/UserService'; // + Import type for user list data
+import PostEditModal from '@/components/PostEditModal.vue'; // + Import the new modal
 
 const router = useRouter();
 const route = useRoute();
@@ -211,6 +222,10 @@ const followersCurrentPage = ref(0);
 const followingTotalPages = ref(0);
 const followersTotalPages = ref(0);
 const followListItemLoading = ref<Record<number, boolean>>({});
+
+// + State for edit modal
+const isEditModalVisible = ref(false);
+const editingPostData = ref<Post | null>(null);
 
 // --- Computed ---
 // + Check if viewing own profile
@@ -399,10 +414,17 @@ const confirmDeletePost = (postId: number) => {
        }).catch(() => { ElMessage.info('已取消删除'); });
 };
 
-// Keep simplified openEditModal
-const openEditModal = (post: Post) => {
-     ElMessage.info('编辑功能待恢复');
-     // TODO: Implement modal opening
+// + Update handleEditPost to open modal
+const handleEditPost = (postId: number) => {
+  console.log(`[UserProfileView] handleEditPost called for ID: ${postId}`);
+  const postToEdit = userPosts.value.find(p => p.id === postId);
+  if (postToEdit) {
+    editingPostData.value = postToEdit;
+    isEditModalVisible.value = true;
+  } else {
+    console.warn(`[UserProfileView] Post with ID ${postId} not found for editing.`);
+    ElMessage.error('找不到要编辑的帖子');
+  }
 };
 
 const toggleFollow = async () => {
@@ -472,11 +494,12 @@ const handleAvatarSuccess: UploadProps['onSuccess'] = (
   uploadFile
 ) => {
   console.log('[UserProfileView] Avatar Upload Success Response:', response);
-  if (response && response.avatarUrl) {
+  if (response && typeof response.avatarUrl === 'string') {
     pendingAvatarUrl.value = response.avatarUrl;
     ElMessage.success('头像上传成功! 请点击保存以应用更改。');
   } else {
-     ElMessage.error(response?.message || '头像上传失败，响应无效');
+     console.error('[UserProfileView] Invalid response from avatar upload:', response);
+     ElMessage.error(response?.message || '头像上传失败，响应数据无效');
   }
 };
 
@@ -494,12 +517,13 @@ const beforeAvatarUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile)
 
 const saveAvatarSelection = async () => {
   const currentStoredUrl = userStore.currentUser?.avatarUrl || null;
-  const urlToSave = pendingAvatarUrl.value;
+  const urlToSave: string | null = pendingAvatarUrl.value === undefined ? null : pendingAvatarUrl.value;
+
   if (urlToSave === currentStoredUrl) {
     avatarDialogVisible.value = false;
     return;
   }
-  console.log('[UserProfileView] Saving avatar selection. New URL:', urlToSave);
+  console.log('[UserProfileView] Saving avatar selection. New URL to save:', urlToSave);
   try {
     const response = await UserService.updateMyProfile({ avatarUrl: urlToSave });
     console.log('[UserProfileView] Received user data after update:', JSON.stringify(response?.user, null, 2));
@@ -616,31 +640,171 @@ const handleToggleFollowInList = async (targetUserId: number) => {
   }
 };
 
-// --- Lifecycle & Watchers ---
-onMounted(() => {
-  loadUserProfile(userId.value);
-  fetchPresetAvatars(); // Fetch preset avatars on mount
-});
+// Helper to reset pagination and data for all tabs
+const resetPaginationAndData = () => {
+    userPosts.value = [];
+    postsCurrentPage.value = 0;
+    postsTotalPages.value = 0;
+    userFavorites.value = [];
+    favoritesCurrentPage.value = 0;
+    favoritesTotalPages.value = 0;
+    followingList.value = [];
+    followingCurrentPage.value = 0;
+    followingTotalPages.value = 0;
+    followersList.value = [];
+    followersCurrentPage.value = 0;
+    followersTotalPages.value = 0;
+};
 
-watch(userId, (newId) => {
-  if (newId) {
-    loadUserProfile(newId);
+// Fetch user posts (paginated)
+const fetchUserPosts = async (page: number = 1, append: boolean = false) => {
+    if (!userId.value) return;
+    postsLoading.value = true;
+    try {
+        // Assuming PostService.getPostsByUserId returns { posts: Post[], pagination: { currentPage: number, totalPages: number } }
+        const response = await PostService.getPostsByUserId(Number(userId.value), page, 9); // Example limit: 9 posts per page
+        if (append) {
+            userPosts.value.push(...response.posts);
+        } else {
+            userPosts.value = response.posts;
+        }
+        postsCurrentPage.value = response.currentPage; // Use correct pagination field name
+        postsTotalPages.value = response.totalPages; // Use correct pagination field name
+    } catch (err) {
+        console.error('Failed to fetch user posts:', err);
+        ElMessage.error('加载帖子列表失败');
+    } finally {
+        postsLoading.value = false;
+    }
+};
+
+// Fetch user favorites (paginated)
+const fetchUserFavorites = async (page: number = 1, append: boolean = false) => {
+    if (!userId.value) return;
+    favoritesLoading.value = true;
+    try {
+        // Assuming PostService.getUserFavoritePosts returns { posts: Post[], pagination: { currentPage: number, totalPages: number } }
+        const response = await PostService.getFavoritedPosts(Number(userId.value), page, 9);
+        if (append) {
+            userFavorites.value.push(...response.posts);
+        } else {
+            userFavorites.value = response.posts;
+        }
+        favoritesCurrentPage.value = response.currentPage;
+        favoritesTotalPages.value = response.totalPages;
+    } catch (err) {
+        console.error('Failed to fetch user favorites:', err);
+        ElMessage.error('加载收藏列表失败');
+    } finally {
+        favoritesLoading.value = false;
+    }
+};
+
+// Fetch following list (paginated)
+const fetchFollowing = async (page: number = 1, append: boolean = false) => {
+    if (!userId.value) return;
+    followingLoading.value = true;
+    try {
+        const response = await UserService.getFollowing(Number(userId.value), page, 15);
+        if (append) {
+            followingList.value.push(...(response.following || []));
+        } else {
+            followingList.value = response.following || [];
+        }
+        followingCurrentPage.value = response.currentPage;
+        followingTotalPages.value = response.totalPages;
+    } catch (err) {
+        console.error('Failed to fetch following list:', err);
+        ElMessage.error('加载关注列表失败');
+    } finally {
+        followingLoading.value = false;
+    }
+};
+
+// Fetch followers list (paginated)
+const fetchFollowers = async (page: number = 1, append: boolean = false) => {
+     if (!userId.value) return;
+    followersLoading.value = true;
+    try {
+        const response = await UserService.getFollowers(Number(userId.value), page, 15);
+         if (append) {
+            followersList.value.push(...(response.followers || []));
+        } else {
+            followersList.value = response.followers || [];
+        }
+        followersCurrentPage.value = response.currentPage;
+        followersTotalPages.value = response.totalPages;
+    } catch (err) {
+        console.error('Failed to fetch followers list:', err);
+        ElMessage.error('加载粉丝列表失败');
+    } finally {
+        followersLoading.value = false;
+    }
+};
+
+// Load data based on the active tab
+const loadTabData = (tabName: string) => {
+    console.log(`[UserProfileView] Loading data for tab: ${tabName}`);
+    switch (tabName) {
+        case 'posts':
+            if (postsCurrentPage.value === 0) fetchUserPosts(1);
+            break;
+        case 'favorites':
+            if (favoritesCurrentPage.value === 0) fetchUserFavorites(1);
+            break;
+        case 'following':
+             if (followingCurrentPage.value === 0) fetchFollowing(1);
+            break;
+        case 'followers':
+             if (followersCurrentPage.value === 0) fetchFollowers(1);
+            break;
+    }
+};
+
+// Fetch User Profile Data
+const fetchUserProfile = async (id: number) => {
+  loading.value = true;
+  error.value = null;
+  userData.value = null; // Reset user data before fetch
+  try {
+    console.log(`[UserProfileView] Fetching profile for user ID: ${id}`);
+    // 使用正确的 Service 方法获取用户公开信息
+    userData.value = await UserService.getUserProfile(id);
+    console.log('[UserProfileView] User profile data fetched:', userData.value);
+    // Reset tabs and pagination on user change
+    activeTab.value = 'posts';
+    resetPaginationAndData();
+    // Load initial tab data after profile is fetched
+    loadTabData(activeTab.value);
+  } catch (err: any) {
+    console.error(`[UserProfileView] Error fetching profile for user ${id}:`, err);
+    error.value = err.response?.status === 404 ? '用户不存在。' : (err.response?.data?.message || '加载用户信息时出错');
+  } finally {
+    loading.value = false;
   }
-});
+};
 
-// + Watch for changes in store avatar to potentially update pending state if dialog is open
-// (Optional, might not be necessary if store update is robust)
-// watch(() => userStore.currentUser?.avatarUrl, (newUrl) => {
-//   if (avatarDialogVisible.value && pendingAvatarUrl.value !== newUrl) {
-//      pendingAvatarUrl.value = newUrl || null;
-//   }
-// });
+// Watch for route param changes to refetch data
+watch(userId, (newUserId) => {
+  if (newUserId) {
+    // Ensure newUserId is treated as a number
+    const numericUserId = Number(newUserId);
+    if (!isNaN(numericUserId)) {
+        fetchUserProfile(numericUserId);
+    } else {
+        console.error(`[UserProfileView] Invalid user ID detected in route: ${newUserId}`);
+        error.value = '无效的用户ID';
+        loading.value = false;
+    }
+  }
+}, { immediate: true }); // immediate: true to run on initial load
 
-// + Restore watch for activeTab to load content when tab changes
+// Watch for active tab changes to load data
 watch(activeTab, (newTab, oldTab) => {
   if (newTab && newTab !== oldTab) {
-    console.log(`[UserProfileView] Tab changed to: ${newTab}`);
-    loadContentForTab(newTab);
+    loadTabData(newTab);
+    // Update URL query parameter without reloading page
+    router.replace({ query: { ...route.query, tab: newTab } });
   }
 });
 
@@ -649,12 +813,85 @@ watch(() => route.query.tab,
   (newTabQuery) => {
     const validTabs = ['posts', 'favorites', 'following', 'followers'];
     if (typeof newTabQuery === 'string' && validTabs.includes(newTabQuery) && newTabQuery !== activeTab.value) {
-      console.log(`[UserProfileView] Route query changed, setting active tab to: ${newTabQuery}`);
       activeTab.value = newTabQuery;
       // The activeTab watcher will handle loading the content
     }
   }
 );
+
+// + Add missing logIsAuthor function
+const logIsAuthor = (post: Post): boolean => {
+  if (!post || userStore.currentUser === null) return false;
+  const postAuthorId = Number(post.authorId);
+  const currentUserId = Number(userStore.currentUser?.id);
+  const isAuthor = isViewingOwnProfile.value &&
+                   !isNaN(postAuthorId) &&
+                   !isNaN(currentUserId) &&
+                   postAuthorId === currentUserId;
+  // console.log(
+  //   `[UserProfileView] logIsAuthor: PostID=${post.id}, ` +
+  //   `post.authorId=${post.authorId} (type: ${typeof post.authorId}), ` +
+  //   `converted postAuthorId=${postAuthorId} (type: ${typeof postAuthorId}), ` +
+  //   `currentUserId=${userStore.currentUser?.id} (type: ${typeof userStore.currentUser?.id}), ` +
+  //   `converted currentUserId=${currentUserId} (type: ${typeof currentUserId}), ` +
+  //   `isViewingOwn=${isViewingOwnProfile.value} => isAuthorResult=${isAuthor}`
+  // ); // Keep console log commented out for now
+  return isAuthor;
+};
+
+// Add missing handlers
+const handleDeletePost = async (postId: number) => {
+  console.log(`[UserProfileView] handleDeletePost called for ID: ${postId}`);
+  try {
+    await ElMessageBox.confirm(
+      '确定要永久删除这篇帖子吗？此操作无法撤销。',
+      '确认删除',
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    // Actual deletion logic
+    try {
+      await PostService.deletePost(postId);
+      userPosts.value = userPosts.value.filter(p => p.id !== postId);
+      // Update user's post count locally if userData exists
+      if (userData.value && typeof userData.value.postCount === 'number') {
+        userData.value.postCount = Math.max(0, userData.value.postCount - 1);
+      }
+      ElMessage.success('帖子删除成功');
+    } catch (deleteError: any) {
+      console.error(`Failed to delete post ${postId}:`, deleteError);
+      ElMessage.error(deleteError.response?.data?.message || '删除帖子失败');
+    }
+  } catch (cancel) {
+    // User clicked cancel
+    ElMessage.info('已取消删除');
+  }
+};
+
+// + Add handler for post-updated event from modal
+const handlePostUpdated = (updatedPost: Post) => {
+  console.log('[UserProfileView] handlePostUpdated called with:', updatedPost);
+  const index = userPosts.value.findIndex(p => p.id === updatedPost.id);
+  if (index !== -1) {
+    // Replace the old post object with the updated one for reactivity
+    userPosts.value.splice(index, 1, updatedPost);
+    ElMessage.success('帖子列表已更新');
+  } else {
+    console.warn('[UserProfileView] Updated post not found in local list, list might be out of sync.');
+    // Optionally refetch the list here if needed
+    // fetchUserPosts(postsCurrentPage.value || 1);
+  }
+  // Modal closing is handled by the modal itself via emit('update:visible', false)
+};
+
+// --- Lifecycle & Watchers ---
+onMounted(() => {
+  // userId watcher with immediate:true handles initial load
+  fetchPresetAvatars(); // Still fetch presets on mount
+});
 
 </script>
 
@@ -788,11 +1025,10 @@ watch(() => route.query.tab,
 
 .post-list {
   display: grid;
-  // Create responsive columns: min 280px wide, max 1fr (takes equal space)
-  // Browser will fit as many columns as possible based on container width
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px; // Adjust gap between cards as needed
-  padding: 10px 0; // Add some vertical padding if needed
+  gap: 20px;
+  padding: 10px 0;
+  width: 100%;
 }
 
 .profile-post-card {

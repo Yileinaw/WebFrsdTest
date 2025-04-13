@@ -137,13 +137,8 @@ const routes: Array<RouteRecordRaw> = [
     path: '/admin',
     component: AdminLayout, 
     // meta: { requiresAuth: true }, // Ensure guards are handled globally or fix import
+    redirect: { name: 'AdminFoodManagement' }, // 添加重定向
     children: [
-      {
-        path: '', // Or a specific path like 'dashboard'
-        name: 'AdminDashboard',
-        component: UnderDevelopment, // Point to a placeholder or actual dashboard
-        meta: { requiresAuth: true, isAdmin: true, title: '管理后台首页' }
-      },
       {
         path: 'food-management',
         name: 'AdminFoodManagement',

@@ -140,7 +140,7 @@
                <el-button v-if="isEditing" link @click="prepareNewForm">取消编辑</el-button>
             </div>
           </template>
-          <!-- Moved Form Here -->
+          <!-- Single Item Form -->
           <el-form ref="formRef" :model="formModel" :rules="formRules" label-width="80px" label-position="top">
             <el-form-item label="图片" prop="imageFile">
               <el-upload
@@ -197,6 +197,63 @@
              </el-form-item>
           </el-form>
 
+          <el-divider>批量上传</el-divider>
+
+          <!-- Multiple Image Upload Form -->
+          <el-form :model="multipleUploadForm" label-width="80px" label-position="top">
+            <el-form-item label="选择图片">
+              <el-upload
+                ref="multipleUploadRef"
+                action=""
+                :http-request="handleMultipleHttpRequest"
+                :on-change="handleMultipleFileChange"
+                :on-remove="handleMultipleFileRemove"
+                :before-upload="beforeMultipleUpload"
+                :file-list="multipleFileList"
+                list-type="picture-card"
+                multiple
+                :auto-upload="false"
+              >
+                <el-icon><Plus /></el-icon>
+                <template #tip>
+                  <div class="el-upload__tip">
+                    可选择多张图片 (jpg/png/gif/webp, 单张不超过 5MB)
+                  </div>
+                </template>
+              </el-upload>
+            </el-form-item>
+
+            <!-- Optionally add fields for common title/tags for batch upload here -->
+            <!--
+            <el-form-item label="标题前缀 (可选)">
+              <el-input v-model="multipleUploadForm.titlePrefix" placeholder="为上传的图片添加统一前缀"></el-input>
+            </el-form-item>
+            <el-form-item label="公共标签 (可选)">
+               <el-select
+                 v-model="multipleUploadForm.commonTags"
+                 multiple
+                 filterable
+                 placeholder="为上传的图片添加统一标签"
+                 style="width: 100%"
+                 :loading="loadingTags"
+               >
+                 <el-option
+                   v-for="tag in availableTags"
+                   :key="tag.name + '-multi'"
+                   :label="tag.name"
+                   :value="tag.name"
+                 />
+               </el-select>
+            </el-form-item>
+            -->
+
+            <el-form-item>
+              <el-button type="success" @click="handleMultipleSubmit" :loading="isSubmitting" :disabled="multipleFileList.length === 0">
+                 开始上传 ({{ multipleFileList.length }})
+              </el-button>
+            </el-form-item>
+          </el-form>
+
           <!-- Statistics Chart Placeholder (Sidebar) - Already no inner card -->
           <Transition name="fade">
             <div v-if="shouldShowChartInSidebar" style="margin-top: 30px;">
@@ -233,10 +290,10 @@ import { ref, onMounted, reactive, computed } from 'vue';
 import {
     ElCard, ElButton, ElTable, ElTableColumn, ElImage, ElIcon, ElEmpty, ElDialog,
     ElForm, ElFormItem, ElInput, ElSelect, ElOption, ElUpload, ElMessage, ElMessageBox,
-    ElPagination, ElPopover, ElStatistic, ElSkeleton, ElDivider, ElTag
+    ElPagination, ElPopover, ElStatistic, ElSkeleton, ElDivider, ElTag, ElRow, ElCol
 } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
-import type { FormInstance, FormRules, UploadInstance, UploadProps, UploadRawFile, UploadFile, UploadRequestHandler } from 'element-plus';
+import type { FormInstance, FormRules, UploadInstance, UploadProps, UploadRawFile, UploadFile, UploadRequestHandler, UploadUserFile } from 'element-plus';
 import { getImageUrl } from '@/utils/imageUrl';
 import { AdminService } from '@/services/AdminService';
 import type { FoodShowcasePreview, Tag } from '@/types/models';
@@ -270,7 +327,7 @@ const statsData = ref<any>(null); // State for statistics data
 const loadingStats = ref(false); // Loading state for stats
 
 // Get reactive window size
-const { height: windowHeight } = useWindowSize();
+const { width } = useWindowSize();
 
 const formModel = reactive<{ 
     imageFile: UploadRawFile | null; 
@@ -299,22 +356,7 @@ const formRules = reactive<FormRules>({
 });
 
 // --- Updated Computed Property for Chart Position --- //
-const shouldShowChartInSidebar = computed(() => {
-    const formApproxHeight = 550; // Approximate height of the form section in pixels
-    const chartHeight = 320;      // Approximate height of the chart section in pixels (including margins/padding)
-    const requiredSidebarHeight = formApproxHeight + chartHeight + 60; // Total estimated height needed + buffer
-    const tableBecomesTallThreshold = 20; // Page size when the table is considered tall
-
-    // Move chart to sidebar if: 
-    // 1. Page size is large (table is tall)
-    // 2. AND Window height is sufficient to display form + chart comfortably in the sidebar
-    const isTableTall = pageSize.value >= tableBecomesTallThreshold;
-    const hasEnoughSidebarSpace = windowHeight.value > requiredSidebarHeight;
-
-    // console.log(`pageSize: ${pageSize.value}, windowHeight: ${windowHeight.value}, requiredSidebarHeight: ${requiredSidebarHeight}, isTableTall: ${isTableTall}, hasEnoughSidebarSpace: ${hasEnoughSidebarSpace}`);
-
-    return isTableTall && hasEnoughSidebarSpace;
-});
+const shouldShowChartInSidebar = computed(() => width.value >= 992);
 
 // --- Methods --- //
 // Fetch tags - Add loading state toggle
@@ -562,6 +604,113 @@ const fetchStats = async () => {
   }
 };
 
+// --- Multiple Image Upload State & Methods ---
+const multipleUploadRef = ref<UploadInstance>();
+// Use UploadUserFile which includes status etc.
+const multipleFileList = ref<UploadUserFile[]>([]);
+const multipleUploadForm = reactive({
+    // You might need additional fields like a common title or tags for batch upload
+    // titlePrefix: '',
+    // commonTags: [] as string[]
+});
+
+const handleMultipleFileChange: UploadProps['onChange'] = (uploadFile, uploadFiles) => {
+    // Keep internal file list synced with el-upload's list
+    // Filter out files that failed client-side validation during selection
+    multipleFileList.value = uploadFiles.filter(f => f.raw ? beforeMultipleUpload(f.raw) : true);
+    // Note: `before-upload` is called *before* adding to the list visually if autoUpload=true,
+    // but with autoUpload=false, onChange needs to manage the list based on validation.
+};
+
+const handleMultipleFileRemove: UploadProps['onRemove'] = (uploadFile, uploadFiles) => {
+    multipleFileList.value = uploadFiles;
+};
+
+const handleMultipleHttpRequest: UploadRequestHandler = (options) => {
+    // We handle the upload manually in handleMultipleSubmit
+    return Promise.resolve(true);
+};
+
+const beforeMultipleUpload: UploadProps['beforeUpload'] = (rawFile) => {
+    // Reuse the single image validation logic
+    return beforeImageUpload(rawFile);
+    // Note: This validation runs when files are *selected* if autoUpload=false.
+    // If a file fails here, it won't trigger onChange for that specific file.
+};
+
+const handleMultipleSubmit = async () => {
+    if (multipleFileList.value.length === 0) {
+        ElMessage.warning('请至少选择一张图片');
+        return;
+    }
+
+    // Filter out files that are not 'ready' or 'success' (already uploaded/failed client-side)
+    const filesToUpload = multipleFileList.value.filter(f => f.status === 'ready' && f.raw);
+
+    if (filesToUpload.length === 0) {
+        ElMessage.warning('没有有效的新文件可上传');
+        return;
+    }
+
+    isSubmitting.value = true; // Use a shared or separate loading state
+    ElMessage.info(`开始上传 ${filesToUpload.length} 张图片...`);
+
+    // Option 1: Upload one by one (simpler, shows progress per file)
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const uploadFile of filesToUpload) {
+        if (!uploadFile.raw) continue; // Should not happen due to filter, but good practice
+
+        const formData = new FormData();
+        // Generate a default title or leave it to backend if needed
+        // Using file name without extension as a simple default title
+        const defaultTitle = uploadFile.name.substring(0, uploadFile.name.lastIndexOf('.')) || `上传图片 - ${uploadFile.name}`;
+        formData.append('title', defaultTitle);
+        formData.append('image', uploadFile.raw);
+        // Add common tags or other data if available from multipleUploadForm
+        // if (multipleUploadForm.commonTags.length > 0) {
+        //     multipleUploadForm.commonTags.forEach(tag => formData.append('tags', tag));
+        // }
+
+        try {
+            await AdminService.createFoodShowcase(formData);
+            successCount++;
+            // Optionally remove successful file from list visually
+            // multipleUploadRef.value?.handleRemove(uploadFile); // This might interfere with the loop or reactivity
+            uploadFile.status = 'success'; // Mark as success
+        } catch (error: any) {
+            failCount++;
+            uploadFile.status = 'fail'; // Mark as fail
+            console.error(`Error uploading ${uploadFile.name}:`, error);
+            // Mark file as failed in UI? El-upload might do this automatically if http-request fails
+            ElMessage.error(`上传 ${uploadFile.name} 失败: ${error.response?.data?.message || '未知错误'}`);
+        }
+    }
+
+    // Option 2: Batch Upload (Requires Backend Support) - Keep commented out
+    /* ... */
+
+    isSubmitting.value = false;
+
+    // Update the visual file list based on success/fail status
+    multipleFileList.value = multipleFileList.value.filter(f => f.status !== 'success');
+
+    if (successCount > 0) {
+        ElMessage.success(`成功上传 ${successCount} 张图片`);
+        currentPage.value = 1; // 设置当前页为 1
+        fetchShowcases(); // 调用时不带参数
+        fetchStats(); // Refresh stats
+    }
+    if (failCount === 0 && successCount > 0 && multipleFileList.value.length === 0) {
+         // Clear the list only if all uploads were successful
+         multipleFileList.value = [];
+         multipleUploadRef.value?.clearFiles();
+    } else if (failCount > 0) {
+        ElMessage.warning(`${failCount} 张图片上传失败，请检查后重试`);
+    }
+};
+
 // --- Lifecycle Hooks --- //
 onMounted(() => {
   fetchShowcases(); // Initial fetch with default params
@@ -722,5 +871,26 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 0; /* Remove default top margin if pagination is last element */
+}
+
+// --- Multiple Image Uploader Styles --- //
+:deep(.el-upload-list--picture-card) {
+    --el-upload-list-picture-card-size: 100px; // Adjust card size
+     display: flex; // Use flexbox for better layout
+     flex-wrap: wrap; // Allow wrapping
+     gap: 8px; // Add gap between items
+}
+
+:deep(.el-upload-list--picture-card .el-upload-list__item) {
+    margin: 0; // Remove default margin if using gap
+    width: var(--el-upload-list-picture-card-size); // Ensure item respects size
+    height: var(--el-upload-list-picture-card-size);
+}
+
+:deep(.el-upload--picture-card) {
+     --el-upload-picture-card-size: 100px; // Adjust '+' button size
+     width: var(--el-upload-picture-card-size);
+     height: var(--el-upload-picture-card-size);
+     margin: 0; // Remove default margin if using gap
 }
 </style> 

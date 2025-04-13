@@ -1,22 +1,28 @@
 <template>
   <el-card class="post-card" shadow="hover" :body-style="{ padding: '0px' }" @click="handleCardClick">
-    <!-- Image Section -->
-    <el-image
-      v-if="post.imageUrl"
-      :src="resolvedImageUrl"
-      fit="cover"
-      class="post-image"
-      lazy
-    >
-      <template #placeholder>
-        <div class="image-slot">加载中<span class="dot">...</span></div>
-      </template>
-       <template #error>
-         <div class="image-slot">
-           <el-icon><Picture /></el-icon>
-         </div>
-       </template>
-    </el-image>
+    <!-- Image Section Container -->
+    <div class="post-image-container">
+      <el-image
+        v-if="post.imageUrl"
+        :src="resolvedImageUrl"
+        fit="cover"
+        class="post-image"
+        lazy
+      >
+        <template #placeholder>
+          <div class="image-slot loading">加载中...</div>
+        </template>
+        <template #error>
+          <div class="image-slot error">
+            <el-icon><Picture /></el-icon>
+          </div>
+        </template>
+      </el-image>
+      <!-- Placeholder for posts without image -->
+      <div v-else class="image-slot placeholder">
+        <el-icon><Document /></el-icon>
+      </div>
+    </div>
 
     <!-- Content Section -->
     <div class="post-details">
@@ -43,6 +49,14 @@
            {{ post.favoritesCount || 0 }}
          </span>
          <span class="spacer"></span>
+         <template v-if="isAuthor">
+           <el-button link type="primary" size="small" @click.stop="emit('edit', post.id)" class="action-button">
+             <el-icon><Edit /></el-icon> 编辑
+           </el-button>
+           <el-button link type="danger" size="small" @click.stop="emit('delete', post.id)" class="action-button">
+             <el-icon><Delete /></el-icon> 删除
+           </el-button>
+         </template>
          <el-icon class="more-icon" @click.stop><MoreFilled /></el-icon>
        </div>
     </div>
@@ -52,8 +66,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { PropType } from 'vue';
-import { ElCard, ElAvatar, ElIcon, ElImage } from 'element-plus';
-import { Pointer, ChatDotRound, Star, MoreFilled, Picture } from '@element-plus/icons-vue';
+import { ElCard, ElAvatar, ElIcon, ElImage, ElButton } from 'element-plus';
+import { Pointer, ChatDotRound, Star, MoreFilled, Picture, Edit, Delete, Document } from '@element-plus/icons-vue';
 import type { Post } from '@/types/models';
 import { resolveStaticAssetUrl } from '@/utils/urlUtils';
 
@@ -61,10 +75,14 @@ const props = defineProps({
   post: {
     type: Object as PropType<Post>,
     required: true
+  },
+  isAuthor: {
+    type: Boolean,
+    default: false
   }
 });
 
-const emit = defineEmits(['card-click']);
+const emit = defineEmits(['card-click', 'edit', 'delete']);
 
 const handleCardClick = () => {
   console.log(`[PostCard] handleCardClick triggered for post ID: ${props.post.id}`);
@@ -92,11 +110,19 @@ const formattedDate = computed(() => {
   overflow: hidden;
   border-radius: 8px;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+
+.post-image-container {
+  width: 100%;
+  height: 180px;
+  background-color: var(--el-fill-color-lighter);
 }
 
 .post-image {
   width: 100%;
-  height: 180px;
+  height: 100%;
   display: block;
 }
 
@@ -106,10 +132,18 @@ const formattedDate = computed(() => {
   align-items: center;
   width: 100%;
   height: 100%;
-  background: var(--el-fill-color-light);
   color: var(--el-text-color-secondary);
   font-size: 14px;
-  .el-icon { font-size: 30px; }
+  background-color: inherit;
+
+  .el-icon {
+    font-size: 40px;
+    color: var(--el-text-color-placeholder);
+  }
+
+  
+ 
+ 
 }
 
 .post-details {
@@ -176,6 +210,13 @@ const formattedDate = computed(() => {
   }
   .spacer {
       flex-grow: 1;
+  }
+  .action-button {
+    margin-left: 10px;
+    font-size: 0.85rem;
+    .el-icon {
+        margin-right: 3px;
+    }
   }
   .more-icon {
       cursor: pointer;

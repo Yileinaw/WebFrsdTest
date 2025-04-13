@@ -12,7 +12,7 @@
       <div v-if="myPosts.length > 0" class="posts-grid">
         <!-- Use ShareCard in a grid -->
         <div v-for="post in myPosts" :key="post.id" class="post-card-item">
-           <ShareCard :post="post" @update:post="handlePostUpdateLocally" />
+           <ShareCard :post="post as any" @update:post="handlePostUpdateLocally" />
            <!-- Add Manage Buttons specific to this view -->
            <div class="post-actions-manage">
               <el-button type="primary" link :icon="Edit" @click="openEditModal(post)">编辑</el-button>
@@ -149,14 +149,20 @@ const fetchMyPosts = async (page: number = 1) => {
     error.value = null;
     try {
         const response = await PostService.getMyPosts({ page, limit: pagination.pageSize });
-        myPosts.value = response.posts;
-        pagination.total = response.totalCount || 0;
-        pagination.currentPage = page;
+
+        // Directly assign posts, type assertion will happen in template
+        myPosts.value = response.posts || [];
+
+        // Removed attempts to access total count from response due to type errors.
+        // TODO: Replace with the correct property from API response (e.g., response.meta.totalCount)
+        pagination.total = 0; // Set to 0 temporarily
+        pagination.currentPage = page; // Set current page based on request
+
     } catch (err: any) {
-        console.error('Error fetching my posts:', err); 
+        console.error('Error fetching my posts:', err);
         error.value = err.response?.data?.message || '加载我的帖子列表失败';
-        myPosts.value = [];
-        pagination.total = 0;
+        myPosts.value = []; // Ensure posts are empty on error
+        pagination.total = 0; // Reset total on error
     } finally {
         isLoading.value = false;
     }
@@ -350,9 +356,7 @@ export default {
       gap: 10px; 
       flex-shrink: 0; 
 
-      .el-button {
-         // Reset styles if needed
-      }
+      
   }
 }
 

@@ -16,6 +16,11 @@ interface BasicNotification {
       name: string | null;
       avatarUrl?: string | null;
   } | null; // Allow sender to be null if senderId is null
+  // Add post object for title
+  post?: {
+      id: number;
+      title: string;
+  } | null;
 }
 
 // Update response interface
@@ -74,6 +79,13 @@ export class NotificationService {
                     name: true,
                     avatarUrl: true
                 }
+            },
+            // Include post details if postId exists
+            post: {
+                select: {
+                    id: true,
+                    title: true
+                }
             }
         }
       }),
@@ -93,7 +105,12 @@ export class NotificationService {
             id: n.sender.id,
             name: n.sender.name,
             avatarUrl: n.sender.avatarUrl
-        } : null // Handle case where sender might be null
+        } : null, // Handle case where sender might be null
+        // Map the post object
+        post: n.post ? {
+            id: n.post.id,
+            title: n.post.title
+        } : null
     }));
 
     return { notifications, totalCount };

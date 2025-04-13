@@ -236,13 +236,13 @@ export class UserController {
             updateData.bio = bio;
         }
          if (avatarUrl !== undefined) {
-             // Validate the incoming avatarUrl: must be null or a string starting with /avatars/defaults/
-             if (avatarUrl === null || (typeof avatarUrl === 'string' && avatarUrl.startsWith('/avatars/defaults/'))) {
+             // Validate the incoming avatarUrl: must be null or a valid string URL
+             if (avatarUrl === null || typeof avatarUrl === 'string') {
                  updateData.avatarUrl = avatarUrl;
                  isUpdatingAvatar = true; // Mark that avatar is part of this update
              } else {
-                 // Reject if avatarUrl is provided but not a valid preset format or null
-                 return res.status(400).json({ message: 'Invalid avatarUrl format. Only null or default preset URLs are allowed here.' });
+                 // Reject if avatarUrl is provided but not null or a string
+                 return res.status(400).json({ message: 'Invalid avatarUrl format. Must be a string or null.' });
              }
         }
 

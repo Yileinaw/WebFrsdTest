@@ -45,7 +45,7 @@
         <span><el-icon><Setting /></el-icon> 账号设置</span>
          <el-icon class="arrow-right"><ArrowRight /></el-icon>
       </div>
-      <div v-if="userStore.isAdmin" @click="goToRoute({ name: 'AdminDashboard' })" class="dropdown-item">
+      <div v-if="userStore.isAdmin" @click="router.push('/admin')" class="dropdown-item">
          <span><el-icon><Platform /></el-icon> 管理后台</span>
          <el-icon class="arrow-right"><ArrowRight /></el-icon>
       </div>

@@ -1,5 +1,6 @@
 import http from '@/http';
 import type { User } from '@/types/models'; // Import the User type
+import type { Post } from '@/types/models'; // Ensure Post type is imported
 // import type { User, Post, Notification } from '@/types/models'; // 可能不再直接需要 User
 // import type { PaginatedResponse } from '@/types/api'; // 可能需要根据后端调整
 import type { ChangePasswordPayload } from '@/types/payloads';
@@ -64,6 +65,14 @@ export type UserPublicListData = {
 // Define the response type for getting default avatars
 interface DefaultAvatarsResponse {
     avatarUrls: string[];
+}
+
+// Define response structure for user posts (assuming pagination)
+interface PaginatedUserPostsResponse {
+    posts: Post[];
+    currentPage: number;
+    totalPages: number;
+    totalCount: number;
 }
 
 // Keep as an exported class with static methods
@@ -158,6 +167,28 @@ export class UserService {
             params: { page, limit }
         });
         return response.data;
+    }
+
+    // --- 获取特定用户的帖子列表 --- //
+    static async getUserPosts(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedUserPostsResponse> {
+        console.log(`[UserService.getUserPosts] Fetching posts for user ${userId}, page ${page}, limit ${limit}`);
+        try {
+            const response = await http.get<PaginatedUserPostsResponse>(`/users/${userId}/posts`, {
+                params: { page, limit }
+            });
+            console.log(`[UserService.getUserPosts] Received ${response.data.posts?.length} posts, total: ${response.data.totalCount}`);
+            // Ensure response structure matches expected type, provide defaults if necessary
+            return {
+                posts: response.data.posts || [],
+                currentPage: response.data.currentPage || page,
+                totalPages: response.data.totalPages || 1,
+                totalCount: response.data.totalCount || 0
+            };
+        } catch (error) {
+             console.error(`[UserService.getUserPosts] Failed to fetch posts for user ${userId}:`, error);
+             // Return empty state on error
+             return { posts: [], currentPage: 1, totalPages: 1, totalCount: 0 };
+        }
     }
 
     // --- Add password related methods ---

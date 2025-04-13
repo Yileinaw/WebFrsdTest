@@ -139,7 +139,7 @@ const updateProfile = async () => {
   console.log('Updating profile:', { name: profileForm.name })
   try {
     // Call actual API to update profile
-    const updatedUser = await UserService.updateUserProfile({ name: profileForm.name })
+    const updatedUser = await UserService.updateMyProfile({ name: profileForm.name })
     
     // Update store state after successful API call
     userStore.setUser(updatedUser.user) // Use setUser from store to update currentUser

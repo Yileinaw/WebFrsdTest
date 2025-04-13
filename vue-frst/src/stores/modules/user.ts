@@ -64,7 +64,8 @@ export const useUserStore = defineStore('user', () => {
     const isAdmin = computed(() => {
         console.log('[isAdmin getter] Checking role:', currentUser.value?.role);
         // Use type assertion to tell TS that role might exist
-        return (currentUser.value as User | null)?.role === 'admin';
+        // 修改为不区分大小写的比较
+        return (currentUser.value as User | null)?.role?.toLowerCase() === 'admin';
     });
 
     // --- Actions --- 
