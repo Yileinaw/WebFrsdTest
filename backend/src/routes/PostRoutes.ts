@@ -6,7 +6,7 @@ import { LikeController } from '../controllers/LikeController'; // Keep LikeCont
 import { FavoriteController } from '../controllers/FavoriteController'; // Keep FavoriteController
 import { AuthMiddleware, AuthenticatedRequest } from '../middleware/AuthMiddleware';
 import { OptionalAuthMiddleware } from '../middleware/OptionalAuthMiddleware';
-import upload from '../config/multerConfig'; // Ensure custom config is imported
+import { uploadPostImage } from '../middleware/uploadMiddleware'; // <-- Import the correct middleware
 import path from 'path';
 import multer from 'multer';
 
@@ -32,19 +32,24 @@ commentRouter.get('/', CommentController.getCommentsByPostId);
 // GET /api/posts - Use Optional Auth
 postRouter.get('/', OptionalAuthMiddleware, PostController.getAllPosts);
 
-// POST /api/posts - Restore custom upload config
+// POST /api/posts - Use the new uploadPostImage middleware
 postRouter.post(
     '/', 
     AuthMiddleware,
-    upload.single('image'), // Use custom upload config
+    uploadPostImage, // <-- Use new middleware for post images
     PostController.createPost
 );
 
 // GET /api/posts/:id - Use Optional Auth
 postRouter.get('/:postId', OptionalAuthMiddleware, PostController.getPostById);
 
-// PUT /api/posts/:id - Requires Auth
-postRouter.put('/:postId', AuthMiddleware, PostController.updatePost);
+// PUT /api/posts/:id - Requires Auth and handle image upload
+postRouter.put(
+    '/:postId', 
+    AuthMiddleware, 
+    uploadPostImage, // <-- Add middleware to handle potential image upload on update
+    PostController.updatePost
+);
 
 // DELETE /api/posts/:id - Requires Auth
 postRouter.delete('/:postId', AuthMiddleware, PostController.deletePost);

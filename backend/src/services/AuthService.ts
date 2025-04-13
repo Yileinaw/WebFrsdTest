@@ -87,7 +87,14 @@ export class AuthService {
         if (email) {
             user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
         } else if (username) {
-            user = await prisma.user.findUnique({ where: { username } });
+            user = await prisma.user.findFirst({
+                where: {
+                    username: {
+                        equals: username,
+                        mode: 'insensitive',
+                    },
+                },
+            });
         }
 
         // 3. Check if user exists

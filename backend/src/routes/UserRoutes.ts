@@ -5,7 +5,7 @@ import { NotificationController } from '../controllers/NotificationController';
 import { AuthMiddleware } from '../middleware/AuthMiddleware';
 import { AuthenticatedRequest } from '../middleware/AuthMiddleware';
 import { PostService } from '../services/PostService';
-import upload from '../config/multerConfig';
+import { uploadAvatarImage } from '../middleware/uploadMiddleware'; // <-- Import the correct middleware
 import { OptionalAuthMiddleware } from '../middleware/OptionalAuthMiddleware'; // Import OptionalAuthMiddleware
 
 // console.log('[UserRoutes.ts] File executing...'); // Remove log
@@ -46,10 +46,11 @@ userRouter.get('/me/notifications', NotificationController.getNotifications);
 // --- END REMOVE --- 
 
 // 更新当前用户信息 (用于设置预设头像或修改名字等)
-userRouter.put('/me/profile', UserController.updateUserProfile);
+// 将路由指向新的 updateMe 控制器方法
+userRouter.put('/me/profile', UserController.updateMe);
 
-// 上传头像
-userRouter.post('/me/avatar', upload.single('avatar'), UserController.uploadAvatar);
+// 上传头像 (使用新的 memoryStorage 中间件)
+userRouter.post('/me/avatar', uploadAvatarImage, UserController.uploadAvatar);
 
 // 新增：发送密码重置验证码 (需要认证)
 userRouter.post('/me/send-password-reset-code', UserController.sendPasswordResetCode);

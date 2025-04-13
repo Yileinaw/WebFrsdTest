@@ -7,6 +7,7 @@ import multer from 'multer';
 import fs from 'fs'; // Import fs module
 import path from 'path'; // Import path module
 import { Prisma, PrismaClient, User } from '@prisma/client'; // <-- Import Prisma Client and User type
+import { supabase } from '../lib/supabaseClient'; // <-- Import Supabase client
 import { sendMail } from '../utils/mailer'; // <-- Import mailer
 import crypto from 'crypto'; // <-- Import crypto
 import bcrypt from 'bcrypt'; // <-- Import bcrypt
@@ -209,6 +210,118 @@ export class UserController {
         }
     }
 
+    // 新增：专门处理更新当前登录用户个人资料
+    public static async updateMe(req: AuthenticatedRequest, res: Response): Promise<any> {
+        const userId = req.userId; // 使用认证中间件提供的用户 ID
+        if (!userId) {
+            return res.status(401).json({ message: 'Unauthorized: User ID not found' });
+        }
+
+        const { name, bio, avatarUrl } = req.body;
+
+        // 构建更新数据 (允许 null 用于 avatarUrl)
+        const updateData: { name?: string; bio?: string | null; avatarUrl?: string | null } = {};
+        let isUpdatingAvatar = false; // Flag to track if avatar is being updated
+
+        if (name !== undefined) {
+            if (typeof name !== 'string') {
+                return res.status(400).json({ message: 'Name must be a string' });
+            }
+            updateData.name = name;
+        }
+        if (bio !== undefined) {
+             if (typeof bio !== 'string' && bio !== null) {
+                 return res.status(400).json({ message: 'Bio must be a string or null' });
+             }
+            updateData.bio = bio;
+        }
+         if (avatarUrl !== undefined) {
+             // Validate the incoming avatarUrl: must be null or a string starting with /avatars/defaults/
+             if (avatarUrl === null || (typeof avatarUrl === 'string' && avatarUrl.startsWith('/avatars/defaults/'))) {
+                 updateData.avatarUrl = avatarUrl;
+                 isUpdatingAvatar = true; // Mark that avatar is part of this update
+             } else {
+                 // Reject if avatarUrl is provided but not a valid preset format or null
+                 return res.status(400).json({ message: 'Invalid avatarUrl format. Only null or default preset URLs are allowed here.' });
+             }
+        }
+
+        if (Object.keys(updateData).length === 0) {
+             return res.status(400).json({ message: 'No valid fields provided for update' });
+        }
+
+        let oldSupabasePathToDelete: string | null = null;
+        const bucketName = process.env.SUPABASE_BUCKET_NAME;
+
+        try {
+            // --- Step 1: Check and prepare for old avatar deletion if needed --- 
+            if (isUpdatingAvatar && bucketName) { // Only proceed if avatar is being updated and bucket is configured
+                const currentUserData = await prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { avatarUrl: true }
+                });
+                const currentAvatarUrl = currentUserData?.avatarUrl;
+
+                // Check if the current avatar is a Supabase URL
+                if (currentAvatarUrl && currentAvatarUrl.includes(process.env.SUPABASE_URL ?? 'supabase.co')) {
+                    try {
+                        const url = new URL(currentAvatarUrl);
+                        const pathSegments = url.pathname.split('/');
+                        const bucketNameIndex = pathSegments.findIndex(segment => segment === bucketName);
+                        // Ensure the path is within the expected user-avatars folder as well
+                        if (bucketNameIndex > -1 && pathSegments.length > bucketNameIndex + 1 && pathSegments[bucketNameIndex+1] === 'user-avatars') {
+                            oldSupabasePathToDelete = pathSegments.slice(bucketNameIndex + 1).join('/');
+                            console.log(`[UserController.updateMe] User ${userId} is switching to preset avatar. Found old Supabase path to delete: ${oldSupabasePathToDelete}`);
+                        }
+                    } catch (parseError) {
+                        console.error(`[UserController.updateMe] Failed to parse current avatar URL ${currentAvatarUrl} for user ${userId}:`, parseError);
+                    }
+                }
+            }
+            // --- End Step 1 --- 
+
+            // --- Step 2: Call Service to update the database --- 
+            const updatedUser = await UserService.updateUserProfile(userId, updateData);
+
+             if (!updatedUser) {
+                 return res.status(404).json({ message: 'User not found or update failed internally' });
+             }
+            // --- End Step 2 --- 
+
+            // --- Step 3: Delete old Supabase avatar if path was found --- 
+            if (oldSupabasePathToDelete && bucketName) {
+                console.log(`[UserController.updateMe] Attempting to delete old Supabase avatar for user ${userId}: ${oldSupabasePathToDelete}`);
+                const { error: deleteError } = await supabase.storage
+                    .from(bucketName)
+                    .remove([oldSupabasePathToDelete]);
+                
+                if (deleteError) {
+                    console.error(`[UserController.updateMe] Failed to delete old Supabase avatar ${oldSupabasePathToDelete} for user ${userId}:`, deleteError);
+                } else {
+                    console.log(`[UserController.updateMe] Successfully deleted old Supabase avatar: ${oldSupabasePathToDelete}`);
+                }
+            }
+            // --- End Step 3 --- 
+
+            // --- Step 4: Return success response --- 
+            return res.status(200).json({
+                 message: 'Profile updated successfully',
+                 user: updatedUser // Return the updated user profile
+             });
+
+        } catch (error: any) {
+            // Handle errors from Prisma or other potential issues
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                 return res.status(409).json({ message: 'Username already taken' }); 
+            } else if (error.message.includes('not found')) { 
+                 return res.status(404).json({ message: error.message });
+            } else {
+                console.error(`[UserController.updateMe] Error updating profile for user ${userId}:`, error);
+                return res.status(500).json({ message: 'Internal server error updating profile' });
+            }
+        }
+    }
+
     // 更新用户个人资料
     public static async updateUserProfile(req: AuthenticatedRequest, res: Response): Promise<any> {
         const currentUserId = req.userId; // Keep using currentUserId
@@ -293,7 +406,7 @@ export class UserController {
          }
      }
 
-    // 处理头像上传
+    // 处理头像上传 (修改为使用 Supabase)
     public static async uploadAvatar(req: AuthenticatedRequest, res: Response): Promise<void> {
             const userId = req.userId;
             if (!userId) {
@@ -301,55 +414,115 @@ export class UserController {
                 return;
             }
             if (!req.file) {
-            res.status(400).json({ message: 'No avatar file uploaded' });
+                res.status(400).json({ message: 'No avatar file uploaded' });
                 return;
             }
 
-        // Correct relative file path based on static serving config
-        // Assumes multer saves directly into 'avatars' subdir within the storage/uploads
-        const relativeFilePath = `/uploads/avatars/${req.file.filename}`;
-        
-        console.log(`[UserController.uploadAvatar] User ${userId} uploaded file: ${req.file.filename}, DB Path: ${relativeFilePath}`);
+            const fileBuffer = req.file.buffer;
+            const originalName = req.file.originalname;
+            const fileExt = path.extname(originalName);
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            // Store avatars in a specific folder for users, including user ID for clarity
+            const fileName = `user-${userId}-${uniqueSuffix}${fileExt}`;
+            const filePath = `user-avatars/${fileName}`; // Path within the Supabase bucket
 
-        try {
-            // Get the old avatar URL to potentially delete the old file
-            const user = await prisma.user.findUnique({ where: { id: userId }, select: { avatarUrl: true }});
-            const oldAvatarUrl = user?.avatarUrl;
-
-            // Update user's avatarUrl in the database with the correct path
-            await prisma.user.update({
-                where: { id: userId },
-                data: { avatarUrl: relativeFilePath }
-            });
-
-            // Delete the old avatar file if it exists and is not a default avatar
-            if (oldAvatarUrl && !oldAvatarUrl.startsWith('/avatars/defaults/')) {
-                 // Construct path relative to backend root, assuming /uploads maps to storage/uploads
-                 const oldStoragePath = path.join(__dirname, '../../storage', oldAvatarUrl.replace('/uploads', '')); 
-                 console.log(`[UserController.uploadAvatar] Attempting to delete old avatar from storage: ${oldStoragePath}`);
-                 fs.unlink(oldStoragePath, (err) => {
-                    if (err && err.code !== 'ENOENT') { 
-                        console.error(`[UserController.uploadAvatar] Failed to delete old avatar file ${oldStoragePath}:`, err);
-                    } else if (!err) {
-                         console.log(`[UserController.uploadAvatar] Successfully deleted old avatar: ${oldStoragePath}`);
-                    }
-                });
+            const bucketName = process.env.SUPABASE_BUCKET_NAME;
+            if (!bucketName) {
+                console.error('[UserController.uploadAvatar] Supabase bucket name not configured in .env');
+                res.status(500).json({ message: '服务器配置错误：存储桶名称未设置。' });
+                return;
             }
 
-            res.status(200).json({ 
-                message: 'Avatar uploaded successfully', 
-                avatarUrl: relativeFilePath // Return the new relative path
-            });
-        } catch (error) {
-            console.error(`[UserController.uploadAvatar] Error updating user ${userId} avatar:`, error);
-            // Attempt to delete the newly uploaded file if DB update failed
-             const newStoragePath = path.join(__dirname, '../../storage', relativeFilePath.replace('/uploads', ''));
-             fs.unlink(newStoragePath, (err) => {
-                 if (err) console.error(`[UserController.uploadAvatar] Failed to clean up uploaded file ${newStoragePath} after DB error:`, err);
-             });
-            res.status(500).json({ message: 'Failed to update avatar' });
+            let oldSupabasePath: string | null = null;
+
+            try {
+                // 1. Get the old avatar URL before uploading the new one
+                const user = await prisma.user.findUnique({
+                     where: { id: userId },
+                     select: { avatarUrl: true }
+                 });
+                const oldAvatarUrl = user?.avatarUrl;
+
+                // 2. Attempt to parse the old URL to get the Supabase path if it exists
+                if (oldAvatarUrl && oldAvatarUrl.includes(process.env.SUPABASE_URL ?? 'supabase.co')) {
+                    try {
+                        const url = new URL(oldAvatarUrl);
+                        // Path format: /storage/v1/object/public/bucketName/filePath
+                        const pathSegments = url.pathname.split('/');
+                        const bucketNameIndex = pathSegments.findIndex(segment => segment === bucketName);
+                        if (bucketNameIndex > -1 && pathSegments.length > bucketNameIndex + 1) {
+                            oldSupabasePath = pathSegments.slice(bucketNameIndex + 1).join('/');
+                             console.log(`[UserController.uploadAvatar] Found old Supabase path to delete: ${oldSupabasePath}`);
+                        }
+                    } catch (parseError) {
+                        console.error(`[UserController.uploadAvatar] Failed to parse old avatar URL ${oldAvatarUrl}:`, parseError);
+                        // Don't block the process if parsing fails, just won't delete the old file
+                    }
+                }
+
+                // 3. Upload the new file to Supabase Storage
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from(bucketName)
+                    .upload(filePath, fileBuffer, {
+                        contentType: req.file.mimetype,
+                        cacheControl: '3600', // Cache for 1 hour
+                        upsert: false // Don't overwrite
+                    });
+
+                if (uploadError) {
+                    console.error(`[UserController.uploadAvatar] Supabase upload error for user ${userId}:`, uploadError);
+                    res.status(500).json({ message: '上传新头像到云存储失败。', error: uploadError.message });
+                    return;
+                }
+
+                // 4. Get the public URL for the newly uploaded file
+                const { data: urlData } = supabase.storage
+                    .from(bucketName)
+                    .getPublicUrl(filePath);
+
+                if (!urlData || !urlData.publicUrl) {
+                    console.error(`[UserController.uploadAvatar] Failed to get public URL from Supabase for new avatar:`, filePath);
+                    // Attempt to clean up the uploaded file if URL retrieval fails
+                    await supabase.storage.from(bucketName).remove([filePath]);
+                    res.status(500).json({ message: '获取新头像链接失败。' });
+                    return;
+                }
+                const newImageUrl = urlData.publicUrl;
+
+                // 5. Update user's avatarUrl in the database with the new Supabase URL
+                await prisma.user.update({
+                    where: { id: userId },
+                    data: { avatarUrl: newImageUrl }
+                });
+
+                // 6. Delete the old avatar file from Supabase if a path was successfully extracted
+                if (oldSupabasePath) {
+                    console.log(`[UserController.uploadAvatar] Attempting to delete old Supabase avatar: ${oldSupabasePath}`);
+                    const { error: deleteError } = await supabase.storage
+                        .from(bucketName)
+                        .remove([oldSupabasePath]);
+
+                    if (deleteError) {
+                        // Log the error but don't fail the request, as the main goal (upload+update DB) succeeded
+                        console.error(`[UserController.uploadAvatar] Failed to delete old Supabase avatar file ${oldSupabasePath} for user ${userId}:`, deleteError);
+                    } else {
+                        console.log(`[UserController.uploadAvatar] Successfully deleted old Supabase avatar: ${oldSupabasePath}`);
+                    }
+                }
+
+                // 7. Return success response with the new URL
+                res.status(200).json({ 
+                    message: 'Avatar uploaded successfully', 
+                    avatarUrl: newImageUrl // Return the new Supabase public URL
+                });
+
+            } catch (error: any) {
+                console.error(`[UserController.uploadAvatar] Error processing avatar update for user ${userId}:`, error);
+                // Generic error if something else went wrong (e.g., Prisma update failed after upload)
+                // We don't attempt cleanup here as the state is uncertain
+                res.status(500).json({ message: '更新头像时发生内部错误。' });
+            }
         }
-    }
 
     // 关注用户
     public static async followUser(req: AuthenticatedRequest, res: Response): Promise<any> {
@@ -611,37 +784,23 @@ export class UserController {
         }
     }
 
-    // 获取默认头像列表
+    // 修改为返回固定的 Supabase 预设头像 URL
     static async getDefaultAvatars(req: Request, res: Response, next: NextFunction): Promise<void> {
-        // Define the directory where default avatars are stored relative to the project root
-        // Correct the path: remove '/static'
-        const defaultsDir = path.join(__dirname, '../../public/avatars/defaults');
-        console.log(`[UserController.getDefaultAvatars] Reading defaults from: ${defaultsDir}`);
+        console.log('[UserController.getDefaultAvatars] Returning hardcoded preset Supabase URLs.');
+        const presetAvatarUrls = [
+            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/2.jpg",
+            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/45.jpg",
+            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/5.jpg",
+            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/62.jpg",
+            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/63.jpg"
+        ];
 
         try {
-            // Check if directory exists
-            if (!fs.existsSync(defaultsDir)) {
-                console.error(`[UserController.getDefaultAvatars] Default avatars directory not found: ${defaultsDir}`);
-                res.status(500).json({ message: 'Server configuration error: Default avatars directory not found.' });
-                 return;
-            }
-            
-            // Read directory contents
-            const files = await fs.promises.readdir(defaultsDir);
-
-            // Filter for image files (e.g., png, jpg, jpeg, webp)
-            const imageFiles = files.filter(file => /\.(png|jpg|jpeg|webp)$/i.test(file));
-
-            // Map filenames to relative URLs (as served by static middleware)
-            // Correct the URL path: remove '/static'
-            const avatarUrls = imageFiles.map(file => `/avatars/defaults/${file}`);
-            console.log(`[UserController.getDefaultAvatars] Found defaults: ${JSON.stringify(avatarUrls)}`);
-
-            res.status(200).json({ avatarUrls });
-
+            // 直接返回固定的 URL 列表
+            res.status(200).json({ avatarUrls: presetAvatarUrls });
         } catch (error) {
-            console.error("[UserController.getDefaultAvatars] Error reading default avatars directory:", error);
-            next(error); // Pass to global error handler
+            console.error('[UserController.getDefaultAvatars] Error preparing preset avatar list:', error);
+            res.status(500).json({ message: 'Failed to get default avatars' });
         }
     }
 

@@ -104,24 +104,41 @@ export class PostService {
         return result;
     }
 
-    // 创建帖子
-    static async createPost(data: { title: string; content: string; authorId: number; imageUrl?: string }): Promise<PostWithRelations> {
+    // 创建帖子 (添加标签处理)
+    static async createPost(data: { 
+        title: string; 
+        content: string; 
+        authorId: number; 
+        imageUrl?: string; 
+        tagNames?: string[]; // <-- 添加 tagNames 到参数类型
+    }): Promise<PostWithRelations> {
+        
+        const createData: Prisma.PostCreateInput = {
+            title: data.title,
+            content: data.content,
+            author: { connect: { id: data.authorId } }, // Connect author by ID
+            imageUrl: data.imageUrl, // Include imageUrl if provided
+        };
+
+        // Add tags using connectOrCreate if tagNames are provided
+        if (data.tagNames && data.tagNames.length > 0) {
+            createData.tags = {
+                connectOrCreate: data.tagNames.map(tagName => ({
+                    where: { name: tagName },
+                    create: { name: tagName }
+                }))
+            };
+        }
+
         const post = await prisma.post.create({
-            data: {
-                title: data.title,
-                content: data.content,
-                authorId: data.authorId,
-                imageUrl: data.imageUrl, // Include imageUrl if provided
-                // Counts default to 0 via Prisma schema, no need to set here
-            },
+            data: createData, // Use the constructed createData object
              select: { // Select all necessary fields for PostQueryResult
                  id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true,
                  author: { select: { id: true, name: true, avatarUrl: true } },
                  _count: { select: { likes: true, comments: true, favoritedBy: true } }
-                 // likes are not needed for the creator initially
              }
         });
-        // Process the result (isLiked/isFavorited will be false)
+        
         return this.processPostResult(post as PostQueryResult); 
     }
 
@@ -217,26 +234,66 @@ export class PostService {
         return this.processPostResult(postData as PostQueryResult, currentUserId, isFollowingAuthor);
     }
 
-    // 更新帖子
-    static async updatePost(postId: number, data: Prisma.PostUpdateInput, userId: number): Promise<PostWithRelations | null> {
-        const post = await prisma.post.findUnique({ where: { id: postId } });
-        if (!post) return null; // Post not found
+    // 更新帖子 (修正标签处理)
+    static async updatePost(postId: number, data: Partial<{ 
+        title: string; 
+        content: string; 
+        imageUrl: string | null; 
+        tagNames: string[]; 
+    }>, userId: number): Promise<PostWithRelations | null> {
+        
+        const post = await prisma.post.findUnique({ 
+            where: { id: postId },
+            select: { authorId: true } 
+        });
+        
+        if (!post) return null; 
         if (post.authorId !== userId) {
             throw new Error('Forbidden: You can only update your own posts');
         }
 
-        const selectClause: Prisma.PostSelect = { // Select clause to get updated data in correct format
+        // Build the update payload for Prisma
+        const updatePayload: Prisma.PostUpdateInput = {};
+        if (data.title !== undefined) updatePayload.title = data.title;
+        if (data.content !== undefined) updatePayload.content = data.content;
+        if (data.imageUrl !== undefined) updatePayload.imageUrl = data.imageUrl;
+        
+        // Handle tags update if tagNames are provided
+        if (data.tagNames !== undefined) {
+            // Step 1: Ensure all provided tags exist using upsert (can be done concurrently)
+            await Promise.all(
+                data.tagNames.map(tagName => 
+                    prisma.tag.upsert({
+                        where: { name: tagName },
+                        update: {}, // No update needed if exists
+                        create: { name: tagName }
+                    })
+                )
+            );
+            
+            // Step 2: Use set to connect only the provided tags
+            updatePayload.tags = {
+                set: data.tagNames.map(tagName => ({ name: tagName })) // Provide TagWhereUniqueInput array
+            };
+        }
+
+        // Only proceed if there's something to update
+        if (Object.keys(updatePayload).length === 0) {
+             console.log("[PostService.updatePost] No fields to update.");
+             return this.getPostById(postId, userId);
+        }
+
+        const selectClause: Prisma.PostSelect = { 
             id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true,
             author: { select: { id: true, name: true, avatarUrl: true } },
             _count: { select: { likes: true, comments: true, favoritedBy: true } },
-             // Need to re-fetch like/fav status for the *current user* after update
              likes: { where: { userId: userId }, select: { userId: true } },
              favoritedBy: { where: { userId: userId }, select: { userId: true } }
         };
 
         const updatedPostData = await prisma.post.update({
             where: { id: postId },
-            data,
+            data: updatePayload, 
             select: selectClause
         });
 
