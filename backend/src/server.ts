@@ -10,6 +10,7 @@ import feedRouter from './routes/FeedRoutes';
 import notificationRouter from './routes/NotificationRoutes';
 import foodShowcaseRouter from './routes/foodShowcaseRoutes';
 import tagRouter from './routes/TagRoutes'; // Import tag routes
+import adminRouter from './routes/AdminRoutes'; // Import admin routes
 import { errorHandler } from './middleware/ErrorHandlingMiddleware';
 import { initializeMailer } from './utils/mailer'; // <-- 导入邮件初始化函数
 // import morgan from 'morgan'; // Removed morgan import
@@ -106,6 +107,7 @@ app.use('/api/feed', feedRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/food-showcase', foodShowcaseRouter);
 app.use('/api/tags', tagRouter); // Mount tag routes
+app.use('/api/admin', adminRouter); // Mount admin routes
 
 // --- 全局错误处理中间件 ---
 app.use(errorHandler as ErrorRequestHandler);

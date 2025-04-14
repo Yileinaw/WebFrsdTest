@@ -57,6 +57,7 @@ const FeedRoutes_1 = __importDefault(require("./routes/FeedRoutes"));
 const NotificationRoutes_1 = __importDefault(require("./routes/NotificationRoutes"));
 const foodShowcaseRoutes_1 = __importDefault(require("./routes/foodShowcaseRoutes"));
 const TagRoutes_1 = __importDefault(require("./routes/TagRoutes")); // Import tag routes
+const AdminRoutes_1 = __importDefault(require("./routes/AdminRoutes")); // Import admin routes
 const ErrorHandlingMiddleware_1 = require("./middleware/ErrorHandlingMiddleware");
 const mailer_1 = require("./utils/mailer"); // <-- 导入邮件初始化函数
 // import morgan from 'morgan'; // Removed morgan import
@@ -138,6 +139,7 @@ app.use('/api/feed', FeedRoutes_1.default);
 app.use('/api/notifications', NotificationRoutes_1.default);
 app.use('/api/food-showcase', foodShowcaseRoutes_1.default);
 app.use('/api/tags', TagRoutes_1.default); // Mount tag routes
+app.use('/api/admin', AdminRoutes_1.default); // Mount admin routes
 // --- 全局错误处理中间件 ---
 app.use(ErrorHandlingMiddleware_1.errorHandler);
 // --- End API Routes ---
