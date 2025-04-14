@@ -65,7 +65,10 @@
      - `SUPABASE_BUCKET_NAME`：您的 Supabase 存储桶名称
 
    - 如果您想使用真实的邮件服务，还需要添加以下环境变量之一：
-     - SendGrid 配置:
+     - Elastic Email 配置 (推荐):
+       - `ELASTIC_EMAIL_API_KEY`：您的 Elastic Email API 密钥
+       - `EMAIL_FROM`：您的已验证发件人邮箱地址
+     - 或 SendGrid 配置:
        - `SENDGRID_API_KEY`：您的 SendGrid API 密钥
        - `EMAIL_FROM`：发件人邮箱地址
      - 或 SMTP 配置:
@@ -96,12 +99,19 @@
 
 为了在生产环境中发送真实邮件，您可以配置以下任一服务：
 
-1. **SendGrid**
+1. **Elastic Email (推荐)**
+   - 注册 [Elastic Email](https://elasticemail.com/) 账户
+   - 创建 API 密钥
+   - 验证您的发件人邮箱地址
+   - 在 Railway 环境变量中设置 `ELASTIC_EMAIL_API_KEY` 和 `EMAIL_FROM`
+   - Elastic Email 提供每月 100 封免费邮件，足够测试和小规模使用
+
+2. **SendGrid**
    - 注册 [SendGrid](https://sendgrid.com/) 账户
    - 创建 API 密钥
    - 在 Railway 环境变量中设置 `SENDGRID_API_KEY` 和 `EMAIL_FROM`
 
-2. **SMTP 服务**
+3. **SMTP 服务**
    - 使用任何支持 SMTP 的邮件服务（如 Gmail、Outlook 等）
    - 在 Railway 环境变量中设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASS` 和 `EMAIL_FROM`
 

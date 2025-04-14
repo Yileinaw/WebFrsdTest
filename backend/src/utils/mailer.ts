@@ -15,8 +15,21 @@ let transporter: nodemailer.Transporter;
 
 // 初始化邮件传输器
 async function initializeMailer() {
+  // 检查是否配置了 Elastic Email
+  if (process.env.ELASTIC_EMAIL_API_KEY && process.env.EMAIL_FROM) {
+    console.log('Using Elastic Email for email delivery...');
+    transporter = nodemailer.createTransport({
+      host: 'smtp.elasticemail.com',
+      port: 2525,
+      secure: false, // 升级到 TLS
+      auth: {
+        user: process.env.EMAIL_FROM,
+        pass: process.env.ELASTIC_EMAIL_API_KEY,
+      },
+    });
+  }
   // 检查是否配置了 SendGrid
-  if (process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM) {
+  else if (process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM) {
     console.log('Using SendGrid for email delivery...');
     transporter = nodemailer.createTransport({
       service: 'SendGrid',
