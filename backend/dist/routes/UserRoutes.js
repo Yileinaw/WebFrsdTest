@@ -1,7 +1,4 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.userRouter = void 0;
 const express_1 = require("express");
@@ -9,13 +6,18 @@ const UserController_1 = require("../controllers/UserController"); // 导入整�
 const FavoriteController_1 = require("../controllers/FavoriteController");
 const NotificationController_1 = require("../controllers/NotificationController");
 const AuthMiddleware_1 = require("../middleware/AuthMiddleware");
-const multerConfig_1 = __importDefault(require("../config/multerConfig"));
+const uploadMiddleware_1 = require("../middleware/uploadMiddleware"); // <-- Import the correct middleware
+const OptionalAuthMiddleware_1 = require("../middleware/OptionalAuthMiddleware"); // Import OptionalAuthMiddleware
 // console.log('[UserRoutes.ts] File executing...'); // Remove log
 const userRouter = (0, express_1.Router)();
 exports.userRouter = userRouter;
 // Public routes (if any specific user routes need to be public)
 // router.get('/:id', UserController.getUserById); // Example public route
-// --- Get Default Avatars (Public) ---
+// --- Public User Routes ---
+// GET /api/users/:userId - 获取特定用户信息 (公开，但需OptionalAuth判断关注状态)
+// Apply OptionalAuthMiddleware here
+userRouter.get('/:userId', OptionalAuthMiddleware_1.OptionalAuthMiddleware, UserController_1.UserController.getUserById);
+// GET /api/users/avatars/defaults - 获取预设头像列表 (公开)
 userRouter.get('/avatars/defaults', UserController_1.UserController.getDefaultAvatars);
 // Routes requiring authentication
 userRouter.use(AuthMiddleware_1.AuthMiddleware); // Apply auth middleware to all subsequent routes in this file
@@ -34,9 +36,10 @@ userRouter.get('/me/notifications', NotificationController_1.NotificationControl
 // userRouter.put('/profile', UserController.updateProfile);
 // --- END REMOVE --- 
 // 更新当前用户信息 (用于设置预设头像或修改名字等)
-userRouter.put('/me/profile', UserController_1.UserController.updateUserProfile);
-// 上传头像
-userRouter.post('/me/avatar', multerConfig_1.default.single('avatar'), UserController_1.UserController.uploadAvatar);
+// 将路由指向新的 updateMe 控制器方法
+userRouter.put('/me/profile', UserController_1.UserController.updateMe);
+// 上传头像 (使用新的 memoryStorage 中间件)
+userRouter.post('/me/avatar', uploadMiddleware_1.uploadAvatarImage, UserController_1.UserController.uploadAvatar);
 // 新增：发送密码重置验证码 (需要认证)
 userRouter.post('/me/send-password-reset-code', UserController_1.UserController.sendPasswordResetCode);
 // PUT /api/users/me/password - 修改当前用户密码 (新增)
@@ -66,4 +69,16 @@ userRouter.post('/:userId/follow', UserController_1.UserController.followUser);
 userRouter.delete('/:userId/follow', UserController_1.UserController.unfollowUser);
 userRouter.get('/:userId/followers', UserController_1.UserController.getFollowers);
 userRouter.get('/:userId/following', UserController_1.UserController.getFollowing);
+// --- 结束新增路由 ---
+// --- Specific User Routes (/api/users/:userId/...) ---
+// GET /api/users/:userId/followers - 获取特定用户的粉丝列表 (公开)
+userRouter.get('/:userId/followers', UserController_1.UserController.getFollowers);
+// GET /api/users/:userId/following - 获取特定用户关注的列表 (公开)
+userRouter.get('/:userId/following', UserController_1.UserController.getFollowing);
+// + Add routes for getting a specific user's posts and favorites
+userRouter.get('/:userId/posts', UserController_1.UserController.getUserPosts); // 公开?
+userRouter.get('/:userId/favorites', UserController_1.UserController.getUserFavorites); // 公开?
+// --- Follow/Unfollow Routes (Require Auth) ---
+userRouter.post('/:userId/follow', AuthMiddleware_1.AuthMiddleware, UserController_1.UserController.followUser);
+userRouter.delete('/:userId/follow', AuthMiddleware_1.AuthMiddleware, UserController_1.UserController.unfollowUser);
 //# sourceMappingURL=UserRoutes.js.map

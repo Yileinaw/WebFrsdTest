@@ -76,7 +76,7 @@ interface PaginatedUserPostsResponse {
 }
 
 // Keep as an exported class with static methods
-export class UserService { 
+export class UserService {
 
     // 获取当前用户信息 (返回 Omit<User, 'password'>)
     static async getMe(): Promise<Omit<User, 'password'>> {
@@ -92,27 +92,27 @@ export class UserService {
         return response.data;
     }
 
-    // 更新当前用户个人资料 
-    static async updateMyProfile(data: { 
-        username?: string; 
-        name?: string | null; 
-        bio?: string | null; 
-        avatarUrl?: string | null; 
-    }): Promise<UpdatedUserProfileResponse> { 
+    // 更新当前用户个人资料
+    static async updateMyProfile(data: {
+        username?: string;
+        name?: string | null;
+        bio?: string | null;
+        avatarUrl?: string | null;
+    }): Promise<UpdatedUserProfileResponse> {
         // Correctly define the payload type inline
-        const payload: { 
-            username?: string; 
-            name?: string | null; 
-            bio?: string | null; 
-            avatarUrl?: string | null; 
+        const payload: {
+            username?: string;
+            name?: string | null;
+            bio?: string | null;
+            avatarUrl?: string | null;
         } = {};
         if (data.username !== undefined) payload.username = data.username;
         if (data.name !== undefined) payload.name = data.name;
         if (data.bio !== undefined) payload.bio = data.bio;
-        if (data.avatarUrl !== undefined) payload.avatarUrl = data.avatarUrl; 
-        
+        if (data.avatarUrl !== undefined) payload.avatarUrl = data.avatarUrl;
+
         if (Object.keys(payload).length === 0) {
-            throw new Error('No update data provided'); 
+            throw new Error('No update data provided');
         }
 
         console.log('[UserService.updateMyProfile] Sending payload:', payload);
@@ -121,7 +121,7 @@ export class UserService {
         console.log('[UserService.updateMyProfile] Received response:', response.data);
         return response.data;
     }
-    
+
     // 获取头像上传URL (辅助函数) - Points to POST /api/users/me/avatar
     static getUploadAvatarUrl(): string {
         const relativePath = '/users/me/avatar';
@@ -133,13 +133,17 @@ export class UserService {
     }
 
     // 获取预设头像列表 (公开) - Calls GET /users/avatars/defaults
-    static async getDefaultAvatars(): Promise<string[]> { 
+    static async getDefaultAvatars(): Promise<string[]> {
         try {
-            const response = await http.get<DefaultAvatarsResponse>('/users/avatars/defaults');
-            return response.data.avatarUrls || [];
+            // 修改为正确的 Supabase 存储路径格式
+            const baseUrl = "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/preset-avatars";
+            // 确保文件名格式正确
+            const avatarUrls = Array.from({length: 5}, (_, i) => `${baseUrl}/${i + 1}.jpg?t=${Date.now()}`);
+            console.log('Generated avatar URLs:', avatarUrls);
+            return avatarUrls;
         } catch (error) {
-            console.error("Failed to fetch default avatars:", error);
-            return [];
+            console.error('[UserService] Failed to get default avatars:', error);
+            throw error;
         }
     }
 
@@ -214,7 +218,9 @@ export class UserService {
 
     // --- End password related methods ---
 
-    // --- Removed duplicate methods and other unused service methods --- 
+    // --- Removed duplicate methods and other unused service methods ---
     // If getFavorites, getMyPosts, getNotifications are needed later,
     // they can be added back based on the previous correct implementations.
-} 
+}
+
+

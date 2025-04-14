@@ -1,0 +1,24 @@
+<svg width="400" height="300" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background elements -->
+  <rect x="50" y="50" width="300" height="200" rx="10" fill="#ffffff" opacity="0.2"/>
+  
+  <!-- Document illustration -->
+  <rect x="150" y="100" width="100" height="130" rx="5" fill="#ffffff" opacity="0.5"/>
+  <rect x="160" y="110" width="80" height="10" rx="2" fill="#ffffff" opacity="0.7"/>
+  <rect x="160" y="130" width="80" height="10" rx="2" fill="#ffffff" opacity="0.7"/>
+  <rect x="160" y="150" width="80" height="10" rx="2" fill="#ffffff" opacity="0.7"/>
+  <rect x="160" y="170" width="40" height="10" rx="2" fill="#ffffff" opacity="0.7"/>
+  
+  <!-- Pen illustration -->
+  <rect x="240" y="80" width="5" height="40" rx="1" fill="#ffffff" opacity="0.8" transform="rotate(45 240 80)"/>
+  <polygon points="230,90 240,80 245,85 235,95" fill="#ffffff" opacity="0.9"/>
+  
+  <!-- Decorative elements -->
+  <circle cx="120" cy="100" r="15" fill="#ffffff" opacity="0.4"/>
+  <circle cx="280" cy="100" r="15" fill="#ffffff" opacity="0.4"/>
+  <circle cx="120" cy="200" r="15" fill="#ffffff" opacity="0.4"/>
+  <circle cx="280" cy="200" r="15" fill="#ffffff" opacity="0.4"/>
+  
+  <!-- Checkmark -->
+  <path d="M160,200 L175,215 L200,180" stroke="#ffffff" stroke-width="5" fill="none" opacity="0.9"/>
+</svg>

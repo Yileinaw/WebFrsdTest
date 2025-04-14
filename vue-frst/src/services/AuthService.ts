@@ -48,23 +48,38 @@ export const AuthService = {
     async login(payload: LoginPayload): Promise<LoginResponse> {
         const { identifier, password } = payload;
         const isEmail = identifier.includes('@');
-        
+
         // Construct the data object based on whether it's an email or username
-        const requestData = isEmail 
+        const requestData = isEmail
             ? { email: identifier, password }
             : { username: identifier, password };
-            
-        // Call the backend /login endpoint with the correct data structure
-        const response = await http.post<LoginResponse>('/auth/login', requestData);
-        return response.data;
+
+        // 调试信息
+        console.log('[AuthService.login] 发送登录请求:', requestData);
+        try {
+            // Call the backend /login endpoint with the correct data structure
+            const response = await http.post<LoginResponse>('/auth/login', requestData);
+            console.log('[AuthService.login] 登录成功:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[AuthService.login] 登录失败:', error);
+            throw error;
+        }
     },
 
     // 获取当前用户信息 (使用 GET 请求，需要认证)
     async getCurrentUser(): Promise<{ user: Omit<User, 'password'> }> {
-        // Fetch the user object directly (backend returns the object, not nested)
-        const response = await http.get<{ user: Omit<User, 'password'> }>('/auth/me');
-        // Backend now returns { user: ... }, so return response.data directly
-        return response.data; 
+        console.log('[AuthService.getCurrentUser] 获取当前用户信息');
+        try {
+            // Fetch the user object directly (backend returns the object, not nested)
+            const response = await http.get<{ user: Omit<User, 'password'> }>('/auth/me');
+            console.log('[AuthService.getCurrentUser] 成功获取用户信息:', response.data);
+            // Backend now returns { user: ... }, so return response.data directly
+            return response.data;
+        } catch (error) {
+            console.error('[AuthService.getCurrentUser] 获取用户信息失败:', error);
+            throw error;
+        }
     },
 
     /**
@@ -93,7 +108,7 @@ export const AuthService = {
     async verifyEmail(token: string): Promise<SuccessMessageResponse> {
         // Send token as a query parameter
         const response = await http.get<SuccessMessageResponse>('/auth/verify-email', {
-            params: { token } 
+            params: { token }
         });
         return response.data; // Returns { message: "..." }
     },
@@ -106,4 +121,4 @@ export const AuthService = {
         const response = await http.post<SuccessMessageResponse>('/auth/resend-verification', { email });
         return response.data;
     }
-}; 
+};

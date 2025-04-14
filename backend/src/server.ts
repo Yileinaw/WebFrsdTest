@@ -3,37 +3,37 @@ import express, { Express, Request, Response, NextFunction, ErrorRequestHandler 
 import dotenv from 'dotenv';
 import * as cors from 'cors';
 import path from 'path';
-import authRoutes from './routes/AuthRoutes'; 
-import { userRouter } from './routes/UserRoutes'; 
+import authRoutes from './routes/AuthRoutes';
+import { userRouter } from './routes/UserRoutes';
 import { postRouter, commentRouter } from './routes/PostRoutes';
-import feedRouter from './routes/FeedRoutes'; 
-import notificationRouter from './routes/NotificationRoutes'; 
+import feedRouter from './routes/FeedRoutes';
+import notificationRouter from './routes/NotificationRoutes';
 import foodShowcaseRouter from './routes/foodShowcaseRoutes';
 import tagRouter from './routes/TagRoutes'; // Import tag routes
 import { errorHandler } from './middleware/ErrorHandlingMiddleware';
 import { initializeMailer } from './utils/mailer'; // <-- 导入邮件初始化函数
 // import morgan from 'morgan'; // Removed morgan import
 // --- Remove direct imports, rely on userRoutes ---
-// import { UserController } from './controllers/UserController'; 
+// import { UserController } from './controllers/UserController';
 // import { AuthMiddleware } from './middleware/AuthMiddleware';
 // --- End Remove ---
 
 // Remove server startup log, keep only the final listening log
 // console.log("--- RUNNING FULL SERVER.TS ---");
 
-// --- Remove Log Database URL --- 
+// --- Remove Log Database URL ---
 // console.log('[server.ts] DATABASE_URL used by this process:', process.env.DATABASE_URL);
 // --- End Remove Log Database URL ---
 
-dotenv.config(); 
+dotenv.config();
 
 const app: Express = express();
-const port = process.env.PORT || 3001; 
+const port = process.env.PORT || 3001;
 
 // --- Middlewares ---
 // app.use((req, res, next) => {
 //   console.log(`[Request Logger]: ${req.method} ${req.originalUrl}`);
-//   next(); 
+//   next();
 // });
 
 // Explicitly configure CORS
@@ -56,22 +56,22 @@ const corsOptions: cors.CorsOptions = {
 app.use(cors.default(corsOptions));
 
 // --- Ensure Body Parsers are Active ---
-app.use(express.json()); 
-app.use(express.urlencoded({ extended: true })); 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 // --- End Ensure ---
 
 // --- Remove EARLY Mount / Restore Original Order ---
 // app.use('/api/posts', postRouter); // Remove potential early mount
 
 // --- Static Files for Public Assets ---
-const publicDirectory = path.resolve(__dirname, '..', 'public'); 
+const publicDirectory = path.resolve(__dirname, '..', 'public');
 // Serve files directly from the root (e.g., /avatars/defaults/1.jpg maps to public/avatars/defaults/1.jpg)
-app.use(express.static(publicDirectory)); 
+app.use(express.static(publicDirectory));
 console.log(`[Server] Serving static files from: ${publicDirectory}`);
 
 // --- Static Files for User Uploads (Keep as is or adjust if needed) ---
 // Assuming uploads are separate and served under /uploads
-const uploadsRootDirectory = path.resolve(__dirname, '..', 'storage', 'uploads'); 
+const uploadsRootDirectory = path.resolve(__dirname, '..', 'storage', 'uploads');
 app.use('/uploads', express.static(uploadsRootDirectory));
 console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /uploads`);
 
@@ -81,13 +81,18 @@ console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /upl
 // app.use('/uploads', express.static(uploadsDirectory)); // Old version removed
 // --- End Restore Static Files ---
 
-// --- Base Route --- 
+// --- Base Route ---
 app.get('/', (req: Request, res: Response) => {
     res.send('TDFRS Backend API is running!');
 });
 
 // --- Restore Original API Route Order ---
-app.use('/api/auth', authRoutes);
+// 添加调试日志
+console.log('[server.ts] 挂载认证路由到 /api/auth');
+app.use('/api/auth', (req, res, next) => {
+    console.log(`[server.ts] 收到请求: ${req.method} ${req.originalUrl}`);
+    next();
+}, authRoutes);
 app.use('/api/users', (req, res, next) => {
     // console.log(`[server.ts] Request to /api/users path: ${req.originalUrl}`);
     next();
@@ -113,7 +118,7 @@ async function startServer() {
     await initializeMailer(); // <-- 初始化邮件服务
 app.listen(port, () => {
      // Keep this log
-    console.log(`[Server]: Server is running at http://localhost:${port}`); 
+    console.log(`[Server]: Server is running at http://localhost:${port}`);
 });
   } catch (error) {
     console.error('Failed to start the server:', error);
@@ -124,4 +129,4 @@ app.listen(port, () => {
 // 调用启动函数
 startServer();
 
-export default app; 
+export default app;

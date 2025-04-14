@@ -18,7 +18,7 @@ const db_1 = __importDefault(require("../db"));
 const client_1 = require("@prisma/client");
 class PostService {
     // Helper function to process Prisma query result into PostWithRelations
-    static processPostResult(postData, currentUserId) {
+    static processPostResult(postData, currentUserId, isFollowingAuthor) {
         var _a, _b;
         const isLiked = !!(currentUserId && ((_a = postData.likes) === null || _a === void 0 ? void 0 : _a.length));
         const isFavorited = !!(currentUserId && ((_b = postData.favoritedBy) === null || _b === void 0 ? void 0 : _b.length));
@@ -31,7 +31,12 @@ class PostService {
             createdAt: postData.createdAt,
             updatedAt: postData.updatedAt,
             authorId: postData.authorId,
-            author: postData.author,
+            author: {
+                id: postData.author.id,
+                name: postData.author.name,
+                avatarUrl: postData.author.avatarUrl,
+                isFollowing: isFollowingAuthor !== null && isFollowingAuthor !== void 0 ? isFollowingAuthor : false,
+            },
             likesCount: postData._count.likes,
             commentsCount: postData._count.comments,
             favoritesCount: postData._count.favoritedBy,
@@ -40,25 +45,32 @@ class PostService {
         };
         return result;
     }
-    // 创建帖子
+    // 创建帖子 (添加标签处理)
     static createPost(data) {
         return __awaiter(this, void 0, void 0, function* () {
+            const createData = {
+                title: data.title,
+                content: data.content,
+                author: { connect: { id: data.authorId } }, // Connect author by ID
+                imageUrl: data.imageUrl, // Include imageUrl if provided
+            };
+            // Add tags using connectOrCreate if tagNames are provided
+            if (data.tagNames && data.tagNames.length > 0) {
+                createData.tags = {
+                    connectOrCreate: data.tagNames.map(tagName => ({
+                        where: { name: tagName },
+                        create: { name: tagName }
+                    }))
+                };
+            }
             const post = yield db_1.default.post.create({
-                data: {
-                    title: data.title,
-                    content: data.content,
-                    authorId: data.authorId,
-                    imageUrl: data.imageUrl, // Include imageUrl if provided
-                    // Counts default to 0 via Prisma schema, no need to set here
-                },
+                data: createData, // Use the constructed createData object
                 select: {
                     id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true,
                     author: { select: { id: true, name: true, avatarUrl: true } },
                     _count: { select: { likes: true, comments: true, favoritedBy: true } }
-                    // likes are not needed for the creator initially
                 }
             });
-            // Process the result (isLiked/isFavorited will be false)
             return this.processPostResult(post);
         });
     }
@@ -116,29 +128,69 @@ class PostService {
             });
             if (!postData)
                 return null;
-            return this.processPostResult(postData, currentUserId);
+            let isFollowingAuthor = false;
+            if (currentUserId && postData.authorId && currentUserId !== postData.authorId) {
+                const follow = yield db_1.default.follows.findUnique({
+                    where: {
+                        followerId_followingId: {
+                            followerId: currentUserId,
+                            followingId: postData.authorId,
+                        },
+                    },
+                });
+                isFollowingAuthor = !!follow;
+            }
+            return this.processPostResult(postData, currentUserId, isFollowingAuthor);
         });
     }
-    // 更新帖子
+    // 更新帖子 (修正标签处理)
     static updatePost(postId, data, userId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const post = yield db_1.default.post.findUnique({ where: { id: postId } });
+            const post = yield db_1.default.post.findUnique({
+                where: { id: postId },
+                select: { authorId: true }
+            });
             if (!post)
-                return null; // Post not found
+                return null;
             if (post.authorId !== userId) {
                 throw new Error('Forbidden: You can only update your own posts');
+            }
+            // Build the update payload for Prisma
+            const updatePayload = {};
+            if (data.title !== undefined)
+                updatePayload.title = data.title;
+            if (data.content !== undefined)
+                updatePayload.content = data.content;
+            if (data.imageUrl !== undefined)
+                updatePayload.imageUrl = data.imageUrl;
+            // Handle tags update if tagNames are provided
+            if (data.tagNames !== undefined) {
+                // Step 1: Ensure all provided tags exist using upsert (can be done concurrently)
+                yield Promise.all(data.tagNames.map(tagName => db_1.default.tag.upsert({
+                    where: { name: tagName },
+                    update: {}, // No update needed if exists
+                    create: { name: tagName }
+                })));
+                // Step 2: Use set to connect only the provided tags
+                updatePayload.tags = {
+                    set: data.tagNames.map(tagName => ({ name: tagName })) // Provide TagWhereUniqueInput array
+                };
+            }
+            // Only proceed if there's something to update
+            if (Object.keys(updatePayload).length === 0) {
+                console.log("[PostService.updatePost] No fields to update.");
+                return this.getPostById(postId, userId);
             }
             const selectClause = {
                 id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true,
                 author: { select: { id: true, name: true, avatarUrl: true } },
                 _count: { select: { likes: true, comments: true, favoritedBy: true } },
-                // Need to re-fetch like/fav status for the *current user* after update
                 likes: { where: { userId: userId }, select: { userId: true } },
                 favoritedBy: { where: { userId: userId }, select: { userId: true } }
             };
             const updatedPostData = yield db_1.default.post.update({
                 where: { id: postId },
-                data,
+                data: updatePayload,
                 select: selectClause
             });
             return this.processPostResult(updatedPostData, userId);

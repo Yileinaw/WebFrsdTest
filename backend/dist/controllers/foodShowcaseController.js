@@ -8,10 +8,15 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getShowcaseStats = exports.deleteShowcasesBulk = exports.deleteShowcaseById = exports.updateShowcaseById = exports.createShowcase = exports.getAllFoodShowcases = void 0;
 // import prisma from '../db'; // No longer needed directly here
 const FoodShowcaseService_1 = require("../services/FoodShowcaseService"); // Import the service
+const supabaseClient_1 = require("../lib/supabaseClient"); // Import the Supabase client
+const path_1 = __importDefault(require("path")); // Import path module for extension extraction
 // 获取所有 FoodShowcase 记录 (支持筛选和分页)
 const getAllFoodShowcases = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -54,16 +59,48 @@ const getAllFoodShowcases = (req, res) => __awaiter(void 0, void 0, void 0, func
     }
 });
 exports.getAllFoodShowcases = getAllFoodShowcases;
-// 新增: 处理创建 FoodShowcase 的请求 (包括图片上传)
+// 新增: 处理创建 FoodShowcase 的请求 (包括图片上传到 Supabase)
 const createShowcase = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        // Check if file was uploaded by Multer
+        // Check if file was uploaded by Multer (now in memory)
         if (!req.file) {
             return res.status(400).json({ message: '请求失败：需要上传图片文件。' });
         }
-        // Construct the image URL based on where Multer saved the file
-        // This needs to match how files are served statically
-        const imageUrl = `/uploads/food-showcase/${req.file.filename}`;
+        const fileBuffer = req.file.buffer;
+        const originalName = req.file.originalname;
+        const fileExt = path_1.default.extname(originalName);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const fileName = `food-showcase-${uniqueSuffix}${fileExt}`;
+        const filePath = `food-showcase/${fileName}`; // Path within the bucket
+        const bucketName = process.env.SUPABASE_BUCKET_NAME;
+        if (!bucketName) {
+            console.error('[FoodShowcaseController] Supabase bucket name not configured in .env');
+            return res.status(500).json({ message: '服务器配置错误：存储桶名称未设置。' });
+        }
+        // Upload file to Supabase Storage
+        const { data: uploadData, error: uploadError } = yield supabaseClient_1.supabase.storage
+            .from(bucketName)
+            .upload(filePath, fileBuffer, {
+            contentType: req.file.mimetype, // Use mimetype from Multer
+            cacheControl: '3600', // Cache for 1 hour
+            upsert: false // Don't overwrite existing file with same name (should be unique anyway)
+        });
+        if (uploadError) {
+            console.error('[FoodShowcaseController] Supabase upload error:', uploadError);
+            return res.status(500).json({ message: '上传图片到云存储失败。', error: uploadError.message });
+        }
+        // Get public URL for the uploaded file
+        const { data: urlData } = supabaseClient_1.supabase.storage
+            .from(bucketName)
+            .getPublicUrl(filePath);
+        if (!urlData || !urlData.publicUrl) {
+            // Handle cases where public URL might not be immediately available or accessible
+            // Potentially try to construct it manually if necessary, but usually getPublicUrl should work
+            console.error('[FoodShowcaseController] Failed to get public URL from Supabase for path:', filePath);
+            // Clean up uploaded file if URL retrieval fails? Maybe not necessary if bucket is public.
+            return res.status(500).json({ message: '获取图片公共链接失败。' });
+        }
+        const imageUrl = urlData.publicUrl; // Use the public URL from Supabase
         // Extract other data from the request body
         const { title, description, tags } = req.body;
         // Validate or parse tags (assuming tags are sent as a comma-separated string or JSON array)
@@ -74,10 +111,10 @@ const createShowcase = (req, res) => __awaiter(void 0, void 0, void 0, function*
         else if (Array.isArray(tags)) {
             tagNames = tags.filter(tag => typeof tag === 'string');
         }
-        // console.log(`[FoodShowcaseController] Received create request with title: ${title}, desc: ${description}, tags: ${tagNames.join(',')}, image: ${imageUrl}`); // Commented out
+        // console.log(`[FoodShowcaseController] Received create request with title: ${title}, desc: ${description}, tags: ${tagNames.join(',')}, image URL: ${imageUrl}`);
         // Call the service to create the showcase
         const newShowcase = yield FoodShowcaseService_1.FoodShowcaseService.createShowcase({
-            imageUrl,
+            imageUrl, // Pass the Supabase public URL
             title,
             description,
             tagNames: tagNames.length > 0 ? tagNames : undefined
@@ -99,7 +136,7 @@ const createShowcase = (req, res) => __awaiter(void 0, void 0, void 0, function*
     }
 });
 exports.createShowcase = createShowcase;
-// --- Add updateShowcaseById controller ---
+// --- Update updateShowcaseById controller to use Supabase ---
 const updateShowcaseById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b;
     const { id } = req.params;
@@ -110,11 +147,45 @@ const updateShowcaseById = (req, res) => __awaiter(void 0, void 0, void 0, funct
     try {
         // Extract data from body (title, description, tags)
         const { title, description, tags } = req.body;
-        let imageUrl = undefined;
+        let imageUrl = undefined; // Initialize imageUrl as undefined
+        const bucketName = process.env.SUPABASE_BUCKET_NAME;
+        if (!bucketName) {
+            console.error('[FoodShowcaseController] Supabase bucket name not configured in .env');
+            return res.status(500).json({ message: '服务器配置错误：存储桶名称未设置。' });
+        }
         // Check if a new file was uploaded for update
         if (req.file) {
-            imageUrl = `/uploads/food-showcase/${req.file.filename}`;
-            // console.log(`[FoodShowcaseController] New image received for update ${showcaseId}: ${imageUrl}`); // Commented out
+            // console.log(`[FoodShowcaseController] New image received for update ${showcaseId}`);
+            const fileBuffer = req.file.buffer;
+            const originalName = req.file.originalname;
+            const fileExt = path_1.default.extname(originalName);
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const fileName = `food-showcase-${uniqueSuffix}${fileExt}`;
+            const filePath = `food-showcase/${fileName}`; // Path within the bucket
+            // Upload new file to Supabase Storage
+            const { data: uploadData, error: uploadError } = yield supabaseClient_1.supabase.storage
+                .from(bucketName)
+                .upload(filePath, fileBuffer, {
+                contentType: req.file.mimetype,
+                cacheControl: '3600',
+                upsert: false
+            });
+            if (uploadError) {
+                console.error(`[FoodShowcaseController] Supabase upload error during update for ${showcaseId}:`, uploadError);
+                return res.status(500).json({ message: '更新图片时上传到云存储失败。', error: uploadError.message });
+            }
+            // Get public URL for the newly uploaded file
+            const { data: urlData } = supabaseClient_1.supabase.storage
+                .from(bucketName)
+                .getPublicUrl(filePath);
+            if (!urlData || !urlData.publicUrl) {
+                console.error(`[FoodShowcaseController] Failed to get public URL from Supabase for updated image:`, filePath);
+                return res.status(500).json({ message: '更新图片后获取公共链接失败。' });
+            }
+            imageUrl = urlData.publicUrl; // Set imageUrl to the new public URL
+            // Optional: Delete the old image from Supabase here if needed
+            // This would require fetching the old showcase record first to get the old image URL
+            // For now, we are just uploading the new one.
         }
         // Parse tags
         let tagNames = [];
@@ -124,11 +195,11 @@ const updateShowcaseById = (req, res) => __awaiter(void 0, void 0, void 0, funct
         else if (Array.isArray(tags)) {
             tagNames = tags.filter(tag => typeof tag === 'string');
         }
-        // console.log(`[FoodShowcaseController] Updating ${showcaseId} with title: ${title}, desc: ${description}, tags: ${tagNames.join(',')}, image: ${imageUrl ?? ' (no change)'}`); // Commented out
+        // console.log(`[FoodShowcaseController] Updating ${showcaseId} with title: ${title}, desc: ${description}, tags: ${tagNames.join(',')}, image URL: ${imageUrl ?? ' (no change)'}`);
         const updatedShowcase = yield FoodShowcaseService_1.FoodShowcaseService.updateShowcase(showcaseId, {
             title,
             description,
-            imageUrl, // Pass the new image URL if it exists
+            imageUrl, // Pass the new Supabase URL if a new image was uploaded, otherwise undefined
             tagNames // Pass the parsed tag names
         });
         if (!updatedShowcase) {

@@ -28,8 +28,12 @@ class NotificationService {
             if (unreadOnly) {
                 whereClause.isRead = false;
             }
-            // Add debug log
-            console.log('[DEBUG] getNotifications called with simplified query (no includes).');
+            // Simplified query without includes if not needed
+            // REMOVING the problematic if/else structure introduced in previous edits
+            // if (!includeSender && !includePost) { ... } else { ... }
+            // Keep only the original logic using $transaction
+            // Original debug log (can be manually cleaned later if desired)
+            console.log('[DEBUG] getNotifications called with includes query.');
             const [notificationsData, totalCount] = yield db_1.default.$transaction([
                 db_1.default.notification.findMany({
                     where: whereClause,
@@ -52,6 +56,13 @@ class NotificationService {
                                 name: true,
                                 avatarUrl: true
                             }
+                        },
+                        // Include post details if postId exists
+                        post: {
+                            select: {
+                                id: true,
+                                title: true
+                            }
                         }
                     }
                 }),
@@ -70,7 +81,12 @@ class NotificationService {
                     id: n.sender.id,
                     name: n.sender.name,
                     avatarUrl: n.sender.avatarUrl
-                } : null // Handle case where sender might be null
+                } : null, // Handle case where sender might be null
+                // Map the post object
+                post: n.post ? {
+                    id: n.post.id,
+                    title: n.post.title
+                } : null
             }));
             return { notifications, totalCount };
         });

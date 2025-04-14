@@ -1,28 +1,38 @@
 /**
  * Constructs the full image URL.
- * If the provided URL is already absolute (starts with http/https), returns it directly.
- * Otherwise, prepends the API base URL.
+ * Handles different URL formats including Supabase storage URLs.
  *
- * @param relativeOrAbsoluteUrl - The relative path (e.g., /uploads/...) or potentially an absolute URL.
+ * @param url - The URL to process (relative path, absolute URL, or Supabase URL)
  * @returns The full image URL.
  */
-export function getImageUrl(relativeOrAbsoluteUrl: string | null | undefined): string {
-  if (!relativeOrAbsoluteUrl) {
-    // Return a default placeholder image URL or an empty string if no URL is provided
-    return '/path/to/default/placeholder.png'; // TODO: Replace with your actual placeholder image path
+export function getImageUrl(url: string | null | undefined): string {
+  // 如果URL为空，返回默认图片
+  if (!url) {
+    return '/assets/images/placeholder.png'; // 默认占位图
   }
 
-  // Check if it's already an absolute URL
-  if (relativeOrAbsoluteUrl.startsWith('http://') || relativeOrAbsoluteUrl.startsWith('https://')) {
-    return relativeOrAbsoluteUrl;
+  // 处理Supabase URL
+  if (url.includes('supabase.co')) {
+    // 确保URL包含public访问策略
+    if (!url.includes('/object/public/')) {
+      // 将storage/v1/替换为storage/v1/object/public/
+      return url.replace('/storage/v1/', '/storage/v1/object/public/');
+    }
+    return url; // 已经是正确的Supabase公共URL
   }
 
-  // Assume it's a relative path and construct the URL relative to the backend root
-  // Remove the /api part from the base URL if it exists
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'; // Default if not set
-  const serverRootUrl = apiBaseUrl.replace(/\/api\/?$/, ''); // Remove /api or /api/
+  // 处理其他绝对URL
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
 
-  // Ensure no double slashes between server root and relative path
-  const relativePath = relativeOrAbsoluteUrl.startsWith('/') ? relativeOrAbsoluteUrl : `/${relativeOrAbsoluteUrl}`;
-  return `${serverRootUrl}${relativePath}`;
-} 
+  // 处理相对路径
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+  const serverRootUrl = apiBaseUrl.replace(/\/api\/?$/, '');
+  const relativePath = url.startsWith('/') ? url : `/${url}`;
+
+  // 添加时间戳防止缓存问题
+  const timestamp = Date.now();
+  const separator = relativePath.includes('?') ? '&' : '?';
+  return `${serverRootUrl}${relativePath}${separator}t=${timestamp}`;
+}

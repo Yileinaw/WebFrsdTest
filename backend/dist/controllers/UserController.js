@@ -16,9 +16,10 @@ exports.deleteUser = exports.getAllUsers = exports.UserController = void 0;
 const PostService_1 = require("../services/PostService");
 const FavoriteService_1 = require("../services/FavoriteService");
 const NotificationService_1 = require("../services/NotificationService");
-const fs_1 = __importDefault(require("fs")); // Import fs module
 const path_1 = __importDefault(require("path")); // Import path module
 const client_1 = require("@prisma/client"); // <-- Import Prisma Client and User type
+const supabaseClient_1 = require("../lib/supabaseClient"); // <-- Import Supabase client
+const UserService_1 = require("../services/UserService");
 const prisma = new client_1.PrismaClient(); // <-- Instantiate Prisma Client
 const CODE_EXPIRATION_MINUTES = 10; // <-- Define expiration time
 const SALT_ROUNDS = 10; // Salt rounds for bcrypt
@@ -26,13 +27,14 @@ class UserController {
     // 获取特定用户信息
     static getUserById(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f;
+            var _a, _b, _c, _d, _e, _f, _g, _h;
             try {
+                // + Restore old manual validation
                 const targetUserId = parseInt(req.params.userId, 10);
-                const currentUserId = req.userId;
                 if (isNaN(targetUserId)) {
                     return res.status(400).json({ message: 'Invalid user ID' });
                 }
+                const currentUserId = req.userId;
                 const user = yield prisma.user.findUnique({
                     where: { id: targetUserId },
                     select: {
@@ -52,6 +54,7 @@ class UserController {
                                 posts: true,
                                 followers: true,
                                 following: true,
+                                favorites: true
                             }
                         },
                     }
@@ -68,7 +71,7 @@ class UserController {
                     });
                     isFollowing = !!followStatus;
                 }
-                const userData = Object.assign(Object.assign({}, user), { postCount: (_b = (_a = user._count) === null || _a === void 0 ? void 0 : _a.posts) !== null && _b !== void 0 ? _b : 0, followerCount: (_d = (_c = user._count) === null || _c === void 0 ? void 0 : _c.followers) !== null && _d !== void 0 ? _d : 0, followingCount: (_f = (_e = user._count) === null || _e === void 0 ? void 0 : _e.following) !== null && _f !== void 0 ? _f : 0, isFollowing: isFollowing });
+                const userData = Object.assign(Object.assign({}, user), { postCount: (_b = (_a = user._count) === null || _a === void 0 ? void 0 : _a.posts) !== null && _b !== void 0 ? _b : 0, followerCount: (_d = (_c = user._count) === null || _c === void 0 ? void 0 : _c.followers) !== null && _d !== void 0 ? _d : 0, followingCount: (_f = (_e = user._count) === null || _e === void 0 ? void 0 : _e.following) !== null && _f !== void 0 ? _f : 0, favoritesCount: (_h = (_g = user._count) === null || _g === void 0 ? void 0 : _g.favorites) !== null && _h !== void 0 ? _h : 0, isFollowing: isFollowing });
                 delete userData._count;
                 return res.status(200).json(userData);
             }
@@ -87,6 +90,7 @@ class UserController {
     // 获取当前登录用户信息
     static getCurrentUser(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c, _d, _e, _f;
             const userId = req.userId;
             if (!userId) {
                 res.status(401).json({ message: 'Unauthorized: User ID not found after authentication' });
@@ -107,9 +111,15 @@ class UserController {
                         createdAt: true, // Include createdAt
                         updatedAt: true, // Include updatedAt
                         isEmailVerified: true, // Include isEmailVerified
-                        emailVerificationToken: true // Include emailVerificationToken
-                        // Exclude password
-                        // Exclude counts (_count) unless needed by the frontend /me response
+                        emailVerificationToken: true, // Include emailVerificationToken
+                        // Include counts for the dropdown
+                        _count: {
+                            select: {
+                                posts: true,
+                                followers: true,
+                                following: true,
+                            }
+                        }
                     }
                 });
                 if (!currentUser) {
@@ -118,8 +128,12 @@ class UserController {
                     res.status(404).json({ message: 'User not found' });
                     return;
                 }
-                // Return the full user object (without password)
-                res.status(200).json(currentUser);
+                // Construct the response data including counts
+                const responseData = Object.assign(Object.assign({}, currentUser), { postCount: (_b = (_a = currentUser._count) === null || _a === void 0 ? void 0 : _a.posts) !== null && _b !== void 0 ? _b : 0, followerCount: (_d = (_c = currentUser._count) === null || _c === void 0 ? void 0 : _c.followers) !== null && _d !== void 0 ? _d : 0, followingCount: (_f = (_e = currentUser._count) === null || _e === void 0 ? void 0 : _e.following) !== null && _f !== void 0 ? _f : 0 });
+                // Remove the _count object itself from the response
+                delete responseData._count;
+                // Return the augmented user object
+                res.status(200).json(responseData);
             }
             catch (error) {
                 console.error(`[UserController.getCurrentUser] Error fetching user ${userId}:`, error);
@@ -127,18 +141,128 @@ class UserController {
             }
         });
     }
+    // 新增：专门处理更新当前登录用户个人资料
+    static updateMe(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const userId = req.userId; // 使用认证中间件提供的用户 ID
+            if (!userId) {
+                return res.status(401).json({ message: 'Unauthorized: User ID not found' });
+            }
+            const { name, bio, avatarUrl } = req.body;
+            // 构建更新数据 (允许 null 用于 avatarUrl)
+            const updateData = {};
+            let isUpdatingAvatar = false; // Flag to track if avatar is being updated
+            if (name !== undefined) {
+                if (typeof name !== 'string') {
+                    return res.status(400).json({ message: 'Name must be a string' });
+                }
+                updateData.name = name;
+            }
+            if (bio !== undefined) {
+                if (typeof bio !== 'string' && bio !== null) {
+                    return res.status(400).json({ message: 'Bio must be a string or null' });
+                }
+                updateData.bio = bio;
+            }
+            if (avatarUrl !== undefined) {
+                // Validate the incoming avatarUrl: must be null or a valid string URL
+                if (avatarUrl === null || typeof avatarUrl === 'string') {
+                    updateData.avatarUrl = avatarUrl;
+                    isUpdatingAvatar = true; // Mark that avatar is part of this update
+                }
+                else {
+                    // Reject if avatarUrl is provided but not null or a string
+                    return res.status(400).json({ message: 'Invalid avatarUrl format. Must be a string or null.' });
+                }
+            }
+            if (Object.keys(updateData).length === 0) {
+                return res.status(400).json({ message: 'No valid fields provided for update' });
+            }
+            let oldSupabasePathToDelete = null;
+            const bucketName = process.env.SUPABASE_BUCKET_NAME;
+            try {
+                // --- Step 1: Check and prepare for old avatar deletion if needed --- 
+                if (isUpdatingAvatar && bucketName) { // Only proceed if avatar is being updated and bucket is configured
+                    const currentUserData = yield prisma.user.findUnique({
+                        where: { id: userId },
+                        select: { avatarUrl: true }
+                    });
+                    const currentAvatarUrl = currentUserData === null || currentUserData === void 0 ? void 0 : currentUserData.avatarUrl;
+                    // Check if the current avatar is a Supabase URL
+                    if (currentAvatarUrl && currentAvatarUrl.includes((_a = process.env.SUPABASE_URL) !== null && _a !== void 0 ? _a : 'supabase.co')) {
+                        try {
+                            const url = new URL(currentAvatarUrl);
+                            const pathSegments = url.pathname.split('/');
+                            const bucketNameIndex = pathSegments.findIndex(segment => segment === bucketName);
+                            // Ensure the path is within the expected user-avatars folder as well
+                            if (bucketNameIndex > -1 && pathSegments.length > bucketNameIndex + 1 && pathSegments[bucketNameIndex + 1] === 'user-avatars') {
+                                oldSupabasePathToDelete = pathSegments.slice(bucketNameIndex + 1).join('/');
+                                console.log(`[UserController.updateMe] User ${userId} is switching to preset avatar. Found old Supabase path to delete: ${oldSupabasePathToDelete}`);
+                            }
+                        }
+                        catch (parseError) {
+                            console.error(`[UserController.updateMe] Failed to parse current avatar URL ${currentAvatarUrl} for user ${userId}:`, parseError);
+                        }
+                    }
+                }
+                // --- End Step 1 --- 
+                // --- Step 2: Call Service to update the database --- 
+                const updatedUser = yield UserService_1.UserService.updateUserProfile(userId, updateData);
+                if (!updatedUser) {
+                    return res.status(404).json({ message: 'User not found or update failed internally' });
+                }
+                // --- End Step 2 --- 
+                // --- Step 3: Delete old Supabase avatar if path was found --- 
+                if (oldSupabasePathToDelete && bucketName) {
+                    console.log(`[UserController.updateMe] Attempting to delete old Supabase avatar for user ${userId}: ${oldSupabasePathToDelete}`);
+                    const { error: deleteError } = yield supabaseClient_1.supabase.storage
+                        .from(bucketName)
+                        .remove([oldSupabasePathToDelete]);
+                    if (deleteError) {
+                        console.error(`[UserController.updateMe] Failed to delete old Supabase avatar ${oldSupabasePathToDelete} for user ${userId}:`, deleteError);
+                    }
+                    else {
+                        console.log(`[UserController.updateMe] Successfully deleted old Supabase avatar: ${oldSupabasePathToDelete}`);
+                    }
+                }
+                // --- End Step 3 --- 
+                // --- Step 4: Return success response --- 
+                return res.status(200).json({
+                    message: 'Profile updated successfully',
+                    user: updatedUser // Return the updated user profile
+                });
+            }
+            catch (error) {
+                // Handle errors from Prisma or other potential issues
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                    return res.status(409).json({ message: 'Username already taken' });
+                }
+                else if (error.message.includes('not found')) {
+                    return res.status(404).json({ message: error.message });
+                }
+                else {
+                    console.error(`[UserController.updateMe] Error updating profile for user ${userId}:`, error);
+                    return res.status(500).json({ message: 'Internal server error updating profile' });
+                }
+            }
+        });
+    }
     // 更新用户个人资料
     static updateUserProfile(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f;
-            const userId = req.userId;
-            if (!userId) {
+            const currentUserId = req.userId; // Keep using currentUserId
+            if (!currentUserId) {
                 return res.status(401).json({ message: 'Unauthorized: User ID not found in request' });
             }
-            const { username, name, bio } = req.body;
-            let { avatarUrl } = req.body;
+            // + Restore old targetUserId parsing and body extraction
+            const targetUserId = parseInt(req.params.userId, 10); // Assuming route is /users/:userId
+            if (isNaN(targetUserId)) {
+                return res.status(400).json({ message: 'Invalid user ID' });
+            }
+            const { username, name, bio, avatarUrl } = req.body;
+            // + Restore old manual validation for body fields
             const updateData = {};
-            // Validation and building updateData
             if (username !== undefined) {
                 if (typeof username !== 'string') {
                     return res.status(400).json({ message: 'Username must be a string' });
@@ -163,77 +287,51 @@ class UserController {
                 }
                 else {
                     console.warn(`[UserController.updateUserProfile] Invalid default avatarUrl received: ${avatarUrl}. Ignoring.`);
+                    // If avatarUrl is provided but invalid, don't include it in updateData
                 }
             }
             if (Object.keys(updateData).length === 0) {
-                if (req.body.avatarUrl && !updateData.hasOwnProperty('avatarUrl')) {
-                    console.warn('[UserController.updateUserProfile] Called likely from uploadAvatar but avatarUrl was invalid and ignored.');
-                    try {
-                        // Fetch current data in consistent format
-                        const currentUser = yield prisma.user.findUnique({
-                            where: { id: userId },
-                            select: {
-                                id: true, username: true, name: true, avatarUrl: true, bio: true, createdAt: true,
-                                email: true, role: true, isEmailVerified: true,
-                                _count: { select: { posts: true, followers: true, following: true } }
-                            }
-                        });
-                        if (!currentUser) {
-                            return res.status(404).json({ message: 'User not found' });
-                        }
-                        const responseData = {
-                            id: currentUser.id, username: currentUser.username, name: currentUser.name,
-                            avatarUrl: currentUser.avatarUrl, bio: currentUser.bio, joinedAt: currentUser.createdAt,
-                            postCount: (_b = (_a = currentUser._count) === null || _a === void 0 ? void 0 : _a.posts) !== null && _b !== void 0 ? _b : 0, followerCount: (_d = (_c = currentUser._count) === null || _c === void 0 ? void 0 : _c.followers) !== null && _d !== void 0 ? _d : 0,
-                            followingCount: (_f = (_e = currentUser._count) === null || _e === void 0 ? void 0 : _e.following) !== null && _f !== void 0 ? _f : 0, isFollowing: false,
-                            email: currentUser.email, role: currentUser.role, isEmailVerified: currentUser.isEmailVerified
-                        };
-                        return res.status(200).json({ message: 'Profile update skipped (invalid avatar URL), returning current user data.', user: responseData });
-                    }
-                    catch (findError) {
-                        console.error("Error finding user after invalid avatar upload:", findError);
-                        return res.status(500).json({ message: 'Internal server error fetching user data after failed update attempt.' });
-                    }
-                }
-                return res.status(400).json({ message: 'No valid update data provided' });
+                // Keep check for empty update
+                return res.status(400).json({ message: 'No valid fields provided for update' });
             }
             try {
-                const updatedUser = yield prisma.user.update({
-                    where: { id: userId },
-                    data: updateData,
-                    select: {
-                        id: true,
-                        email: true,
-                        username: true,
-                        name: true,
-                        avatarUrl: true,
-                        bio: true,
-                        role: true,
-                        createdAt: true,
-                        updatedAt: true,
-                        isEmailVerified: true,
-                        emailVerificationToken: true
-                    }
-                });
-                return res.status(200).json({ message: 'Profile updated successfully', user: updatedUser });
+                // + Call service with potentially different signature (will be reverted later)
+                // Assuming UserService.updateUserProfile will be reverted to accept only targetUserId and data
+                // We need to pass targetUserId here, not currentUserId
+                const updatedUser = yield UserService_1.UserService.updateUserProfile(targetUserId, updateData);
+                // ... rest of try block (processing updatedUser) ...
+                if (!updatedUser) { // Restore simple check
+                    return res.status(404).json({ message: 'User not found or update failed' });
+                }
+                // Process response data (assuming service returns necessary data)
+                const userData = Object.assign({}, updatedUser);
+                // delete (userData as any)._count;
+                return res.status(200).json({ message: 'Profile updated successfully', user: userData });
             }
             catch (error) {
-                console.error("Update User Profile Error:", error);
+                // - Remove specific error handling for ForbiddenError etc.
+                // + Restore simpler catch block
                 if (error instanceof client_1.Prisma.PrismaClientKnownRequestError) {
                     if (error.code === 'P2002') {
-                        return res.status(400).json({ message: 'Username already exists.' });
+                        return res.status(409).json({ message: 'Username already taken' });
                     }
-                    if (error.code === 'P2025') {
+                    else if (error.code === 'P2025') {
                         return res.status(404).json({ message: 'User not found' });
                     }
+                    console.error('[UserController.updateUserProfile] Prisma Error:', error.code, error.meta);
+                    return res.status(500).json({ message: `Database error (Code: ${error.code})` });
                 }
-                return res.status(500).json({ message: error.message || 'Failed to update user profile' });
+                else {
+                    console.error('[UserController.updateUserProfile] Unknown Error:', error);
+                    return res.status(500).json({ message: 'Internal server error updating profile' });
+                }
             }
         });
     }
-    // 处理头像上传
+    // 处理头像上传 (修改为使用 Supabase)
     static uploadAvatar(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             const userId = req.userId;
             if (!userId) {
                 res.status(401).json({ message: 'Unauthorized' });
@@ -243,47 +341,99 @@ class UserController {
                 res.status(400).json({ message: 'No avatar file uploaded' });
                 return;
             }
-            // Correct relative file path based on static serving config
-            // Assumes multer saves directly into 'avatars' subdir within the storage/uploads
-            const relativeFilePath = `/uploads/avatars/${req.file.filename}`;
-            console.log(`[UserController.uploadAvatar] User ${userId} uploaded file: ${req.file.filename}, DB Path: ${relativeFilePath}`);
+            const fileBuffer = req.file.buffer;
+            const originalName = req.file.originalname;
+            const fileExt = path_1.default.extname(originalName);
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            // Store avatars in a specific folder for users, including user ID for clarity
+            const fileName = `user-${userId}-${uniqueSuffix}${fileExt}`;
+            const filePath = `user-avatars/${fileName}`; // Path within the Supabase bucket
+            const bucketName = process.env.SUPABASE_BUCKET_NAME;
+            if (!bucketName) {
+                console.error('[UserController.uploadAvatar] Supabase bucket name not configured in .env');
+                res.status(500).json({ message: '服务器配置错误：存储桶名称未设置。' });
+                return;
+            }
+            let oldSupabasePath = null;
             try {
-                // Get the old avatar URL to potentially delete the old file
-                const user = yield prisma.user.findUnique({ where: { id: userId }, select: { avatarUrl: true } });
+                // 1. Get the old avatar URL before uploading the new one
+                const user = yield prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { avatarUrl: true }
+                });
                 const oldAvatarUrl = user === null || user === void 0 ? void 0 : user.avatarUrl;
-                // Update user's avatarUrl in the database with the correct path
+                // 2. Attempt to parse the old URL to get the Supabase path if it exists
+                if (oldAvatarUrl && oldAvatarUrl.includes((_a = process.env.SUPABASE_URL) !== null && _a !== void 0 ? _a : 'supabase.co')) {
+                    try {
+                        const url = new URL(oldAvatarUrl);
+                        // Path format: /storage/v1/object/public/bucketName/filePath
+                        const pathSegments = url.pathname.split('/');
+                        const bucketNameIndex = pathSegments.findIndex(segment => segment === bucketName);
+                        if (bucketNameIndex > -1 && pathSegments.length > bucketNameIndex + 1) {
+                            oldSupabasePath = pathSegments.slice(bucketNameIndex + 1).join('/');
+                            console.log(`[UserController.uploadAvatar] Found old Supabase path to delete: ${oldSupabasePath}`);
+                        }
+                    }
+                    catch (parseError) {
+                        console.error(`[UserController.uploadAvatar] Failed to parse old avatar URL ${oldAvatarUrl}:`, parseError);
+                        // Don't block the process if parsing fails, just won't delete the old file
+                    }
+                }
+                // 3. Upload the new file to Supabase Storage
+                const { data: uploadData, error: uploadError } = yield supabaseClient_1.supabase.storage
+                    .from(bucketName)
+                    .upload(filePath, fileBuffer, {
+                    contentType: req.file.mimetype,
+                    cacheControl: '3600', // Cache for 1 hour
+                    upsert: false // Don't overwrite
+                });
+                if (uploadError) {
+                    console.error(`[UserController.uploadAvatar] Supabase upload error for user ${userId}:`, uploadError);
+                    res.status(500).json({ message: '上传新头像到云存储失败。', error: uploadError.message });
+                    return;
+                }
+                // 4. Get the public URL for the newly uploaded file
+                const { data: urlData } = supabaseClient_1.supabase.storage
+                    .from(bucketName)
+                    .getPublicUrl(filePath);
+                if (!urlData || !urlData.publicUrl) {
+                    console.error(`[UserController.uploadAvatar] Failed to get public URL from Supabase for new avatar:`, filePath);
+                    // Attempt to clean up the uploaded file if URL retrieval fails
+                    yield supabaseClient_1.supabase.storage.from(bucketName).remove([filePath]);
+                    res.status(500).json({ message: '获取新头像链接失败。' });
+                    return;
+                }
+                const newImageUrl = urlData.publicUrl;
+                // 5. Update user's avatarUrl in the database with the new Supabase URL
                 yield prisma.user.update({
                     where: { id: userId },
-                    data: { avatarUrl: relativeFilePath }
+                    data: { avatarUrl: newImageUrl }
                 });
-                // Delete the old avatar file if it exists and is not a default avatar
-                if (oldAvatarUrl && !oldAvatarUrl.startsWith('/avatars/defaults/')) {
-                    // Construct path relative to backend root, assuming /uploads maps to storage/uploads
-                    const oldStoragePath = path_1.default.join(__dirname, '../../storage', oldAvatarUrl.replace('/uploads', ''));
-                    console.log(`[UserController.uploadAvatar] Attempting to delete old avatar from storage: ${oldStoragePath}`);
-                    fs_1.default.unlink(oldStoragePath, (err) => {
-                        if (err && err.code !== 'ENOENT') {
-                            console.error(`[UserController.uploadAvatar] Failed to delete old avatar file ${oldStoragePath}:`, err);
-                        }
-                        else if (!err) {
-                            console.log(`[UserController.uploadAvatar] Successfully deleted old avatar: ${oldStoragePath}`);
-                        }
-                    });
+                // 6. Delete the old avatar file from Supabase if a path was successfully extracted
+                if (oldSupabasePath) {
+                    console.log(`[UserController.uploadAvatar] Attempting to delete old Supabase avatar: ${oldSupabasePath}`);
+                    const { error: deleteError } = yield supabaseClient_1.supabase.storage
+                        .from(bucketName)
+                        .remove([oldSupabasePath]);
+                    if (deleteError) {
+                        // Log the error but don't fail the request, as the main goal (upload+update DB) succeeded
+                        console.error(`[UserController.uploadAvatar] Failed to delete old Supabase avatar file ${oldSupabasePath} for user ${userId}:`, deleteError);
+                    }
+                    else {
+                        console.log(`[UserController.uploadAvatar] Successfully deleted old Supabase avatar: ${oldSupabasePath}`);
+                    }
                 }
+                // 7. Return success response with the new URL
                 res.status(200).json({
                     message: 'Avatar uploaded successfully',
-                    avatarUrl: relativeFilePath // Return the new relative path
+                    avatarUrl: newImageUrl // Return the new Supabase public URL
                 });
             }
             catch (error) {
-                console.error(`[UserController.uploadAvatar] Error updating user ${userId} avatar:`, error);
-                // Attempt to delete the newly uploaded file if DB update failed
-                const newStoragePath = path_1.default.join(__dirname, '../../storage', relativeFilePath.replace('/uploads', ''));
-                fs_1.default.unlink(newStoragePath, (err) => {
-                    if (err)
-                        console.error(`[UserController.uploadAvatar] Failed to clean up uploaded file ${newStoragePath} after DB error:`, err);
-                });
-                res.status(500).json({ message: 'Failed to update avatar' });
+                console.error(`[UserController.uploadAvatar] Error processing avatar update for user ${userId}:`, error);
+                // Generic error if something else went wrong (e.g., Prisma update failed after upload)
+                // We don't attempt cleanup here as the state is uncertain
+                res.status(500).json({ message: '更新头像时发生内部错误。' });
             }
         });
     }
@@ -291,32 +441,33 @@ class UserController {
     static followUser(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             const followerId = req.userId;
-            const followingId = parseInt(req.params.userId, 10);
             if (!followerId) {
                 return res.status(401).json({ message: 'Unauthorized' });
             }
+            // + Restore old validation
+            const followingId = parseInt(req.params.userId, 10);
             if (isNaN(followingId)) {
                 return res.status(400).json({ message: 'Invalid user ID to follow' });
             }
+            // Keep self-follow check
             if (followerId === followingId) {
                 return res.status(400).json({ message: 'Cannot follow yourself' });
             }
             try {
                 const followingUser = yield prisma.user.findUnique({ where: { id: followingId }, select: { id: true } });
                 if (!followingUser) {
-                    return res.status(404).json({ message: 'User to follow not found' });
+                    return res.status(404).json({ message: '要关注的用户不存在' });
                 }
-                // Use prisma.follows
                 yield prisma.follows.create({ data: { followerId: followerId, followingId: followingId } });
-                return res.status(201).json({ message: 'Successfully followed user' });
+                return res.status(201).json({ message: '关注成功' });
             }
             catch (error) {
                 if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-                    return res.status(409).json({ message: 'Already following this user' });
+                    return res.status(409).json({ message: '已经关注了该用户' });
                 }
                 else {
-                    console.error('Follow User Error:', error);
-                    return res.status(500).json({ message: 'Internal server error' });
+                    console.error('[UserController.followUser] Error:', error);
+                    return res.status(500).json({ message: '关注用户时发生内部错误' });
                 }
             }
         });
@@ -325,25 +476,30 @@ class UserController {
     static unfollowUser(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             const followerId = req.userId;
-            const followingId = parseInt(req.params.userId, 10);
             if (!followerId) {
                 return res.status(401).json({ message: 'Unauthorized' });
             }
+            // + Restore old validation
+            const followingId = parseInt(req.params.userId, 10);
             if (isNaN(followingId)) {
                 return res.status(400).json({ message: 'Invalid user ID to unfollow' });
             }
+            // Keep self-unfollow check
+            if (followerId === followingId) {
+                return res.status(400).json({ message: '不能取消关注自己' });
+            }
             try {
-                // Use prisma.follows
                 yield prisma.follows.delete({ where: { followerId_followingId: { followerId: followerId, followingId: followingId } } });
-                return res.status(200).json({ message: 'Successfully unfollowed user' });
+                return res.status(200).json({ message: '取消关注成功' });
             }
             catch (error) {
                 if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-                    return res.status(404).json({ message: 'Not following this user' });
+                    // Record not found, means the user wasn't following them in the first place
+                    return res.status(404).json({ message: '未关注该用户' });
                 }
                 else {
-                    console.error('Unfollow User Error:', error);
-                    return res.status(500).json({ message: 'Internal server error' });
+                    console.error('[UserController.unfollowUser] Error:', error);
+                    return res.status(500).json({ message: '取消关注时发生内部错误' });
                 }
             }
         });
@@ -352,13 +508,15 @@ class UserController {
     static getFollowers(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
+                // + Restore old validation and parsing
                 const targetUserId = parseInt(req.params.userId, 10);
-                const page = parseInt(req.query.page) || 1;
-                const limit = parseInt(req.query.limit) || 10;
-                const skip = (page - 1) * limit;
                 if (isNaN(targetUserId)) {
                     return res.status(400).json({ message: 'Invalid user ID' });
                 }
+                const currentUserId = req.userId;
+                const page = parseInt(req.query.page) || 1;
+                const limit = parseInt(req.query.limit) || 10;
+                const skip = (page - 1) * limit;
                 // Use prisma.follows
                 const [followersData, totalFollowers] = yield prisma.$transaction([
                     prisma.follows.findMany({
@@ -372,8 +530,21 @@ class UserController {
                 const followers = followersData
                     .map((f) => f.follower)
                     .filter((u) => u != null);
+                // Check follow status if current user exists
+                let followersWithStatus = followers.map(f => (Object.assign(Object.assign({}, f), { isFollowing: false })));
+                if (currentUserId && followers.length > 0) {
+                    const followerIds = followers.map(f => f.id);
+                    const followingSet = new Set((yield prisma.follows.findMany({
+                        where: {
+                            followerId: currentUserId,
+                            followingId: { in: followerIds },
+                        },
+                        select: { followingId: true },
+                    })).map(follow => follow.followingId));
+                    followersWithStatus = followers.map(f => (Object.assign(Object.assign({}, f), { isFollowing: followingSet.has(f.id) })));
+                }
                 const totalPages = Math.ceil(totalFollowers / limit);
-                return res.status(200).json({ followers, currentPage: page, totalPages, totalFollowers });
+                return res.status(200).json({ followers: followersWithStatus, currentPage: page, totalPages, totalFollowers });
             }
             catch (error) {
                 console.error('Get Followers Error:', error);
@@ -385,13 +556,15 @@ class UserController {
     static getFollowing(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
+                // + Restore old validation and parsing
                 const targetUserId = parseInt(req.params.userId, 10);
-                const page = parseInt(req.query.page) || 1;
-                const limit = parseInt(req.query.limit) || 10;
-                const skip = (page - 1) * limit;
                 if (isNaN(targetUserId)) {
                     return res.status(400).json({ message: 'Invalid user ID' });
                 }
+                const currentUserId = req.userId;
+                const page = parseInt(req.query.page) || 1;
+                const limit = parseInt(req.query.limit) || 10;
+                const skip = (page - 1) * limit;
                 // Use prisma.follows
                 const [followingData, totalFollowing] = yield prisma.$transaction([
                     prisma.follows.findMany({
@@ -405,8 +578,21 @@ class UserController {
                 const following = followingData
                     .map((f) => f.following)
                     .filter((u) => u != null);
+                // Check follow status if current user exists
+                let followingWithStatus = following.map(f => (Object.assign(Object.assign({}, f), { isFollowing: false })));
+                if (currentUserId && following.length > 0) {
+                    const followingIds = following.map(f => f.id);
+                    const followingSet = new Set((yield prisma.follows.findMany({
+                        where: {
+                            followerId: currentUserId,
+                            followingId: { in: followingIds },
+                        },
+                        select: { followingId: true },
+                    })).map(follow => follow.followingId));
+                    followingWithStatus = following.map(f => (Object.assign(Object.assign({}, f), { isFollowing: followingSet.has(f.id) })));
+                }
                 const totalPages = Math.ceil(totalFollowing / limit);
-                return res.status(200).json({ following, currentPage: page, totalPages, totalFollowing });
+                return res.status(200).json({ following: followingWithStatus, currentPage: page, totalPages, totalFollowing });
             }
             catch (error) {
                 console.error('Get Following Error:', error);
@@ -418,13 +604,14 @@ class UserController {
     static getUserFavorites(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const userId = req.userId;
-                if (!userId) {
-                    return res.status(401).json({ message: 'Unauthorized' });
+                // + Restore old validation and parsing
+                const targetUserId = parseInt(req.params.userId, 10);
+                if (isNaN(targetUserId)) {
+                    return res.status(400).json({ message: 'Invalid user ID' });
                 }
                 const page = parseInt(req.query.page) || 1;
                 const limit = parseInt(req.query.limit) || 10;
-                const result = yield FavoriteService_1.FavoriteService.getMyFavorites(userId, { page, limit });
+                const result = yield FavoriteService_1.FavoriteService.getFavoritesByUserId(targetUserId, { page, limit });
                 return res.status(200).json(result);
             }
             catch (error) {
@@ -441,6 +628,7 @@ class UserController {
                 if (!userId) {
                     return res.status(401).json({ message: 'Unauthorized: User ID not found' });
                 }
+                // + Restore old parsing
                 const page = parseInt(req.query.page) || 1;
                 const limit = parseInt(req.query.limit) || 10;
                 const result = yield PostService_1.PostService.getAllPosts({ page, limit, authorId: userId, currentUserId: userId });
@@ -448,7 +636,7 @@ class UserController {
             }
             catch (error) {
                 console.error('[UserController] Get My Posts Error:', error);
-                return res.status(500).json({ message: 'Internal server error retrieving your posts' });
+                return res.status(500).json({ message: 'Internal server error retrieving my posts' });
             }
         });
     }
@@ -456,13 +644,14 @@ class UserController {
     static getUserPosts(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
+                // + Restore old validation and parsing
                 const targetUserId = parseInt(req.params.userId, 10);
-                const currentUserId = req.userId;
-                const page = parseInt(req.query.page) || 1;
-                const limit = parseInt(req.query.limit) || 10;
                 if (isNaN(targetUserId)) {
                     return res.status(400).json({ message: 'Invalid user ID' });
                 }
+                const currentUserId = req.userId;
+                const page = parseInt(req.query.page) || 1;
+                const limit = parseInt(req.query.limit) || 10;
                 const result = yield PostService_1.PostService.getAllPosts({ page, limit, authorId: targetUserId, currentUserId: currentUserId });
                 return res.status(200).json(result);
             }
@@ -480,6 +669,7 @@ class UserController {
                 if (!userId) {
                     return res.status(401).json({ message: 'Unauthorized' });
                 }
+                // + Restore old parsing
                 const page = parseInt(req.query.page) || 1;
                 const limit = parseInt(req.query.limit) || 10;
                 const filter = req.query.filter;
@@ -491,38 +681,34 @@ class UserController {
                 return res.status(200).json(result);
             }
             catch (error) {
-                console.error("Get User Notifications Error:", error);
+                console.error('[UserController] Get User Notifications Error:', error);
                 return res.status(500).json({ message: 'Internal server error fetching notifications' });
             }
         });
     }
-    // 获取默认头像列表
+    // 修改为返回固定的 Supabase 预设头像 URL
     static getDefaultAvatars(req, res, next) {
         return __awaiter(this, void 0, void 0, function* () {
-            // Define the directory where default avatars are stored relative to the project root
-            // Correct the path: remove '/static'
-            const defaultsDir = path_1.default.join(__dirname, '../../public/avatars/defaults');
-            console.log(`[UserController.getDefaultAvatars] Reading defaults from: ${defaultsDir}`);
+            // 确保使用 public 访问路径
+            const baseUrl = "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/preset-avatars";
+            const presetAvatarUrls = [
+                `${baseUrl}/1.jpg`,
+                `${baseUrl}/2.jpg`,
+                `${baseUrl}/3.jpg`,
+                `${baseUrl}/4.jpg`,
+                `${baseUrl}/5.jpg`
+            ];
             try {
-                // Check if directory exists
-                if (!fs_1.default.existsSync(defaultsDir)) {
-                    console.error(`[UserController.getDefaultAvatars] Default avatars directory not found: ${defaultsDir}`);
-                    res.status(500).json({ message: 'Server configuration error: Default avatars directory not found.' });
-                    return;
-                }
-                // Read directory contents
-                const files = yield fs_1.default.promises.readdir(defaultsDir);
-                // Filter for image files (e.g., png, jpg, jpeg, webp)
-                const imageFiles = files.filter(file => /\.(png|jpg|jpeg|webp)$/i.test(file));
-                // Map filenames to relative URLs (as served by static middleware)
-                // Correct the URL path: remove '/static'
-                const avatarUrls = imageFiles.map(file => `/avatars/defaults/${file}`);
-                console.log(`[UserController.getDefaultAvatars] Found defaults: ${JSON.stringify(avatarUrls)}`);
-                res.status(200).json({ avatarUrls });
+                // 设置 CORS 头
+                res.header('Access-Control-Allow-Origin', '*');
+                res.header('Access-Control-Allow-Methods', 'GET');
+                res.header('Access-Control-Allow-Headers', 'Content-Type');
+                // 直接返回数组
+                res.status(200).json(presetAvatarUrls);
             }
             catch (error) {
-                console.error("[UserController.getDefaultAvatars] Error reading default avatars directory:", error);
-                next(error); // Pass to global error handler
+                console.error('[UserController.getDefaultAvatars] Error:', error);
+                res.status(500).json({ message: 'Failed to get default avatars' });
             }
         });
     }
@@ -549,47 +735,40 @@ class UserController {
             }
         });
     }
-    // 删除用户 (使用 as any 绕过类型检查)
+    // 删除用户
     static deleteUser(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            const targetUserId = parseInt(req.params.userId, 10);
             const currentUserId = req.userId;
             if (!currentUserId) {
                 return res.status(401).json({ message: "Unauthorized" });
             }
+            // + Restore old validation
+            const targetUserId = parseInt(req.params.userId, 10);
             if (isNaN(targetUserId)) {
                 return res.status(400).json({ message: "Invalid user ID" });
             }
+            // Keep TODO for permission check
+            // TODO: Add proper permission check here (e.g., only admin or self)
             try {
                 yield prisma.user.delete({ where: { id: targetUserId } });
                 res.status(204).send();
             }
             catch (error) {
-                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError) {
-                    if (error.code === 'P2025') {
-                        return res.status(404).json({ message: "User not found" });
-                    }
-                    else if (error.code === 'P2003') {
-                        console.error("Delete User Foreign Key Error:", error);
-                        return res.status(409).json({ message: "Cannot delete user, associated data exists." });
-                    }
-                    else {
-                        console.error("Delete User Prisma Error:", error);
-                        return res.status(500).json({ message: "Database error deleting user" });
-                    }
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                    return res.status(404).json({ message: "User not found" });
                 }
                 else {
-                    console.error("Delete User Unknown Error:", error);
-                    return res.status(500).json({ message: "Internal server error deleting user" });
+                    console.error('Delete User Error:', error);
+                    return res.status(500).json({ message: "Internal server error" });
                 }
             }
         });
     }
 }
 exports.UserController = UserController;
-// --- 移除类外部的重复定义 ---
-// Ensure these functions are NOT defined outside the class if they are static methods
-// --- 结束移除 ---
+// Remove standalone functions if they are already static methods in the class
+// export const getAllUsers = ...
+// export const deleteUser = ...
 // 注意：原始文件中 updateUserProfile 和 uploadAvatar 是静态方法，保持一致。
 // 注意：原始文件没有 getAllUsers 和 deleteUser 方法，如果 UserRoutes 中引用了，这里需要添加。
 // --- 添加可能缺失的 getAllUsers 和 deleteUser (根据 UserRoutes 推断) ---
@@ -623,9 +802,7 @@ const deleteUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     }
     try {
         // 注意：删除用户可能会因外键约束失败，需要处理关联数据或调整 schema
-        yield prisma.user.delete({
-            where: { id: targetUserId }
-        });
+        yield prisma.user.delete({ where: { id: targetUserId } });
         res.status(204).send(); // No Content
     }
     catch (error) {

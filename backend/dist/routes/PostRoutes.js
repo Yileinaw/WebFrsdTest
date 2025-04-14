@@ -12,7 +12,7 @@ const LikeController_1 = require("../controllers/LikeController"); // Keep LikeC
 const FavoriteController_1 = require("../controllers/FavoriteController"); // Keep FavoriteController
 const AuthMiddleware_1 = require("../middleware/AuthMiddleware");
 const OptionalAuthMiddleware_1 = require("../middleware/OptionalAuthMiddleware");
-const multerConfig_1 = __importDefault(require("../config/multerConfig")); // Ensure custom config is imported
+const uploadMiddleware_1 = require("../middleware/uploadMiddleware"); // <-- Import the correct middleware
 // --- Remove Basic Multer Config ---
 // const basicUpload = multer({ dest: 'uploads/' }); 
 // --- End Remove ---
@@ -30,13 +30,14 @@ commentRouter.get('/', CommentController_1.CommentController.getCommentsByPostId
 // --- Existing post routes --- (Now after /upload-image)
 // GET /api/posts - Use Optional Auth
 postRouter.get('/', OptionalAuthMiddleware_1.OptionalAuthMiddleware, PostController_1.PostController.getAllPosts);
-// POST /api/posts - Restore custom upload config
-postRouter.post('/', AuthMiddleware_1.AuthMiddleware, multerConfig_1.default.single('image'), // Use custom upload config
+// POST /api/posts - Use the new uploadPostImage middleware
+postRouter.post('/', AuthMiddleware_1.AuthMiddleware, uploadMiddleware_1.uploadPostImage, // <-- Use new middleware for post images
 PostController_1.PostController.createPost);
 // GET /api/posts/:id - Use Optional Auth
 postRouter.get('/:postId', OptionalAuthMiddleware_1.OptionalAuthMiddleware, PostController_1.PostController.getPostById);
-// PUT /api/posts/:id - Requires Auth
-postRouter.put('/:postId', AuthMiddleware_1.AuthMiddleware, PostController_1.PostController.updatePost);
+// PUT /api/posts/:id - Requires Auth and handle image upload
+postRouter.put('/:postId', AuthMiddleware_1.AuthMiddleware, uploadMiddleware_1.uploadPostImage, // <-- Add middleware to handle potential image upload on update
+PostController_1.PostController.updatePost);
 // DELETE /api/posts/:id - Requires Auth
 postRouter.delete('/:postId', AuthMiddleware_1.AuthMiddleware, PostController_1.PostController.deletePost);
 // --- Like routes ---

@@ -124,11 +124,23 @@ const showPasswordModal = ref(false); // <-- Define state for modal
 // --- Fetch preset avatars on mount ---
 const fetchPresetAvatars = async () => {
     try {
-        presetAvatarUrls.value = await UserService.getDefaultAvatars();
-        console.log('[ProfileSettingsView] Fetched preset avatars:', presetAvatarUrls.value);
+        const response = await UserService.getDefaultAvatars();
+        console.log('[ProfileSettingsView] Raw response:', response);
+        
+        // 确保我们得到的是数组
+        const avatars = Array.isArray(response) ? response : 
+                       Array.isArray(response.avatarUrls) ? response.avatarUrls : [];
+        
+        if (avatars.length > 0) {
+            presetAvatarUrls.value = avatars;
+            console.log('[ProfileSettingsView] Set preset avatars:', presetAvatarUrls.value);
+        } else {
+            console.warn('[ProfileSettingsView] No preset avatars found in response');
+            ElMessage.warning('没有可用的预设头像');
+        }
     } catch (error) {
         console.error('[ProfileSettingsView] Failed to fetch preset avatars:', error);
-        ElMessage.error('加载预设头像失败');
+        ElMessage.error('获取预设头像失败');
     }
 };
 
@@ -142,22 +154,24 @@ const uploadHeaders = computed(() => ({
 
 // Function to resolve static asset URLs (like presets or uploaded avatars)
 const resolveStaticAssetUrl = (url: string | null | undefined): string => {
-    console.log(`[resolveStaticAssetUrl] Resolving URL: ${url}`);
-    if (!url) {
-        console.log('[resolveStaticAssetUrl] URL is null or undefined, returning empty string.');
-        return ''; 
+    if (!url) return '';
+    
+    // 如果是 Supabase URL，添加 public 访问策略
+    if (url.includes('supabase.co')) {
+        // 确保 URL 包含 public 访问策略
+        const publicUrl = url.replace('/storage/v1/', '/storage/v1/object/public/');
+        return publicUrl;
     }
+    
+    // 其他情况保持原有逻辑
     if (url.startsWith('http://') || url.startsWith('https://')) {
-        console.log('[resolveStaticAssetUrl] URL is absolute, returning as is:', url);
         return url;
     }
     
     const apiBaseUrl = http.defaults.baseURL || '';
-    const staticBaseUrl = apiBaseUrl.replace(/\/api\/?$/, ''); 
+    const staticBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '');
     const relativeUrl = url.startsWith('/') ? url : '/' + url;
-    const finalUrl = `${staticBaseUrl}${relativeUrl}`;
-    console.log(`[resolveStaticAssetUrl] Original: ${url}, API Base: ${apiBaseUrl}, Static Base: ${staticBaseUrl}, Final URL: ${finalUrl}`);
-    return finalUrl;
+    return `${staticBaseUrl}${relativeUrl}`;
 };
 
 // 挂载时和用户信息变化时同步输入框名字
@@ -603,3 +617,6 @@ const selectPresetOrRemove = (url: string | null) => {
 }
 
 </style> 
+
+
+

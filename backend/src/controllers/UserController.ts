@@ -786,20 +786,26 @@ export class UserController {
 
     // 修改为返回固定的 Supabase 预设头像 URL
     static async getDefaultAvatars(req: Request, res: Response, next: NextFunction): Promise<void> {
-        console.log('[UserController.getDefaultAvatars] Returning hardcoded preset Supabase URLs.');
+        // 确保使用 public 访问路径
+        const baseUrl = "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/preset-avatars";
         const presetAvatarUrls = [
-            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/2.jpg",
-            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/45.jpg",
-            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/5.jpg",
-            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/62.jpg",
-            "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/user-avatars/preset-avatars/63.jpg"
+            `${baseUrl}/1.jpg`,
+            `${baseUrl}/2.jpg`,
+            `${baseUrl}/3.jpg`,
+            `${baseUrl}/4.jpg`,
+            `${baseUrl}/5.jpg`
         ];
 
         try {
-            // 直接返回固定的 URL 列表
-            res.status(200).json({ avatarUrls: presetAvatarUrls });
+            // 设置 CORS 头
+            res.header('Access-Control-Allow-Origin', '*');
+            res.header('Access-Control-Allow-Methods', 'GET');
+            res.header('Access-Control-Allow-Headers', 'Content-Type');
+            
+            // 直接返回数组
+            res.status(200).json(presetAvatarUrls);
         } catch (error) {
-            console.error('[UserController.getDefaultAvatars] Error preparing preset avatar list:', error);
+            console.error('[UserController.getDefaultAvatars] Error:', error);
             res.status(500).json({ message: 'Failed to get default avatars' });
         }
     }

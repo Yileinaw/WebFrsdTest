@@ -38,35 +38,16 @@ class UserService {
             return user;
         });
     }
-    // 更新用户个人资料
-    static updateUserProfile(userId, profileData) {
+    // 更新用户个人资料 (恢复旧签名和逻辑)
+    static updateUserProfile(userId, data) {
         return __awaiter(this, void 0, void 0, function* () {
-            // Optional: Log only when there is data to update
-            // console.log(`[UserService.updateUserProfile] User ${userId} updating profile with:`, profileData);
-            const dataToUpdate = {};
-            if (profileData.name !== undefined) {
-                dataToUpdate.name = profileData.name;
-            }
-            if (profileData.username !== undefined) {
-                dataToUpdate.username = profileData.username;
-            }
-            if (profileData.bio !== undefined) {
-                dataToUpdate.bio = profileData.bio;
-            }
-            if (profileData.avatarUrl !== undefined) {
-                dataToUpdate.avatarUrl = profileData.avatarUrl;
-            }
-            if (Object.keys(dataToUpdate).length === 0) {
-                // Optional: Log this case if needed
-                // console.log(`[UserService.updateUserProfile] No data provided for user ${userId}, returning current profile.`);
+            if (Object.keys(data).length === 0) {
                 return yield this.getUserById(userId);
             }
             try {
-                // Optional: Log before database call
-                // console.log(`[UserService.updateUserProfile] Updating user ${userId} in DB with:`, dataToUpdate);
                 const updatedUser = yield db_1.default.user.update({
                     where: { id: userId },
-                    data: dataToUpdate,
+                    data: data,
                     select: {
                         id: true,
                         email: true,
@@ -81,16 +62,15 @@ class UserService {
                         emailVerificationToken: true
                     }
                 });
-                // Optional: Log successful update details
-                // console.log(`[UserService.updateUserProfile] User ${userId} updated successfully. New avatarUrl:`, updatedUser.avatarUrl);
                 return updatedUser;
             }
             catch (error) {
-                // Keep this error log
                 console.error(`[UserService.updateUserProfile] Error updating user ${userId}:`, error);
-                // Handle potential unique constraint violation for username if updated
                 if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-                    throw new Error("Username already taken.");
+                    throw new Error("Unique constraint failed.");
+                }
+                if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+                    throw new Error("User not found for update.");
                 }
                 throw new Error("Failed to update user profile");
             }

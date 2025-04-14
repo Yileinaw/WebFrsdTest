@@ -3,20 +3,31 @@ import { useUserStore } from './stores/modules/user';
 
 // 创建 Axios 实例
 const http = axios.create({
-    baseURL: 'http://localhost:3001/api', // 后端 API 的基础 URL
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api', // 从环境变量获取或使用默认值
     timeout: 10000, // 请求超时时间 (10秒)
 });
+
+// 调试信息
+console.log('[HTTP] 初始化了Axios实例，baseURL:', http.defaults.baseURL);
 
 // 请求拦截器
 http.interceptors.request.use(
     (config) => {
-        // 尝试从 localStorage (或其他地方) 获取 Token
-        // (我们稍后会使用 Pinia 存储 Token，这里先用 localStorage 示例)
-        const token = localStorage.getItem('authToken'); // 假设 Token 存储在 localStorage
+        // 从 Pinia store 获取 token
+        const userStore = useUserStore();
+        const token = userStore.token;
 
         // 如果 Token 存在，则添加到请求头
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
+            console.log('[HTTP] 添加认证头:', `Bearer ${token.substring(0, 10)}...`);
+        } else {
+            // 尝试从 localStorage 获取 Token 作为备选
+            const localToken = localStorage.getItem('authToken');
+            if (localToken) {
+                config.headers.Authorization = `Bearer ${localToken}`;
+                console.log('[HTTP] 从localStorage添加认证头:', `Bearer ${localToken.substring(0, 10)}...`);
+            }
         }
 
         return config;
@@ -28,7 +39,7 @@ http.interceptors.request.use(
     }
 );
 
-// 响应拦截器 (可选，但推荐用于统一错误处理)
+// 响应拦截器 (用于统一错误处理)
 http.interceptors.response.use(
     (response) => {
         // 对响应数据做点什么
@@ -38,18 +49,36 @@ http.interceptors.response.use(
         // 处理响应错误
         console.error('Response interceptor error:', error.response || error.message);
 
-        // 可以在这里添加全局错误处理逻辑，例如：
-        // - 如果是 401 Unauthorized (Token 失效)，则跳转到登录页
-        if (error.response && error.response.status === 401) {
-            console.error('Unauthorized access - possibly invalid token.');
-            // 清除旧 Token (如果 Token 失效)
-            localStorage.removeItem('authToken'); // 同样，稍后用 Pinia 处理
-            // 跳转到登录页 (需要引入 Vue Router 实例)
-            // router.push('/login');
+        // 全局错误处理逻辑
+        if (error.response) {
+            const status = error.response.status;
+
+            // 处理 401 Unauthorized (认证失败)
+            if (status === 401) {
+                console.error('Unauthorized access - possibly invalid token.');
+                // 获取 userStore 实例
+                const userStore = useUserStore();
+                // 清除用户信息和 token
+                userStore.logout();
+
+                // 如果需要跳转到登录页，可以在这里实现
+                // 注意：这里暂时不实现自动跳转，避免循环重定向
+                // 如果需要跳转，可以引入 router 并使用 router.push('/login')
+
+                // 返回特定错误信息
+                error.isAuthError = true;
+            }
+
+            // 处理其他状态码
+            // 403 Forbidden
+            if (status === 403) {
+                console.error('Forbidden access - insufficient permissions.');
+                // 可以在这里添加特定处理
+            }
         }
 
         return Promise.reject(error);
     }
 );
 
-export default http; 
+export default http;

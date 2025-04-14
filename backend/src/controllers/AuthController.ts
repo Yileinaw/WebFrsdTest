@@ -32,7 +32,7 @@ export class AuthController {
             if (existingUser && existingUser.isEmailVerified) {
                  res.status(409).json({ message: '该邮箱已被注册并验证' });
                  return;
-            } 
+            }
             if (existingUser && !existingUser.isEmailVerified) {
                 console.warn(`[AuthController.register] Email ${email} exists but is not verified. Proceeding with registration and new verification.`);
             }
@@ -49,7 +49,7 @@ export class AuthController {
                 }
             });
 
-            const verificationToken = uuidv4(); 
+            const verificationToken = uuidv4();
             const expiresAt = new Date();
             expiresAt.setHours(expiresAt.getHours() + EMAIL_VERIFICATION_EXPIRATION_HOURS);
 
@@ -77,7 +77,7 @@ export class AuthController {
             if (!mailSent) {
                 console.error(`[AuthController.register] Failed to send verification email to ${newUser.email}`);
             }
-            
+
             if (typeof mailSent === 'string' && mailSent.includes('ethereal.email')) {
                 console.log(`[AuthController.register] Ethereal preview URL: ${mailSent}`);
             }
@@ -87,7 +87,7 @@ export class AuthController {
         } catch (error: any) {
             if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
                  res.status(409).json({ message: '该邮箱已被注册' });
-             } 
+             }
              else if (error.code === 'P2002' && error.meta?.target?.includes('username')) {
                   res.status(409).json({ message: '该用户名已被使用' });
              } else {
@@ -101,22 +101,38 @@ export class AuthController {
     public static async login(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { email, username, password } = req.body;
+            console.log('[AuthController.login] 收到登录请求:', { email, username, password: password ? '******' : undefined });
 
+            if (!email && !username) {
+                console.error('[AuthController.login] 缺少用户名或邮箱');
+                res.status(400).json({ message: 'Username or Email is required for login' });
+                return;
+            }
+
+            if (!password) {
+                console.error('[AuthController.login] 缺少密码');
+                res.status(400).json({ message: 'Password is required for login' });
+                return;
+            }
+
+            console.log('[AuthController.login] 调用AuthService.login...');
             const { token, user } = await AuthService.login({ email, username, password });
-            
+            console.log('[AuthController.login] 登录成功，用户ID:', user.id);
+
             res.status(200).json({ message: 'Login successful', token, user });
 
         } catch (error: any) {
-                console.error('Login Controller Error:', error.message); 
-                if (error.message === 'Username or Email is required for login' || error.message === 'Password is required for login') {
-                    res.status(400).json({ message: error.message });
-                } else if (error.message === 'Invalid credentials') {
-                    res.status(401).json({ message: error.message }); 
-                } else if (error.message.includes('邮箱尚未验证')) {
-                    res.status(403).json({ message: error.message }); 
-                } else {
-                    res.status(500).json({ message: 'Internal server error during login' });
-                }
+            console.error('[AuthController.login] 错误:', error.message);
+            if (error.message === 'Username or Email is required for login' || error.message === 'Password is required for login') {
+                res.status(400).json({ message: error.message });
+            } else if (error.message === 'Invalid credentials') {
+                res.status(401).json({ message: error.message });
+            } else if (error.message.includes('邮箱尚未验证')) {
+                res.status(403).json({ message: error.message });
+            } else {
+                console.error('[AuthController.login] 未处理的错误:', error);
+                res.status(500).json({ message: 'Internal server error during login' });
+            }
         }
     }
 
@@ -226,10 +242,10 @@ export class AuthController {
 
             if (!mailSent) {
                 console.error(`[AuthController.sendPublicPasswordResetCode] Failed to send email to ${user.email}`);
-                 res.status(200).json({ message: '验证码发送请求处理完成' }); 
-                return; 
+                 res.status(200).json({ message: '验证码发送请求处理完成' });
+                return;
             }
-            
+
             if (typeof mailSent === 'string' && mailSent.includes('ethereal.email')) {
                 console.log(`[AuthController.sendPublicPasswordResetCode] Ethereal preview URL: ${mailSent}`);
             }
@@ -277,7 +293,7 @@ export class AuthController {
                  res.status(500).json({ message: '处理验证时发生错误' });
                  return;
             }
-            
+
             await prisma.user.update({
                 where: { id: verificationRecord.userId },
                 data: { isEmailVerified: true }
@@ -337,11 +353,11 @@ export class AuthController {
                 text: mailText,
                 html: mailHtml
             });
-            
+
             if (!mailSent) {
                 console.error(`[AuthController.resendVerificationEmail] Failed to resend verification email to ${user.email}`);
             }
-            
+
             if (typeof mailSent === 'string' && mailSent.includes('ethereal.email')) {
                  console.log(`[AuthController.resendVerificationEmail] Ethereal preview URL: ${mailSent}`);
             }
@@ -360,7 +376,7 @@ export class AuthController {
     public static async getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
         // @ts-ignore - Express Request types might not know about 'user' or 'userId' property added by middleware
         // Correctly access userId attached by AuthMiddleware
-        const userId = req.userId; 
+        const userId = req.userId;
 
         if (!userId) {
             // This should theoretically not happen if AuthMiddleware passed
@@ -417,4 +433,4 @@ export class AuthController {
              next(error); // Pass error to global handler
         }
     }
-} 
+}

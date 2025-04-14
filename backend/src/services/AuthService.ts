@@ -73,99 +73,123 @@ export class AuthService {
     // 用户登录
     public static async login(credentials: LoginCredentials): Promise<{ token: string; user: any }> {
         const { email, username, password } = credentials;
+        console.log('[AuthService.login] 开始登录过程:', { email, username, password: password ? '******' : undefined });
 
         // 1. Validate input: ensure either email or username is provided
         if (!(email || username)) {
-             throw new Error('Username or Email is required for login');
+            console.error('[AuthService.login] 缺少用户名或邮箱');
+            throw new Error('Username or Email is required for login');
         }
         if (!password) {
-             throw new Error('Password is required for login');
+            console.error('[AuthService.login] 缺少密码');
+            throw new Error('Password is required for login');
         }
 
         // 2. Find user by email or username
         let user: User | null = null;
-        if (email) {
-            user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-        } else if (username) {
-            user = await prisma.user.findFirst({
-                where: {
-                    username: {
-                        equals: username,
-                        mode: 'insensitive',
+        try {
+            if (email) {
+                console.log(`[AuthService.login] 根据邮箱查找用户: ${email}`);
+                user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+            } else if (username) {
+                console.log(`[AuthService.login] 根据用户名查找用户: ${username}`);
+                user = await prisma.user.findFirst({
+                    where: {
+                        username: {
+                            equals: username,
+                            mode: 'insensitive',
+                        },
                     },
-                },
-            });
+                });
+            }
+            console.log(`[AuthService.login] 查找用户结果: ${user ? '找到用户ID ' + user.id : '未找到用户'}`);
+        } catch (error) {
+            console.error('[AuthService.login] 查找用户时出错:', error);
+            throw new Error('Error finding user');
         }
 
         // 3. Check if user exists
         if (!user) {
-            console.log(`Login attempt failed: User not found with identifier ${email || username}`);
+            console.log(`[AuthService.login] 登录失败: 未找到用户 ${email || username}`);
             throw new Error('Invalid credentials'); // Generic error
         }
 
         // 4. Compare password
-        console.log(`[AuthService.login] Comparing password for user ${user.id}. Input password: ${password}`); // Log input password
-        console.log(`[AuthService.login] Stored hash: ${user.password}`); // Log stored hash
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        console.log(`[AuthService.login] bcrypt.compare result: ${isPasswordValid}`); // Log comparison result
+        try {
+            console.log(`[AuthService.login] 比较用户 ${user.id} 的密码`);
+            // 不要输出实际密码或完整哈希值，这是安全风险
+            const isPasswordValid = await bcrypt.compare(password, user.password);
+            console.log(`[AuthService.login] 密码比较结果: ${isPasswordValid}`);
 
-        if (!isPasswordValid) {
-            console.log(`Login attempt failed: Password mismatch for user ${user.id}`);
-            throw new Error('Invalid credentials'); // Generic error
+            if (!isPasswordValid) {
+                console.log(`[AuthService.login] 登录失败: 用户 ${user.id} 密码不匹配`);
+                throw new Error('Invalid credentials'); // Generic error
+            }
+        } catch (error) {
+            console.error('[AuthService.login] 密码比较时出错:', error);
+            throw new Error('Error comparing password');
         }
 
         // 5. Check if email is verified
         if (!user.isEmailVerified) {
-            console.log(`Login attempt failed: Email not verified for user ${user.id}`);
+            console.log(`[AuthService.login] 登录失败: 用户 ${user.id} 邮箱未验证`);
             throw new Error('邮箱尚未验证，请检查您的邮箱并点击验证链接');
         }
 
         // 6. Generate JWT
-        const tokenPayload = { userId: user.id, role: user.role };
-        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: expiresInSeconds });
+        try {
+            console.log(`[AuthService.login] 为用户 ${user.id} 生成JWT令牌`);
+            const tokenPayload = { userId: user.id, role: user.role };
+            const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: expiresInSeconds });
+            console.log(`[AuthService.login] JWT令牌生成成功，过期时间: ${expiresInSeconds}秒`);
 
-        // 7. Fetch full user info including counts AFTER successful login
-        const fullUser = await prisma.user.findUnique({
-            where: { id: user.id }, // Use the validated user's ID
-            select: {
-                id: true,
-                email: true,
-                username: true,
-                name: true,
-                avatarUrl: true,
-                bio: true,
-                role: true,
-                isEmailVerified: true,
-                createdAt: true,
-                _count: {
-                    select: {
-                        posts: true,
-                        followers: true,
-                        following: true,
-                        favorites: true
+            // 7. Fetch full user info including counts AFTER successful login
+            console.log(`[AuthService.login] 获取用户 ${user.id} 的完整信息`);
+            const fullUser = await prisma.user.findUnique({
+                where: { id: user.id }, // Use the validated user's ID
+                select: {
+                    id: true,
+                    email: true,
+                    username: true,
+                    name: true,
+                    avatarUrl: true,
+                    bio: true,
+                    role: true,
+                    isEmailVerified: true,
+                    createdAt: true,
+                    _count: {
+                        select: {
+                            posts: true,
+                            followers: true,
+                            following: true,
+                            favorites: true
+                        }
                     }
                 }
+            });
+
+            if (!fullUser) {
+                // Should not happen if login succeeded, but good to handle
+                console.error(`[AuthService.login] 登录后无法重新获取用户数据，用户ID: ${user.id}`);
+                throw new Error('Failed to retrieve user data after login');
             }
-        });
 
-        if (!fullUser) {
-            // Should not happen if login succeeded, but good to handle
-            console.error(`[AuthService.login] Failed to re-fetch user data for ID: ${user.id} after successful login.`);
-            throw new Error('Failed to retrieve user data after login');
+            // 8. Map counts and return token + full user info
+            const { _count, ...userData } = fullUser;
+            const responseUser = {
+                ...userData,
+                postCount: _count?.posts ?? 0,
+                followerCount: _count?.followers ?? 0,
+                followingCount: _count?.following ?? 0,
+                favoritesCount: _count?.favorites ?? 0,
+                joinedAt: fullUser.createdAt
+            };
+
+            console.log(`[AuthService.login] 用户 ${user.id} 通过 ${email ? '邮箱' : '用户名'} 登录成功。返回完整个人资料。`);
+            return { token, user: responseUser };
+        } catch (error) {
+            console.error('[AuthService.login] 生成令牌或获取用户数据时出错:', error);
+            throw new Error('Error generating token or fetching user data');
         }
-
-        // 8. Map counts and return token + full user info
-        const { _count, ...userData } = fullUser;
-        const responseUser = {
-            ...userData,
-            postCount: _count?.posts ?? 0,
-            followerCount: _count?.followers ?? 0,
-            followingCount: _count?.following ?? 0,
-            favoritesCount: _count?.favorites ?? 0,
-            joinedAt: fullUser.createdAt
-        };
-        
-        console.log(`[AuthService.login] User ${user.id} logged in successfully via ${email ? 'email' : 'username'}. Returning full profile.`);
-        return { token, user: responseUser };
     }
-} 
+}

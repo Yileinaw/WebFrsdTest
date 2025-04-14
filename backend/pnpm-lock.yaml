@@ -1265,6 +1265,7 @@ snapshots:
   backend@file:(prisma@5.22.0):
     dependencies:
       '@prisma/client': 5.22.0(prisma@5.22.0)
+      '@supabase/supabase-js': 2.49.4
       '@types/nodemailer': 6.4.17
       '@types/uuid': 10.0.0
       bcrypt: 5.1.1
@@ -1277,9 +1278,11 @@ snapshots:
       uuid: 11.1.0
       zod: 3.24.2
     transitivePeerDependencies:
+      - bufferutil
       - encoding
       - prisma
       - supports-color
+      - utf-8-validate
 
   balanced-match@1.0.2: {}
 

@@ -82,48 +82,112 @@ class AuthService {
     // 用户登录
     static login(credentials) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c, _d;
             const { email, username, password } = credentials;
+            console.log('[AuthService.login] 开始登录过程:', { email, username, password: password ? '******' : undefined });
             // 1. Validate input: ensure either email or username is provided
             if (!(email || username)) {
+                console.error('[AuthService.login] 缺少用户名或邮箱');
                 throw new Error('Username or Email is required for login');
             }
             if (!password) {
+                console.error('[AuthService.login] 缺少密码');
                 throw new Error('Password is required for login');
             }
             // 2. Find user by email or username
             let user = null;
-            if (email) {
-                user = yield db_1.default.user.findUnique({ where: { email: email.toLowerCase() } });
+            try {
+                if (email) {
+                    console.log(`[AuthService.login] 根据邮箱查找用户: ${email}`);
+                    user = yield db_1.default.user.findUnique({ where: { email: email.toLowerCase() } });
+                }
+                else if (username) {
+                    console.log(`[AuthService.login] 根据用户名查找用户: ${username}`);
+                    user = yield db_1.default.user.findFirst({
+                        where: {
+                            username: {
+                                equals: username,
+                                mode: 'insensitive',
+                            },
+                        },
+                    });
+                }
+                console.log(`[AuthService.login] 查找用户结果: ${user ? '找到用户ID ' + user.id : '未找到用户'}`);
             }
-            else if (username) {
-                user = yield db_1.default.user.findUnique({ where: { username } });
+            catch (error) {
+                console.error('[AuthService.login] 查找用户时出错:', error);
+                throw new Error('Error finding user');
             }
             // 3. Check if user exists
             if (!user) {
-                console.log(`Login attempt failed: User not found with identifier ${email || username}`);
+                console.log(`[AuthService.login] 登录失败: 未找到用户 ${email || username}`);
                 throw new Error('Invalid credentials'); // Generic error
             }
             // 4. Compare password
-            console.log(`[AuthService.login] Comparing password for user ${user.id}. Input password: ${password}`); // Log input password
-            console.log(`[AuthService.login] Stored hash: ${user.password}`); // Log stored hash
-            const isPasswordValid = yield bcrypt_1.default.compare(password, user.password);
-            console.log(`[AuthService.login] bcrypt.compare result: ${isPasswordValid}`); // Log comparison result
-            if (!isPasswordValid) {
-                console.log(`Login attempt failed: Password mismatch for user ${user.id}`);
-                throw new Error('Invalid credentials'); // Generic error
+            try {
+                console.log(`[AuthService.login] 比较用户 ${user.id} 的密码`);
+                // 不要输出实际密码或完整哈希值，这是安全风险
+                const isPasswordValid = yield bcrypt_1.default.compare(password, user.password);
+                console.log(`[AuthService.login] 密码比较结果: ${isPasswordValid}`);
+                if (!isPasswordValid) {
+                    console.log(`[AuthService.login] 登录失败: 用户 ${user.id} 密码不匹配`);
+                    throw new Error('Invalid credentials'); // Generic error
+                }
+            }
+            catch (error) {
+                console.error('[AuthService.login] 密码比较时出错:', error);
+                throw new Error('Error comparing password');
             }
             // 5. Check if email is verified
             if (!user.isEmailVerified) {
-                console.log(`Login attempt failed: Email not verified for user ${user.id}`);
+                console.log(`[AuthService.login] 登录失败: 用户 ${user.id} 邮箱未验证`);
                 throw new Error('邮箱尚未验证，请检查您的邮箱并点击验证链接');
             }
             // 6. Generate JWT
-            const tokenPayload = { userId: user.id, role: user.role }; // Include necessary claims
-            const token = jsonwebtoken_1.default.sign(tokenPayload, JWT_SECRET, { expiresIn: expiresInSeconds });
-            // 7. Return token and user info (excluding password)
-            const { password: _ } = user, userWithoutPassword = __rest(user, ["password"]);
-            console.log(`User ${user.id} logged in successfully via ${email ? 'email' : 'username'}.`);
-            return { token, user: userWithoutPassword };
+            try {
+                console.log(`[AuthService.login] 为用户 ${user.id} 生成JWT令牌`);
+                const tokenPayload = { userId: user.id, role: user.role };
+                const token = jsonwebtoken_1.default.sign(tokenPayload, JWT_SECRET, { expiresIn: expiresInSeconds });
+                console.log(`[AuthService.login] JWT令牌生成成功，过期时间: ${expiresInSeconds}秒`);
+                // 7. Fetch full user info including counts AFTER successful login
+                console.log(`[AuthService.login] 获取用户 ${user.id} 的完整信息`);
+                const fullUser = yield db_1.default.user.findUnique({
+                    where: { id: user.id }, // Use the validated user's ID
+                    select: {
+                        id: true,
+                        email: true,
+                        username: true,
+                        name: true,
+                        avatarUrl: true,
+                        bio: true,
+                        role: true,
+                        isEmailVerified: true,
+                        createdAt: true,
+                        _count: {
+                            select: {
+                                posts: true,
+                                followers: true,
+                                following: true,
+                                favorites: true
+                            }
+                        }
+                    }
+                });
+                if (!fullUser) {
+                    // Should not happen if login succeeded, but good to handle
+                    console.error(`[AuthService.login] 登录后无法重新获取用户数据，用户ID: ${user.id}`);
+                    throw new Error('Failed to retrieve user data after login');
+                }
+                // 8. Map counts and return token + full user info
+                const { _count } = fullUser, userData = __rest(fullUser, ["_count"]);
+                const responseUser = Object.assign(Object.assign({}, userData), { postCount: (_a = _count === null || _count === void 0 ? void 0 : _count.posts) !== null && _a !== void 0 ? _a : 0, followerCount: (_b = _count === null || _count === void 0 ? void 0 : _count.followers) !== null && _b !== void 0 ? _b : 0, followingCount: (_c = _count === null || _count === void 0 ? void 0 : _count.following) !== null && _c !== void 0 ? _c : 0, favoritesCount: (_d = _count === null || _count === void 0 ? void 0 : _count.favorites) !== null && _d !== void 0 ? _d : 0, joinedAt: fullUser.createdAt });
+                console.log(`[AuthService.login] 用户 ${user.id} 通过 ${email ? '邮箱' : '用户名'} 登录成功。返回完整个人资料。`);
+                return { token, user: responseUser };
+            }
+            catch (error) {
+                console.error('[AuthService.login] 生成令牌或获取用户数据时出错:', error);
+                throw new Error('Error generating token or fetching user data');
+            }
         });
     }
 }

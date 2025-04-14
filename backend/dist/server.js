@@ -59,13 +59,14 @@ const foodShowcaseRoutes_1 = __importDefault(require("./routes/foodShowcaseRoute
 const TagRoutes_1 = __importDefault(require("./routes/TagRoutes")); // Import tag routes
 const ErrorHandlingMiddleware_1 = require("./middleware/ErrorHandlingMiddleware");
 const mailer_1 = require("./utils/mailer"); // <-- 导入邮件初始化函数
+// import morgan from 'morgan'; // Removed morgan import
 // --- Remove direct imports, rely on userRoutes ---
-// import { UserController } from './controllers/UserController'; 
+// import { UserController } from './controllers/UserController';
 // import { AuthMiddleware } from './middleware/AuthMiddleware';
 // --- End Remove ---
 // Remove server startup log, keep only the final listening log
 // console.log("--- RUNNING FULL SERVER.TS ---");
-// --- Remove Log Database URL --- 
+// --- Remove Log Database URL ---
 // console.log('[server.ts] DATABASE_URL used by this process:', process.env.DATABASE_URL);
 // --- End Remove Log Database URL ---
 dotenv_1.default.config();
@@ -74,7 +75,7 @@ const port = process.env.PORT || 3001;
 // --- Middlewares ---
 // app.use((req, res, next) => {
 //   console.log(`[Request Logger]: ${req.method} ${req.originalUrl}`);
-//   next(); 
+//   next();
 // });
 // Explicitly configure CORS
 const allowedOrigins = ['http://localhost:5173']; // Add other origins if needed
@@ -115,12 +116,17 @@ console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /upl
 // console.log(`[Server] Serving user uploads from: ${uploadsDirectory} at /uploads`);
 // app.use('/uploads', express.static(uploadsDirectory)); // Old version removed
 // --- End Restore Static Files ---
-// --- Base Route --- 
+// --- Base Route ---
 app.get('/', (req, res) => {
     res.send('TDFRS Backend API is running!');
 });
 // --- Restore Original API Route Order ---
-app.use('/api/auth', AuthRoutes_1.default);
+// 添加调试日志
+console.log('[server.ts] 挂载认证路由到 /api/auth');
+app.use('/api/auth', (req, res, next) => {
+    console.log(`[server.ts] 收到请求: ${req.method} ${req.originalUrl}`);
+    next();
+}, AuthRoutes_1.default);
 app.use('/api/users', (req, res, next) => {
     // console.log(`[server.ts] Request to /api/users path: ${req.originalUrl}`);
     next();

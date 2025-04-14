@@ -8,11 +8,14 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
+// 引入 ECharts
+import "echarts";
+
 import App from './App.vue'
 import router from './router'
 
 // Correct the path to the global CSS file
-import './assets/main.css'; 
+import './assets/main.css';
 
 const app = createApp(App)
 

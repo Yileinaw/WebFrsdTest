@@ -141,9 +141,9 @@ const formattedDate = computed(() => {
     color: var(--el-text-color-placeholder);
   }
 
-  
- 
- 
+
+
+
 }
 
 .post-details {
@@ -225,4 +225,4 @@ const formattedDate = computed(() => {
       }
   }
 }
-</style> 
+</style>

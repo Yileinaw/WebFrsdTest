@@ -7,13 +7,17 @@
           <span>管理后台</span>
         </div>
         <el-menu
-          default-active="/admin/food-management"
+          default-active="/admin/dashboard"
           class="admin-menu"
           router
           background-color="#304156"
           text-color="#bfcbd9"
           active-text-color="#409EFF"
         >
+          <el-menu-item index="/admin/dashboard">
+            <el-icon><DataLine /></el-icon>
+            <span>仪表盘</span>
+          </el-menu-item>
           <el-menu-item index="/admin/food-management">
             <el-icon><Picture /></el-icon>
             <span>美食图片管理</span>
@@ -49,7 +53,7 @@
 
 <script setup lang="ts">
 import { ElContainer, ElAside, ElMain, ElMenu, ElMenuItem, ElIcon, ElButton } from 'element-plus';
-import { Picture, User, ArrowLeft, Document, Setting, More, PriceTag } from '@element-plus/icons-vue'; // Import necessary icons and ArrowLeft
+import { Picture, User, ArrowLeft, Document, Setting, More, PriceTag, DataLine } from '@element-plus/icons-vue'; // Import necessary icons
 import { RouterView, useRouter } from 'vue-router';
 
 const router = useRouter(); // Get router instance
@@ -110,4 +114,4 @@ const goBack = () => {
   padding: 20px;
   background-color: #f0f2f5;
 }
-</style> 
+</style>

@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '@/components/layout/MainLayout.vue'
-import LoginView from '@/views/auth/LoginView.vue' 
+import LoginView from '@/views/auth/LoginView.vue'
 import { useUserStore } from '@/stores/modules/user'
 import type { RouteRecordRaw } from 'vue-router'
 
@@ -8,8 +8,8 @@ import type { RouteRecordRaw } from 'vue-router'
 import AdminLayout from '@/components/layout/AdminLayout.vue';
 
 // Correct the import path using @ alias
-import UnderDevelopment from '@/views/admin/common/UnderDevelopment.vue' 
-import PostDetailView from '@/views/post/PostDetailView.vue' 
+import UnderDevelopment from '@/views/admin/common/UnderDevelopment.vue'
+import PostDetailView from '@/views/post/PostDetailView.vue'
 import RegisterView from '@/views/auth/RegisterView.vue';
 import ResetPasswordView from '@/views/auth/ResetPasswordView.vue';
 import VerifyEmailView from '@/views/auth/VerifyEmailView.vue';
@@ -25,12 +25,12 @@ const routes: Array<RouteRecordRaw> = [
       {
         path: '',
         name: 'Home',
-        component: () => import('@/views/HomeView.vue') 
+        component: () => import('@/views/HomeView.vue')
       },
       {
         path: '/about',
         name: 'about',
-        component: () => import('@/views/AboutView.vue'), 
+        component: () => import('@/views/AboutView.vue'),
       },
       {
         path: '/discover',
@@ -88,7 +88,7 @@ const routes: Array<RouteRecordRaw> = [
     children: [
       {
         path: '',
-        name: 'UserProfile', 
+        name: 'UserProfile',
         component: () => import('@/views/profile/UserProfileView.vue'), // Point to the new component
         props: true
       }
@@ -135,10 +135,16 @@ const routes: Array<RouteRecordRaw> = [
   // Add Admin Routes
   {
     path: '/admin',
-    component: AdminLayout, 
+    component: AdminLayout,
     // meta: { requiresAuth: true }, // Ensure guards are handled globally or fix import
-    redirect: { name: 'AdminFoodManagement' }, // 添加重定向
+    redirect: { name: 'AdminDashboard' }, // 添加重定向到仪表盘
     children: [
+      {
+        path: 'dashboard',
+        name: 'AdminDashboard',
+        component: () => import('@/views/admin/DashboardView.vue'),
+        meta: { title: '仪表盘' }
+      },
       {
         path: 'food-management',
         name: 'AdminFoodManagement',
