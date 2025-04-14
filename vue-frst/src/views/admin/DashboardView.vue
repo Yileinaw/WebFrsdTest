@@ -163,7 +163,16 @@ import {
   Picture, Document, User, Star, ArrowUp, ArrowDown
 } from '@element-plus/icons-vue';
 import { AdminService } from '@/services/AdminService';
-import { format } from 'date-fns';
+// 自定义日期格式化函数
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
+};
 
 // ECharts
 import { use } from 'echarts/core';
@@ -306,10 +315,7 @@ const tagDistributionOption = computed(() => {
   };
 });
 
-// 格式化日期
-const formatDate = (dateString: string) => {
-  return format(new Date(dateString), 'yyyy-MM-dd HH:mm');
-};
+
 
 // 查看内容详情
 const viewContent = (row: any) => {
