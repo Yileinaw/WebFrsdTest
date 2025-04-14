@@ -38,7 +38,11 @@ const port = process.env.PORT || 3001;
 // });
 
 // Explicitly configure CORS
-const allowedOrigins = ['http://localhost:5173']; // Add other origins if needed
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://web-frsd-test.vercel.app',
+  'https://web-frsd-test-git-master-yileinaws-projects.vercel.app'
+]; // 添加 Vercel 域名
 
 const corsOptions: cors.CorsOptions = {
   origin: function (origin, callback) {

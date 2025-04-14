@@ -15,7 +15,32 @@ let transporter: nodemailer.Transporter;
 
 // 初始化邮件传输器
 async function initializeMailer() {
-  if (process.env.ETHEREAL_HOST && process.env.ETHEREAL_USER && process.env.ETHEREAL_PASS) {
+  // 检查是否配置了 SendGrid
+  if (process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM) {
+    console.log('Using SendGrid for email delivery...');
+    transporter = nodemailer.createTransport({
+      service: 'SendGrid',
+      auth: {
+        user: 'apikey',
+        pass: process.env.SENDGRID_API_KEY,
+      },
+    });
+  }
+  // 检查是否配置了 SMTP
+  else if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    console.log(`Using SMTP (${process.env.SMTP_HOST}) for email delivery...`);
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: parseInt(process.env.SMTP_PORT || '587', 10) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+  }
+  // 检查是否配置了 Ethereal
+  else if (process.env.ETHEREAL_HOST && process.env.ETHEREAL_USER && process.env.ETHEREAL_PASS) {
     // 如果环境变量中有 Ethereal 配置，则使用 Ethereal
     console.log('Using Ethereal for email testing...');
     transporter = nodemailer.createTransport({
@@ -29,7 +54,8 @@ async function initializeMailer() {
     });
   } else {
     // 否则，尝试创建 Ethereal 测试账户 (首次运行时或没有配置时)
-    console.log('No Ethereal config found in .env, creating a test account...');
+    console.log('No email configuration found in .env, creating an Ethereal test account...');
+    console.log('NOTE: In production, emails will not be delivered to real recipients!');
     try {
       const testAccount = await nodemailer.createTestAccount();
       console.log('Ethereal test account created:');
@@ -39,11 +65,7 @@ async function initializeMailer() {
       console.log('Port:', testAccount.smtp.port);
       console.log('Secure:', testAccount.smtp.secure);
       console.log('------------------------------------');
-      console.log('Please add these credentials to your .env file as:');
-      console.log('ETHEREAL_HOST=...');
-      console.log('ETHEREAL_PORT=...');
-      console.log('ETHEREAL_USER=...');
-      console.log('ETHEREAL_PASS=...');
+      console.log('Preview URL will be shown in logs when emails are sent');
       console.log('------------------------------------');
 
       transporter = nodemailer.createTransport({
@@ -56,7 +78,7 @@ async function initializeMailer() {
         },
       });
       // 提示用户将凭据保存到 .env 文件
-      console.warn('Remember to save these Ethereal credentials to your .env file for future use!');
+      console.warn('For production use, configure a real email service in .env!');
     } catch (error) {
         console.error('Failed to create Ethereal test account:', error);
         // 在无法创建测试账户时抛出错误或提供备用方案
@@ -83,8 +105,11 @@ async function sendMail(options: MailOptions): Promise<string | false> {
   }
 
   try {
+    // 使用配置的发件人邮箱或默认值
+    const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.ETHEREAL_USER || 'noreply@example.com';
+
     const info = await transporter.sendMail({
-      from: `"Your App Name" <${process.env.ETHEREAL_USER || 'noreply@example.com'}>`, // 发件人地址 (使用 Ethereal 用户名或默认值)
+      from: `"美食社区" <${fromEmail}>`, // 发件人地址
       to: options.to,
       subject: options.subject,
       text: options.text,
@@ -92,12 +117,14 @@ async function sendMail(options: MailOptions): Promise<string | false> {
     });
 
     console.log('Message sent: %s', info.messageId);
-    // Ethereal 会提供一个预览 URL
+
+    // 如果是 Ethereal，则提供预览 URL
     const previewUrl = nodemailer.getTestMessageUrl(info);
     if (previewUrl) {
       console.log('Preview URL: %s', previewUrl);
       return previewUrl; // 返回预览 URL，方便查看邮件
     }
+
     return info.messageId; // 返回消息 ID
   } catch (error) {
     console.error('Error sending email:', error);
@@ -106,4 +133,4 @@ async function sendMail(options: MailOptions): Promise<string | false> {
 }
 
 // 导出初始化和发送函数
-export { initializeMailer, sendMail }; 
+export { initializeMailer, sendMail };
