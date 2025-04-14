@@ -1,11 +1,11 @@
 <template>
   <el-card :body-style="{ padding: '0px' }" class="share-card">
-    
+
     <!-- Post Image (if available) -->
-    <el-image 
-        v-if="post.imageUrl" 
-        :src="resolveStaticAssetUrl(post.imageUrl)" 
-        fit="cover" 
+    <el-image
+        v-if="post.imageUrl"
+        :src="resolveStaticAssetUrl(post.imageUrl || '')"
+        fit="cover"
         class="post-image"
         lazy
         @click="goToPostDetail"
@@ -23,7 +23,7 @@
     <div class="card-content">
        <!-- Author Info -->
        <div class="author-info">
-         <el-avatar :size="40" :src="resolveStaticAssetUrl(post.author?.avatarUrl)" @error="true">
+         <el-avatar :size="40" :src="resolveStaticAssetUrl(post.author?.avatarUrl || '')" @error="true">
               <img src="@/assets/images/default-food.png" />
          </el-avatar>
          <div class="author-details">
@@ -40,11 +40,11 @@
 
        <!-- Actions (Like, Comment, Favorite) -->
        <div class="actions">
-         <el-button 
-            :type="post.isLiked ? 'primary' : ''" 
-            :icon="Star" 
-            text 
-            bg 
+         <el-button
+            :type="post.isLiked ? 'primary' : ''"
+            :icon="Star"
+            text
+            bg
             @click="toggleLike"
             :loading="isLiking"
          >
@@ -53,11 +53,11 @@
          <el-button :icon="ChatDotSquare" text bg @click="goToPostDetail">
             {{ post.commentsCount || 0 }} 评论
          </el-button>
-         <el-button 
-            :type="post.isFavorited ? 'warning' : ''" 
-            :icon="CollectionTag" 
-            text 
-            bg 
+         <el-button
+            :type="post.isFavorited ? 'warning' : ''"
+            :icon="CollectionTag"
+            text
+            bg
             @click="toggleFavorite"
             :loading="isFavoriting"
          >
@@ -78,7 +78,7 @@ import { ElCard, ElAvatar, ElButton, ElMessage, ElIcon, ElImage, ElTooltip } fro
 import { Star, ChatDotSquare, CollectionTag, MoreFilled, Picture } from '@element-plus/icons-vue'; // Added Picture
 import type { Post, PostPreview } from '@/types/models';
 import { useUserStore } from '@/stores/modules/user';
-import { PostService } from '@/services/PostService'; 
+import { PostService } from '@/services/PostService';
 import { formatTimeAgo, truncateText } from '@/utils/formatters'; // Assuming you have these helpers
 import { resolveStaticAssetUrl } from '@/utils/urlUtils'; // Import the new util
 
@@ -118,7 +118,7 @@ const toggleLike = async () => {
         // Fetch the updated post data from the backend
         const response = await PostService.getPostById(props.post.id);
         const updatedPostData = response.post; // This is the full Post object
-        
+
         // Emit the fully updated Post object directly
         emit('update:post', updatedPostData);
 
@@ -141,7 +141,7 @@ const toggleFavorite = async () => {
     isFavoriting.value = true;
     try {
         if (props.post.isFavorited) {
-             await PostService.unfavoritePost(props.post.id); 
+             await PostService.unfavoritePost(props.post.id);
         } else {
              await PostService.favoritePost(props.post.id);
         }
@@ -152,7 +152,7 @@ const toggleFavorite = async () => {
 
         // Emit the fully updated Post object directly
         emit('update:post', updatedPostData);
-        
+
     } catch (error: any) {
         console.error("Toggle favorite error:", error);
         ElMessage.error(error.response?.data?.message || '操作失败');

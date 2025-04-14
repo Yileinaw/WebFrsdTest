@@ -20,8 +20,8 @@
         <span @click="activeTab = 'following'" class="clickable-stat"><strong>{{ userData.followingCount ?? 0 }}</strong> 关注</span>
         <span @click="activeTab = 'favorites'" class="clickable-stat"><strong>{{ userData.favoritesCount ?? 0 }}</strong> 收藏</span>
       </div>
-      <el-button 
-        v-if="showFollowButton" 
+      <el-button
+        v-if="showFollowButton"
         :type="userData.isFollowing ? 'default' : 'primary'"
         @click="toggleFollow"
         :loading="followLoading"
@@ -35,13 +35,13 @@
       <el-tab-pane label="动态" name="posts">
         <div v-if="postsLoading && postsCurrentPage === 1" class="tab-placeholder">正在加载帖子...</div>
         <div v-else-if="!postsLoading && userPosts.length === 0" class="tab-placeholder">该用户还没有发布任何动态哦~</div>
-        <div v-else class="post-list"> 
+        <div v-else class="post-list">
            <PostCard
-             v-for="post in userPosts" 
+             v-for="post in userPosts"
              :key="post.id"
              :post="post"
              @card-click="goToPostDetail"
-             @delete="handleDeletePost" 
+             @delete="handleDeletePost"
              @edit="handleEditPost"
              class="profile-post-card"
            />
@@ -96,12 +96,12 @@
       <div class="setting-item default-avatars">
         <label>选择预设头像</label>
         <div class="avatar-options">
-          <el-avatar 
-            v-for="presetUrl in presetAvatarUrls" 
-            :key="presetUrl" 
-            :size="60" 
-            :src="resolveStaticAssetUrl(presetUrl)" 
-            @click="selectPresetOrRemove(presetUrl)"  
+          <el-avatar
+            v-for="presetUrl in presetAvatarUrls"
+            :key="presetUrl"
+            :size="60"
+            :src="resolveStaticAssetUrl(presetUrl)"
+            @click="selectPresetOrRemove(presetUrl)"
             class="preset-avatar"
             :class="{ 'selected': pendingAvatarUrl === presetUrl }"
           />
@@ -184,7 +184,7 @@ const resolvedAvatarUrl = computed(() => {
     } else {
         const apiBaseUrl = http.defaults.baseURL || '';
         const staticBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '');
-        const path = url || '/avatars/defaults/default_avatar.png'; 
+        const path = url || '/avatars/defaults/default_avatar.png';
         const relativeUrl = path.startsWith('/') ? path : '/' + path;
         finalUrl = `${staticBaseUrl}${relativeUrl}`;
     }
@@ -253,7 +253,7 @@ const fetchUserPosts = async (page: number = 1, append: boolean = false) => {
         const totalPagesData = response.totalPages;
 
         // Use nextTick after potential state changes that affect the list
-        await nextTick(); 
+        await nextTick();
 
         if (append) {
             userPosts.value.push(...postsData);
@@ -402,7 +402,8 @@ const toggleFollow = async () => {
 
 const fetchPresetAvatars = async () => {
     try {
-        presetAvatarUrls.value = await UserService.getDefaultAvatars();
+        const response = await UserService.getDefaultAvatars();
+        presetAvatarUrls.value = response.avatarUrls;
     } catch (error) {
         console.error('[UserProfileView] Failed to fetch preset avatars:', error);
     }
@@ -415,7 +416,7 @@ const resolveStaticAssetUrl = (url: string | null | undefined): string => {
     } else {
         const apiBaseUrl = http.defaults.baseURL || '';
         const staticBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '');
-        const path = url || '/avatars/defaults/default_avatar.png'; 
+        const path = url || '/avatars/defaults/default_avatar.png';
         const relativeUrl = path.startsWith('/') ? path : '/' + path;
         finalUrl = `${staticBaseUrl}${relativeUrl}`;
     }
@@ -437,7 +438,7 @@ const handleAvatarSuccess: UploadProps['onSuccess'] = (response, uploadFile) => 
     if (response && typeof response.avatarUrl === 'string') {
         pendingAvatarUrl.value = response.avatarUrl;
         // Set the flag here if needed based on your fixed save logic
-        // isNewUploadPending.value = true; 
+        // isNewUploadPending.value = true;
         ElMessage.success('头像上传成功! 请点击保存以应用更改。');
     } else {
         console.error('[UserProfileView] Invalid response from avatar upload:', response);
@@ -561,7 +562,7 @@ const handleToggleFollowInList = async (targetUserId: number) => {
             }
             if (isViewingOwnProfile.value && userData.value) {
                 userData.value.followingCount = Math.max(0, (userData.value.followingCount ?? 0) - 1);
-            } 
+            }
             ElMessage.success('已取消关注');
         } else {
             await UserService.followUser(targetUserId);
@@ -622,7 +623,7 @@ const handleDeletePost = async (postId: number) => {
       }
     );
     try {
-      await PostService.deletePost(postId); 
+      await PostService.deletePost(postId);
       userPosts.value = userPosts.value.filter(p => p.id !== postId);
       if (userData.value && userData.value.postCount) {
          userData.value.postCount--;
@@ -658,7 +659,7 @@ watch(userId, (newUserId) => {
         loading.value = false;
     }
   }
-}, { immediate: true }); 
+}, { immediate: true });
 
 watch(activeTab, (newTab, oldTab) => {
   if (newTab && newTab !== oldTab) {
@@ -700,7 +701,7 @@ onMounted(() => {
 .user-profile-view {
   max-width: 960px;
   margin: 20px auto;
-  padding-bottom: 40px; 
+  padding-bottom: 40px;
 }
 
 .loading-state, .error-state, .not-found {
@@ -710,25 +711,25 @@ onMounted(() => {
 }
 
 .profile-banner {
-  height: 180px; 
-  background-color: #e0e4e9; 
-  background-image: url('/assets/images/default-banner.jpg'); 
+  height: 180px;
+  background-color: #e0e4e9;
+  background-image: url('/assets/images/default-banner.jpg');
   background-size: cover;
   background-position: center;
   position: relative;
-  margin-bottom: 70px; 
+  margin-bottom: 70px;
   border-radius: var(--el-border-radius-base);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .profile-avatar-container {
   position: absolute;
   bottom: -60px;
   left: 40px;
-  border-radius: 50%; 
+  border-radius: 50%;
   transition: filter 0.2s ease;
   .profile-avatar {
-    display: block; 
+    display: block;
     border: 5px solid #fff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     background-color: #fff;
@@ -747,8 +748,8 @@ onMounted(() => {
     border-radius: 50%;
     opacity: 0;
     transition: opacity 0.2s ease;
-    pointer-events: none; 
-    font-size: 24px; 
+    pointer-events: none;
+    font-size: 24px;
   }
   &.clickable {
     cursor: pointer;
@@ -756,18 +757,18 @@ onMounted(() => {
       opacity: 1;
     }
     &:hover .profile-avatar {
-       filter: brightness(0.9); 
+       filter: brightness(0.9);
     }
   }
 }
 
 .profile-info {
-  padding: 10px 40px 20px; 
-  position: relative; 
+  padding: 10px 40px 20px;
+  position: relative;
 
   h2 {
-    font-size: 2rem; 
-    font-weight: 700; 
+    font-size: 2rem;
+    font-weight: 700;
     margin: 0 0 10px;
     line-height: 1.2;
   }
@@ -775,30 +776,30 @@ onMounted(() => {
     color: var(--el-text-color-secondary);
     margin-bottom: 18px;
     font-size: 0.95rem;
-    min-height: 20px; 
+    min-height: 20px;
   }
   .user-stats {
     display: flex;
-    gap: 25px; 
+    gap: 25px;
     margin-bottom: 20px;
     color: var(--el-text-color-regular);
-    font-size: 0.9rem; 
+    font-size: 0.9rem;
     strong {
       font-weight: 600;
       margin-right: 5px;
-      font-size: 1.1rem; 
+      font-size: 1.1rem;
     }
   }
-  .el-button { 
+  .el-button {
       position: absolute;
-      top: 10px; 
+      top: 10px;
       right: 40px;
-      min-width: 80px; 
+      min-width: 80px;
   }
 }
 
 .profile-tabs {
-  margin-top: 25px; 
+  margin-top: 25px;
 }
 
 .loading-placeholder, .empty-placeholder, .loading-more {
@@ -811,12 +812,12 @@ onMounted(() => {
 .post-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px; 
-  padding: 10px 0; 
+  gap: 20px;
+  padding: 10px 0;
 }
 
 .profile-post-card {
-    margin-bottom: 0; 
+    margin-bottom: 0;
 }
 
 .avatar-dialog {
@@ -864,7 +865,7 @@ onMounted(() => {
         }
       }
       .remove-avatar-btn {
-        height: 64px; 
+        height: 64px;
         width: 64px;
         border-radius: 50%;
         border: 2px dashed var(--el-border-color);
@@ -876,4 +877,4 @@ onMounted(() => {
     }
   }
 }
-</style> 
+</style>

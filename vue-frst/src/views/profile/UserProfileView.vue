@@ -22,8 +22,8 @@
         <span><strong>{{ userData.favoritesCount ?? 0 }}</strong> 收藏</span>
       </div>
       <!-- Add Follow/Unfollow button here -->
-      <el-button 
-        v-if="showFollowButton" 
+      <el-button
+        v-if="showFollowButton"
         :type="userData.isFollowing ? 'default' : 'primary'"
         @click="toggleFollow"
         :loading="followLoading"
@@ -136,12 +136,12 @@
       <div class="setting-item default-avatars">
         <label>选择预设头像</label>
         <div class="avatar-options">
-          <el-avatar 
-            v-for="presetUrl in presetAvatarUrls" 
-            :key="presetUrl" 
-            :size="60" 
-            :src="resolveStaticAssetUrl(presetUrl)" 
-            @click="pendingAvatarUrl = presetUrl"  
+          <el-avatar
+            v-for="presetUrl in presetAvatarUrls"
+            :key="presetUrl"
+            :size="60"
+            :src="resolveStaticAssetUrl(presetUrl)"
+            @click="pendingAvatarUrl = presetUrl"
             class="preset-avatar"
             :class="{ 'selected': pendingAvatarUrl === presetUrl }"
           />
@@ -159,7 +159,7 @@
   </el-dialog>
 
   <!-- + Add Post Edit Modal -->
-  <PostEditModal 
+  <PostEditModal
     v-model:visible="isEditModalVisible"
     :post-data="editingPostData"
     @post-updated="handlePostUpdated"
@@ -451,7 +451,7 @@ const fetchPresetAvatars = async () => {
         console.log('[UserProfileView] Calling UserService.getDefaultAvatars...');
         const rawPresetUrls = await UserService.getDefaultAvatars();
         console.log('[UserProfileView] Raw response from UserService.getDefaultAvatars():', JSON.stringify(rawPresetUrls, null, 2));
-        presetAvatarUrls.value = rawPresetUrls;
+        presetAvatarUrls.value = rawPresetUrls.avatarUrls;
         console.log('[UserProfileView] Assigned preset avatars to ref:', presetAvatarUrls.value);
     } catch (error) {
         console.error('[UserProfileView] Failed to fetch preset avatars:', error);
@@ -612,7 +612,7 @@ const handleToggleFollowInList = async (targetUserId: number) => {
        // Update logged-in user's following count locally if viewing own profile
       if (isViewingOwnProfile.value && userData.value) {
          userData.value.followingCount = Math.max(0, (userData.value.followingCount ?? 0) - 1);
-      } 
+      }
       // No easy way to update other user's follower count in store without full reload/refetch
       ElMessage.success('已取消关注');
     } else {
@@ -1095,4 +1095,4 @@ onMounted(() => {
   }
 }
 
-</style> 
+</style>

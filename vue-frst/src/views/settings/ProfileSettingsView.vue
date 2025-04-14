@@ -4,12 +4,12 @@
        <el-icon><User /></el-icon> 个人资料
     </h2>
     <div v-if="userStore.currentUser" class="settings-content">
-      
+
       <!-- Current Avatar - Make it clickable -->
       <div class="setting-item current-avatar">
         <label>当前头像</label>
         <div class="avatar-container" @click="openAvatarDialog">
-          <el-avatar :size="100" :src="userStore.resolvedAvatarUrl" /> 
+          <el-avatar :size="100" :src="userStore.resolvedAvatarUrl" />
           <div class="edit-icon-overlay">
              <el-icon><EditPen /></el-icon>
           </div>
@@ -18,10 +18,10 @@
 
       <!-- Avatar Upload - REMOVED from here -->
       <!-- <div class="setting-item avatar-upload"> ... </div> -->
-      
+
       <!-- Profile Actions Section -->
       <div class="setting-item profile-actions">
-         <label>账号操作</label> 
+         <label>账号操作</label>
          <div class="action-group">
              <!-- Nickname Form -->
             <el-form @submit.prevent="updateName" class="inline-form nickname-form">
@@ -70,12 +70,12 @@
             <div class="setting-item default-avatars">
                 <label>选择预设头像</label>
                 <div class="avatar-options">
-                    <el-avatar 
-                    v-for="presetUrl in presetAvatarUrls" 
-                    :key="presetUrl" 
-                    :size="60" 
-                    :src="resolveStaticAssetUrl(presetUrl)" 
-                    @click="selectPresetOrRemove(presetUrl)"  
+                    <el-avatar
+                    v-for="presetUrl in presetAvatarUrls"
+                    :key="presetUrl"
+                    :size="60"
+                    :src="resolveStaticAssetUrl(presetUrl)"
+                    @click="selectPresetOrRemove(presetUrl)"
                     class="preset-avatar"
                     :class="{ 'selected': pendingAvatarUrl === presetUrl }"
                     />
@@ -104,7 +104,6 @@ import { useUserStore } from '@/stores/modules/user';
 import { ElAvatar, ElUpload, ElButton, ElInput, ElMessage, ElEmpty, ElDialog, ElIcon, ElForm } from 'element-plus';
 import type { UploadProps, UploadRawFile } from 'element-plus'
 import { UserService } from '@/services/UserService';
-import http from '@/http'; // 导入 http 实例以获取 baseUrl
 import { EditPen, User, Setting } from '@element-plus/icons-vue';
 import PasswordChangeModal from '@/components/modal/PasswordChangeModal.vue'; // <-- Import modal
 
@@ -119,18 +118,18 @@ const presetAvatarUrls = ref<string[]>([]);
 const showPasswordModal = ref(false); // <-- Define state for modal
 
 // --- Remove hardcoded defaultAvatars ---
-// const defaultAvatars = ref([...]); 
+// const defaultAvatars = ref([...]);
 
 // --- Fetch preset avatars on mount ---
 const fetchPresetAvatars = async () => {
     try {
         const response = await UserService.getDefaultAvatars();
         console.log('[ProfileSettingsView] Raw response:', response);
-        
+
         // 确保我们得到的是数组
-        const avatars = Array.isArray(response) ? response : 
+        const avatars = Array.isArray(response) ? response :
                        Array.isArray(response.avatarUrls) ? response.avatarUrls : [];
-        
+
         if (avatars.length > 0) {
             presetAvatarUrls.value = avatars;
             console.log('[ProfileSettingsView] Set preset avatars:', presetAvatarUrls.value);
@@ -146,33 +145,14 @@ const fetchPresetAvatars = async () => {
 
 // 计算上传 URL
 const uploadUrl = computed(() => UserService.getUploadAvatarUrl());
-        
+
 // 获取上传请求头（携带 token）
 const uploadHeaders = computed(() => ({
      Authorization: `Bearer ${userStore.token}`
 }));
 
-// Function to resolve static asset URLs (like presets or uploaded avatars)
-const resolveStaticAssetUrl = (url: string | null | undefined): string => {
-    if (!url) return '';
-    
-    // 如果是 Supabase URL，添加 public 访问策略
-    if (url.includes('supabase.co')) {
-        // 确保 URL 包含 public 访问策略
-        const publicUrl = url.replace('/storage/v1/', '/storage/v1/object/public/');
-        return publicUrl;
-    }
-    
-    // 其他情况保持原有逻辑
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-        return url;
-    }
-    
-    const apiBaseUrl = http.defaults.baseURL || '';
-    const staticBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '');
-    const relativeUrl = url.startsWith('/') ? url : '/' + url;
-    return `${staticBaseUrl}${relativeUrl}`;
-};
+// 使用公共的 URL 解析工具
+import { resolveStaticAssetUrl } from '@/utils/urlUtils';
 
 // 挂载时和用户信息变化时同步输入框名字
 const syncName = () => {
@@ -234,17 +214,17 @@ const openAvatarDialog = () => {
 // 保存头像选择 (包括上传的、预设的或移除)
 const saveAvatarSelection = async () => {
   const currentStoredUrl = userStore.currentUser?.avatarUrl || null;
-  const urlToSave = pendingAvatarUrl.value; 
+  const urlToSave = pendingAvatarUrl.value;
 
   if (urlToSave === currentStoredUrl) {
     ElMessage.info('头像未更改');
     avatarDialogVisible.value = false;
-    return; 
+    return;
   }
 
   console.log('[ProfileSettingsView] Saving avatar selection. New URL:', urlToSave, 'Is new upload:', isNewUploadPending.value);
 
-  // --- 修正逻辑 --- 
+  // --- 修正逻辑 ---
   if (isNewUploadPending.value) {
       // 如果是新上传的头像，后端 POST 已处理。只需更新本地 Store 并关闭。
       console.log('[ProfileSettingsView] New upload detected. Updating local store and closing.');
@@ -257,8 +237,8 @@ const saveAvatarSelection = async () => {
       } else {
           console.error('[ProfileSettingsView] Cannot update local store after upload: user or URL missing.');
           // 如果本地更新失败，可以尝试重新获取，但这应该是备选方案
-          try { 
-              await userStore.fetchUserProfile(); 
+          try {
+              await userStore.fetchUserProfile();
               ElMessage.success('新头像已保存! (通过刷新信息)');
               avatarDialogVisible.value = false;
               isNewUploadPending.value = false;
@@ -267,14 +247,14 @@ const saveAvatarSelection = async () => {
                 ElMessage.error('保存新头像后同步信息失败');
                 // 即使同步失败，也关闭对话框
                 avatarDialogVisible.value = false;
-                isNewUploadPending.value = false; 
-          } 
+                isNewUploadPending.value = false;
+          }
       }
   } else {
       // 如果是选择预设或移除，调用 PUT /me/profile
       console.log('[ProfileSettingsView] Preset/Remove selected, calling updateMyProfile API.');
       try {
-          const response = await UserService.updateMyProfile({ avatarUrl: urlToSave }); 
+          const response = await UserService.updateMyProfile({ avatarUrl: urlToSave });
           if (response && response.user) {
               userStore.setUser(response.user); // 使用后端返回的完整用户信息更新 store
               ElMessage.success('头像更新成功!');
@@ -293,7 +273,7 @@ const saveAvatarSelection = async () => {
 // Update name
 const updateName = async () => {
     if (!userStore.currentUser || !editableName.value.trim() || editableName.value === userStore.currentUser.name) {
-         return; 
+         return;
     }
     isUpdatingName.value = true;
     try {
@@ -301,7 +281,7 @@ const updateName = async () => {
          const response = await UserService.updateMyProfile({ name: editableName.value });
          console.log('[ProfileSettingsView] Update Profile Response (Name):', response);
          if (response && response.user) {
-             userStore.setUser(response.user); 
+             userStore.setUser(response.user);
              ElMessage.success('昵称更新成功!');
          } else {
              throw new Error('Invalid response after updating profile');
@@ -325,9 +305,9 @@ const selectPresetOrRemove = (url: string | null) => {
 /* Add styles for the unified view container */
 .personal-center-view {
   padding: 25px;
-  background-color: #fff; 
-  border-radius: 4px; 
-  min-height: 400px; 
+  background-color: #fff;
+  border-radius: 4px;
+  min-height: 400px;
 }
 
 /* Styles for the unified view title */
@@ -353,7 +333,7 @@ const selectPresetOrRemove = (url: string | null) => {
 }
 
 .setting-item {
-    display: flex; 
+    display: flex;
     align-items: flex-start; // Align label top
     margin-bottom: 25px;
     label {
@@ -379,7 +359,7 @@ const selectPresetOrRemove = (url: string | null) => {
         .el-avatar {
             display: block; // Remove extra space below avatar
         }
-        
+
         .edit-icon-overlay {
             position: absolute;
             top: 0;
@@ -454,7 +434,7 @@ const selectPresetOrRemove = (url: string | null) => {
            text-align: left;
         }
     }
-    
+
     .avatar-options {
         display: flex;
         flex-wrap: wrap;
@@ -616,7 +596,7 @@ const selectPresetOrRemove = (url: string | null) => {
   }
 }
 
-</style> 
+</style>
 
 
 

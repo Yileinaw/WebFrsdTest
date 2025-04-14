@@ -133,14 +133,14 @@ export class UserService {
     }
 
     // 获取预设头像列表 (公开) - Calls GET /users/avatars/defaults
-    static async getDefaultAvatars(): Promise<string[]> {
+    static async getDefaultAvatars(): Promise<DefaultAvatarsResponse> {
         try {
             // 修改为正确的 Supabase 存储路径格式
             const baseUrl = "https://lmogvilniyadtkiapake.supabase.co/storage/v1/object/public/frsd-file/preset-avatars";
             // 确保文件名格式正确
             const avatarUrls = Array.from({length: 5}, (_, i) => `${baseUrl}/${i + 1}.jpg?t=${Date.now()}`);
             console.log('Generated avatar URLs:', avatarUrls);
-            return avatarUrls;
+            return { avatarUrls };
         } catch (error) {
             console.error('[UserService] Failed to get default avatars:', error);
             throw error;

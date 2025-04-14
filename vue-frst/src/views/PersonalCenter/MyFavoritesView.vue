@@ -51,10 +51,11 @@ import {
 } from 'element-plus';
 import ShareCard from '@/components/common/ShareCard.vue';
 import { FavoriteService } from '@/services/FavoriteService';
-import type { Post } from '@/types/models'; // Keep this import
+import type { Post, PostPreview } from '@/types/models'; // Import both types
 
 // Use the base Post type from models.ts
-const favoritePosts = ref<Post[]>([]); 
+// Use PostPreview type to match ShareCard's expected prop type
+const favoritePosts = ref<PostPreview[]>([]);
 const isLoading = ref(true);
 const error = ref<string | null>(null);
 const pagination = reactive({
@@ -68,9 +69,24 @@ const fetchMyFavorites = async (page: number = pagination.currentPage) => {
   error.value = null;
   try {
     const response = await FavoriteService.getMyFavorites({ page, limit: pagination.pageSize });
-    
+
     if (response && Array.isArray(response.posts)) {
-        favoritePosts.value = response.posts;
+        // 将 Post[] 转换为 PostPreview[] 以匹配 ShareCard 组件的需求
+        favoritePosts.value = response.posts.map(post => ({
+            id: post.id,
+            title: post.title,
+            content: post.content,
+            imageUrl: post.imageUrl || null,
+            createdAt: post.createdAt,
+            updatedAt: post.updatedAt,
+            authorId: post.authorId,
+            author: post.author,
+            likesCount: post.likesCount,
+            commentsCount: post.commentsCount,
+            favoritesCount: post.favoritesCount,
+            isLiked: post.isLiked,
+            isFavorited: post.isFavorited
+        }));
         pagination.total = response.totalCount || 0;
         pagination.currentPage = page;
     } else {
@@ -155,4 +171,4 @@ export default {
   justify-content: center;
 }
 
-</style> 
+</style>

@@ -103,10 +103,13 @@ export interface PostPreview {
   imageUrl: string | null; // Keep as string | null
   content?: string | null; // Optional, depends if card needs it
   createdAt?: string | Date; // Allow both string (from JSON) and Date
+  updatedAt?: string; // Add updatedAt field
+  authorId?: number; // Add authorId field
   author?: {               // Add author object
     id: number;
     name: string | null;
     avatarUrl?: string | null;
+    isFollowing?: boolean; // Add isFollowing field
   } | null; // Author can be null
   isShowcase?: boolean; // Add isShowcase field
   // Add other fields if FoodCard or other components need them (e.g., counts)
@@ -121,6 +124,11 @@ export interface PostPreview {
 export interface Tag {
   id?: number; // Optional ID
   name: string;
+}
+
+// 默认头像响应接口
+export interface DefaultAvatarsResponse {
+  avatarUrls: string[];
 }
 
 // Update FoodShowcasePreview to include tags
