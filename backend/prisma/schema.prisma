@@ -54,7 +54,7 @@ model Post {
   comments    Comment[]  // 帖子的所有评论
   likes       Like[]     // 帖子收到的赞
   imageUrl    String?    @unique // Correctly add @unique to the existing field
-  tags        Tag[]      @relation("PostTags")
+  tags        PostTag[]  @relation("PostTags")
   favoritedBy Favorite[] // 帖子被哪些用户收藏
   notifications Notification[] // Added inverse relation for Notification.post
   isShowcase  Boolean    @default(false)
@@ -85,7 +85,7 @@ model Comment {
   postId      Int
   author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   authorId    Int
-  notification Notification? 
+  notification Notification?
 
   // Add parent/reply relation
   parentId    Int?      // 指向父评论的 ID，根评论则为 null
@@ -119,12 +119,18 @@ model Notification {
   @@index([postId])      // Index for notifications related to a post
 }
 
-model Tag {
+model PostTag {
   id            Int            @id @default(autoincrement())
   name          String         @unique
   isFixed       Boolean        @default(false)
   posts         Post[]         @relation("PostTags")
-  foodShowcases FoodShowcase[] @relation // Add relation to FoodShowcase
+}
+
+model FoodTag {
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  isFixed       Boolean        @default(false)
+  foodShowcases FoodShowcase[] @relation("FoodShowcaseTags")
 }
 
 model Favorite {
@@ -142,10 +148,10 @@ model Favorite {
 model FoodShowcase {
   id          Int      @id @default(autoincrement())
   imageUrl    String
-  title       String?  
+  title       String?
   description String?
   createdAt   DateTime @default(now())
-  tags        Tag[]    @relation // Add relation field to Tag
+  tags        FoodTag[] @relation("FoodShowcaseTags") // 更新为使用FoodTag
 
   @@index([createdAt])
   @@index([title])

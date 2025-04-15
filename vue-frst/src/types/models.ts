@@ -29,6 +29,8 @@ export interface Post {
   authorId: number;
   // Use Pick for consistency, selecting fields commonly needed for display
   author?: Pick<User, 'id' | 'name' | 'avatarUrl'> & { isFollowing?: boolean };
+  tags?: Tag[]; // 帖子标签
+  isShowcase?: boolean; // 是否精选内容
   likesCount?: number; // Optional count fields
   commentsCount?: number;
   favoritesCount?: number;
@@ -111,7 +113,8 @@ export interface PostPreview {
     avatarUrl?: string | null;
     isFollowing?: boolean; // Add isFollowing field
   } | null; // Author can be null
-  isShowcase?: boolean; // Add isShowcase field
+  tags?: Tag[]; // 帖子标签
+  isShowcase?: boolean; // 是否精选内容
   // Add other fields if FoodCard or other components need them (e.g., counts)
   likesCount?: number;
   commentsCount?: number;

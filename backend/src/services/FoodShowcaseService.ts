@@ -1,5 +1,5 @@
 import prisma from '../db';
-import { FoodShowcase, Prisma, Tag } from '@prisma/client';
+import { FoodShowcase, Prisma, FoodTag } from '@prisma/client';
 
 export class FoodShowcaseService {
   /**
@@ -19,6 +19,9 @@ export class FoodShowcaseService {
     limit?: number;
     includeTags?: boolean; // Added includeTags option
   } = {}): Promise<{ items: FoodShowcase[]; totalCount: number }> {
+    // 打印调试信息
+    console.log(`[FoodShowcaseService] 获取美食展示列表，参数:`, options);
+
     const { search, tagNames, page = 1, limit = 10, includeTags = false } = options;
     const where: Prisma.FoodShowcaseWhereInput = {};
     const skip = (page - 1) * limit;
@@ -46,8 +49,8 @@ export class FoodShowcaseService {
     // Add tag condition: Check if the showcase has at least one tag whose name is in the provided list
     if (tagNames && tagNames.length > 0) {
       where.tags = {
-        some: { 
-          name: { 
+        some: {
+          name: {
             in: tagNames, // Use 'in' to match any tag name in the array
             mode: 'insensitive' // Optional: make tag matching case-insensitive if needed
           },
@@ -59,6 +62,8 @@ export class FoodShowcaseService {
     const include: Prisma.FoodShowcaseInclude | undefined = includeTags ? { tags: true } : undefined;
 
     try {
+      console.log(`[FoodShowcaseService] 执行查询: where=${JSON.stringify(where)}, skip=${skip}, take=${take}, includeTags=${includeTags}`);
+
       // Use transaction to get both items and count efficiently
       const [items, totalCount] = await prisma.$transaction([
         prisma.foodShowcase.findMany({
@@ -72,11 +77,19 @@ export class FoodShowcaseService {
         }),
         prisma.foodShowcase.count({ where }) // Count based on the same filter conditions
       ]);
-      
-      return { items, totalCount };
+
+      // 确保返回的数据是有效的
+      const safeItems = Array.isArray(items) ? items : [];
+      const safeTotalCount = typeof totalCount === 'number' ? totalCount : 0;
+
+      console.log(`[FoodShowcaseService] 查询结果: 找到 ${safeItems.length} 条记录，总计 ${safeTotalCount} 条`);
+
+      return { items: safeItems, totalCount: safeTotalCount };
     } catch (error) {
       console.error('[FoodShowcaseService] Error fetching showcases:', error);
-      throw new Error('Failed to retrieve food showcases');
+      // 返回空数组而不是抛出异常，确保前端不会崩溃
+      console.log('[FoodShowcaseService] 返回空数组以避免前端崩溃');
+      return { items: [], totalCount: 0 };
     }
   }
 
@@ -97,14 +110,14 @@ export class FoodShowcaseService {
   }): Promise<FoodShowcase> {
     const { imageUrl, title, description, tagNames } = data;
 
-    // Prepare the tags connection part of the create data
-    let tagsInput: Prisma.TagCreateNestedManyWithoutFoodShowcasesInput | undefined;
+    // 准备标签连接部分
+    let tagsInput: Prisma.FoodShowcaseUpdateInput['tags'] | undefined;
     if (tagNames && tagNames.length > 0) {
       tagsInput = {
-        // Use connectOrCreate to handle both existing and new tags
+        // 使用connectOrCreate处理现有和新标签
         connectOrCreate: tagNames.map(name => ({
-            where: { name }, // Find tag by unique name
-            create: { name }, // Create tag if it doesn't exist
+            where: { name }, // 根据唯一名称查找标签
+            create: { name, isFixed: false }, // 如果不存在则创建标签
         }))
       };
     }
@@ -147,12 +160,12 @@ export class FoodShowcaseService {
     if (description !== undefined) dataToUpdate.description = description;
     if (imageUrl !== undefined) dataToUpdate.imageUrl = imageUrl; // Include image update if provided
 
-    // Handle tags: Disconnect all existing tags and connect new ones
+    // 处理标签：断开所有现有标签并连接新标签
     if (tagNames !== undefined) {
-        // If tagNames is an empty array, we disconnect all tags.
-        // If it has names, we connect those (Prisma handles creating/finding by unique name)
+        // 如果tagNames是空数组，我们断开所有标签。
+        // 如果有名称，我们连接这些标签（Prisma处理根据唯一名称创建/查找）
          dataToUpdate.tags = {
-             set: tagNames.map(name => ({ name })) 
+             set: tagNames.map(name => ({ name }))
          };
     }
 
@@ -226,24 +239,27 @@ export class FoodShowcaseService {
     tagsCount: Array<{ name: string; count: number }>;
   }> {
     try {
-      // Use transaction to get both total count and tags count efficiently
-      const [totalCount, tagsWithCounts] = await prisma.$transaction([
-        prisma.foodShowcase.count(), // Get the total number of showcases
-        prisma.tag.findMany({ // Find all tags
-          select: {
-            name: true, // Select the tag name
-            _count: { // Include the count of related foodShowcases
-              select: { foodShowcases: true },
-            },
-          },
-        }),
-      ]);
+      // Get the total number of showcases
+      const totalCount = await prisma.foodShowcase.count();
+
+      // Get all food tags with their usage counts
+      // We need to use a raw query because the relationship is many-to-many
+      const tagsWithCounts = await prisma.$queryRaw`
+        SELECT ft.name, COUNT(fs.id) as count
+        FROM "FoodTag" ft
+        LEFT JOIN "_FoodShowcaseTags" fst ON ft.id = fst."B"
+        LEFT JOIN "FoodShowcase" fs ON fst."A" = fs.id
+        GROUP BY ft.name
+        ORDER BY count DESC
+      `;
 
       // Format the tags count result
-      const tagsCount = tagsWithCounts.map(tag => ({
-        name: tag.name,
-        count: tag._count.foodShowcases,
-      })).filter(tag => tag.count > 0); // Optional: Filter out tags with 0 showcases
+      const tagsCount = Array.isArray(tagsWithCounts)
+        ? tagsWithCounts.map((tag: any) => ({
+            name: tag.name,
+            count: Number(tag.count),
+          })).filter((tag: any) => tag.count > 0)
+        : [];
 
       return { totalCount, tagsCount };
     } catch (error) {
@@ -253,4 +269,4 @@ export class FoodShowcaseService {
   }
 
   // Add other methods if needed (e.g., getById, create, update, delete)
-} 
+}

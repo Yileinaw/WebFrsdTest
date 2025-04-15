@@ -14,7 +14,7 @@ const AuthMiddleware_1 = require("../middleware/AuthMiddleware");
 const OptionalAuthMiddleware_1 = require("../middleware/OptionalAuthMiddleware");
 const uploadMiddleware_1 = require("../middleware/uploadMiddleware"); // <-- Import the correct middleware
 // --- Remove Basic Multer Config ---
-// const basicUpload = multer({ dest: 'uploads/' }); 
+// const basicUpload = multer({ dest: 'uploads/' });
 // --- End Remove ---
 // console.log('[PostRoutes.ts] File loaded'); // Remove log
 const postRouter = express_1.default.Router();
@@ -35,9 +35,11 @@ postRouter.post('/', AuthMiddleware_1.AuthMiddleware, uploadMiddleware_1.uploadP
 PostController_1.PostController.createPost);
 // GET /api/posts/:id - Use Optional Auth
 postRouter.get('/:postId', OptionalAuthMiddleware_1.OptionalAuthMiddleware, PostController_1.PostController.getPostById);
-// PUT /api/posts/:id - Requires Auth and handle image upload
-postRouter.put('/:postId', AuthMiddleware_1.AuthMiddleware, uploadMiddleware_1.uploadPostImage, // <-- Add middleware to handle potential image upload on update
-PostController_1.PostController.updatePost);
+// PUT /api/posts/:id - Requires Auth (JSON update without image)
+postRouter.put('/:postId', AuthMiddleware_1.AuthMiddleware, PostController_1.PostController.updatePost);
+// PUT /api/posts/:id/with-image - Requires Auth (FormData update with image)
+postRouter.put('/:postId/with-image', AuthMiddleware_1.AuthMiddleware, uploadMiddleware_1.uploadPostImage, // <-- Add middleware to handle image upload
+PostController_1.PostController.updatePostWithImage);
 // DELETE /api/posts/:id - Requires Auth
 postRouter.delete('/:postId', AuthMiddleware_1.AuthMiddleware, PostController_1.PostController.deletePost);
 // --- Like routes ---
@@ -56,5 +58,5 @@ postRouter.delete('/:postId/favorite', AuthMiddleware_1.AuthMiddleware, Favorite
 commentRouter.delete('/:commentId', AuthMiddleware_1.AuthMiddleware, CommentController_1.CommentController.deleteComment);
 // Mount comment router under post router
 postRouter.use('/:postId/comments', commentRouter);
-// console.log('[PostRoutes.ts] Exporting routers (Refactored upload)...'); // Remove log 
+// console.log('[PostRoutes.ts] Exporting routers (Refactored upload)...'); // Remove log
 //# sourceMappingURL=PostRoutes.js.map

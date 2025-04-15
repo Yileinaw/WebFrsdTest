@@ -7,8 +7,10 @@ const http = axios.create({
     timeout: 10000, // 请求超时时间 (10秒)
 });
 
-// 调试信息
-console.log('[HTTP] 初始化了Axios实例，baseURL:', http.defaults.baseURL);
+// 在非生产环境下输出调试信息
+if (import.meta.env.DEV) {
+    console.log('[HTTP] 初始化了Axios实例，baseURL:', http.defaults.baseURL);
+}
 
 // 请求拦截器
 http.interceptors.request.use(
@@ -20,13 +22,19 @@ http.interceptors.request.use(
         // 如果 Token 存在，则添加到请求头
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
-            console.log('[HTTP] 添加认证头:', `Bearer ${token.substring(0, 10)}...`);
+            // 在非生产环境下输出调试信息
+            if (import.meta.env.DEV) {
+                console.log('[HTTP] 添加认证头');
+            }
         } else {
             // 尝试从 localStorage 获取 Token 作为备选
             const localToken = localStorage.getItem('authToken');
             if (localToken) {
                 config.headers.Authorization = `Bearer ${localToken}`;
-                console.log('[HTTP] 从localStorage添加认证头:', `Bearer ${localToken.substring(0, 10)}...`);
+                // 在非生产环境下输出调试信息
+                if (import.meta.env.DEV) {
+                    console.log('[HTTP] 从localStorage添加认证头');
+                }
             }
         }
 
@@ -47,7 +55,10 @@ http.interceptors.response.use(
     },
     (error) => {
         // 处理响应错误
-        console.error('Response interceptor error:', error.response || error.message);
+        // 在非生产环境下输出详细错误信息
+        if (import.meta.env.DEV) {
+            console.error('Response interceptor error:', error.response || error.message);
+        }
 
         // 全局错误处理逻辑
         if (error.response) {
@@ -55,7 +66,9 @@ http.interceptors.response.use(
 
             // 处理 401 Unauthorized (认证失败)
             if (status === 401) {
-                console.error('Unauthorized access - possibly invalid token.');
+                if (import.meta.env.DEV) {
+                    console.error('Unauthorized access - possibly invalid token.');
+                }
                 // 获取 userStore 实例
                 const userStore = useUserStore();
                 // 清除用户信息和 token
@@ -72,7 +85,9 @@ http.interceptors.response.use(
             // 处理其他状态码
             // 403 Forbidden
             if (status === 403) {
-                console.error('Forbidden access - insufficient permissions.');
+                if (import.meta.env.DEV) {
+                    console.error('Forbidden access - insufficient permissions.');
+                }
                 // 可以在这里添加特定处理
             }
         }

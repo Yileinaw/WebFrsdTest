@@ -37,6 +37,8 @@ class PostService {
                 avatarUrl: postData.author.avatarUrl,
                 isFollowing: isFollowingAuthor !== null && isFollowingAuthor !== void 0 ? isFollowingAuthor : false,
             },
+            tags: postData.tags || [], // 添加标签信息
+            isShowcase: postData.isShowcase, // 添加精选状态
             likesCount: postData._count.likes,
             commentsCount: postData._count.comments,
             favoritesCount: postData._count.favoritedBy,
@@ -54,20 +56,21 @@ class PostService {
                 author: { connect: { id: data.authorId } }, // Connect author by ID
                 imageUrl: data.imageUrl, // Include imageUrl if provided
             };
-            // Add tags using connectOrCreate if tagNames are provided
+            // 如果提供了标签名称，使用connectOrCreate添加标签
             if (data.tagNames && data.tagNames.length > 0) {
                 createData.tags = {
                     connectOrCreate: data.tagNames.map(tagName => ({
                         where: { name: tagName },
-                        create: { name: tagName }
+                        create: { name: tagName, isFixed: false }
                     }))
                 };
             }
             const post = yield db_1.default.post.create({
                 data: createData, // Use the constructed createData object
                 select: {
-                    id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true,
+                    id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true,
                     author: { select: { id: true, name: true, avatarUrl: true } },
+                    tags: { select: { id: true, name: true } }, // 包含标签信息
                     _count: { select: { likes: true, comments: true, favoritedBy: true } }
                 }
             });
@@ -77,7 +80,7 @@ class PostService {
     // 获取所有帖子（分页，排序，可选当前用户ID以判断点赞/收藏状态）
     static getAllPosts(options) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { page = 1, limit = 10, sortBy = 'createdAt', authorId, showcase, currentUserId } = options;
+            const { page = 1, limit = 10, sortBy = 'createdAt', search, authorId, showcase, tags, currentUserId } = options;
             const skip = (page - 1) * limit;
             const orderBy = {};
             // Handle sorting
@@ -98,8 +101,36 @@ class PostService {
             if (showcase === true) {
                 where.isShowcase = true;
             }
-            // Add other filters here if needed (e.g., tags, search)
-            const selectClause = Object.assign({ id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, author: { select: { id: true, name: true, avatarUrl: true } }, _count: { select: { likes: true, comments: true, favoritedBy: true } } }, (currentUserId && {
+            // 添加搜索条件
+            if (search) {
+                where.OR = [
+                    { title: { contains: search, mode: 'insensitive' } },
+                    { content: { contains: search, mode: 'insensitive' } },
+                    // 搜索标签名称
+                    {
+                        tags: {
+                            some: {
+                                name: {
+                                    contains: search,
+                                    mode: 'insensitive',
+                                },
+                            },
+                        },
+                    },
+                ];
+            }
+            // 添加标签筛选条件
+            if (tags && tags.length > 0) {
+                where.tags = {
+                    some: {
+                        name: {
+                            in: tags,
+                            mode: 'insensitive'
+                        },
+                    },
+                };
+            }
+            const selectClause = Object.assign({ id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true, author: { select: { id: true, name: true, avatarUrl: true } }, tags: { select: { id: true, name: true } }, _count: { select: { likes: true, comments: true, favoritedBy: true } } }, (currentUserId && {
                 likes: { where: { userId: currentUserId }, select: { userId: true } },
                 favoritedBy: { where: { userId: currentUserId }, select: { userId: true } }
             }));
@@ -118,7 +149,7 @@ class PostService {
     // 根据 ID 获取单个帖子
     static getPostById(postId, currentUserId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const selectClause = Object.assign({ id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, author: { select: { id: true, name: true, avatarUrl: true } }, _count: { select: { likes: true, comments: true, favoritedBy: true } } }, (currentUserId && {
+            const selectClause = Object.assign({ id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true, author: { select: { id: true, name: true, avatarUrl: true } }, tags: { select: { id: true, name: true } }, _count: { select: { likes: true, comments: true, favoritedBy: true } } }, (currentUserId && {
                 likes: { where: { userId: currentUserId }, select: { userId: true } },
                 favoritedBy: { where: { userId: currentUserId }, select: { userId: true } }
             }));
@@ -163,17 +194,17 @@ class PostService {
                 updatePayload.content = data.content;
             if (data.imageUrl !== undefined)
                 updatePayload.imageUrl = data.imageUrl;
-            // Handle tags update if tagNames are provided
+            // 如果提供了标签名称，处理标签更新
             if (data.tagNames !== undefined) {
-                // Step 1: Ensure all provided tags exist using upsert (can be done concurrently)
-                yield Promise.all(data.tagNames.map(tagName => db_1.default.tag.upsert({
+                // 步骤1：确保所有提供的标签存在（可以并行完成）
+                yield Promise.all(data.tagNames.map(tagName => db_1.default.postTag.upsert({
                     where: { name: tagName },
-                    update: {}, // No update needed if exists
-                    create: { name: tagName }
+                    update: {}, // 如果存在则不需要更新
+                    create: { name: tagName, isFixed: false }
                 })));
-                // Step 2: Use set to connect only the provided tags
+                // 步骤2：使用set只连接提供的标签
                 updatePayload.tags = {
-                    set: data.tagNames.map(tagName => ({ name: tagName })) // Provide TagWhereUniqueInput array
+                    set: data.tagNames.map(tagName => ({ name: tagName })) // 提供TagWhereUniqueInput数组
                 };
             }
             // Only proceed if there's something to update
@@ -182,8 +213,9 @@ class PostService {
                 return this.getPostById(postId, userId);
             }
             const selectClause = {
-                id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true,
+                id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true,
                 author: { select: { id: true, name: true, avatarUrl: true } },
+                tags: { select: { id: true, name: true } }, // 包含标签信息
                 _count: { select: { likes: true, comments: true, favoritedBy: true } },
                 likes: { where: { userId: userId }, select: { userId: true } },
                 favoritedBy: { where: { userId: userId }, select: { userId: true } }
@@ -294,7 +326,7 @@ class PostService {
                     where: {
                         postId: postId,
                         // Remove parentId: null to fetch ALL comments for the post
-                        // parentId: null 
+                        // parentId: null
                     },
                     orderBy: { createdAt: 'asc' }, // Keep ordering
                     include: {

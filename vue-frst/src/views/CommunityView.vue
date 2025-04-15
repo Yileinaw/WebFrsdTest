@@ -1,36 +1,113 @@
 <template>
   <div class="community-view container">
-    <!-- Action Bar -->
-    <section class="action-bar">
-      <!-- Placeholder for sorting/filtering tabs -->
-       <el-tabs v-model="activeTab" class="tabs">
-        <el-tab-pane label="最新发布" name="createdAt"></el-tab-pane>
-        <el-tab-pane label="热门讨论" name="popular"></el-tab-pane>
-        <!-- Add more tabs if needed -->
-      </el-tabs>
+    <!-- 顶部导航和过滤区域 -->
+    <section class="community-header">
+      <!-- 标签导航 -->
+      <div class="tags-nav" v-if="availableTags.length > 0">
+        <el-scrollbar>
+          <div class="tags-container">
+            <el-tag
+              v-for="tag in availableTags"
+              :key="tag.id"
+              :type="selectedTags.includes(tag.name) ? 'primary' : 'info'"
+              class="tag-item"
+              @click="handleTagClick(tag.name)"
+            >
+              {{ tag.name }}
+            </el-tag>
+            <el-button
+              v-if="selectedTags.length > 0"
+              size="small"
+              circle
+              :icon="Close"
+              class="clear-tags-btn"
+              @click="clearTagFilter"
+              title="清除标签筛选"
+            />
+          </div>
+        </el-scrollbar>
+      </div>
 
-      <el-button type="primary" :icon="EditPen" @click="openPostEditor">发布分享</el-button>
+      <!-- 排序和操作区域 -->
+      <div class="action-bar">
+        <el-tabs v-model="activeTab" class="tabs">
+          <el-tab-pane label="最新发布" name="createdAt"></el-tab-pane>
+          <el-tab-pane label="热门讨论" name="popular"></el-tab-pane>
+          <el-tab-pane label="精选内容" name="featured"></el-tab-pane>
+        </el-tabs>
+
+        <div class="right-actions">
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索内容"
+            prefix-icon="Search"
+            clearable
+            @clear="handleSearchClear"
+            @keyup.enter="handleSearch"
+            class="search-input"
+          />
+          <el-button type="primary" :icon="EditPen" @click="openPostEditor">发布分享</el-button>
+        </div>
+      </div>
     </section>
 
-    <!-- Posts List Section -->
+    <!-- 内容区域 -->
     <section class="posts-list-section">
-       <!-- 添加加载状态 -->
-       <div v-if="isLoading" class="loading-state">
-         <el-skeleton :rows="10" animated />
-       </div>
-       <!-- 添加错误状态 -->
-       <el-alert v-else-if="error" :title="error" type="error" show-icon :closable="false" />
-       <!-- 成功加载数据 -->
-       <div v-else>
-         <el-row :gutter="20">
-             <!-- *** 修改：使用 posts 替代 communityPosts *** -->
-             <el-col :span="24" v-for="post in posts" :key="post.id">
-                <ShareCard :post="post" @like="handleLike" @comment="openPostDetailModal" @favorite="handleFavorite" @update:post="handlePostUpdate" />
-              </el-col>
-         </el-row>
-         <!-- *** 修改：更新空状态的 v-if 条件 *** -->
-         <el-empty v-if="!isLoading && !error && posts.length === 0" description="社区还没有分享，快来发布第一条吧！"></el-empty>
-       </div>
+      <!-- 加载状态 -->
+      <div v-if="isLoading" class="loading-state">
+        <el-skeleton :rows="10" animated />
+      </div>
+
+      <!-- 错误状态 -->
+      <el-alert v-else-if="error" :title="error" type="error" show-icon :closable="false" />
+
+      <!-- 成功加载数据 -->
+      <template v-else>
+        <!-- 精选内容 (大卡片) -->
+        <div v-if="featuredPosts.length > 0 && activeTab === 'featured'" class="featured-posts">
+          <el-row :gutter="24">
+            <el-col :xs="24" :sm="24" :md="24" :lg="12" :xl="12" v-for="post in featuredPosts.slice(0, 2)" :key="post.id">
+              <EnhancedShareCard
+                :post="post"
+                :is-featured="true"
+                @like="handleLike"
+                @comment="openPostDetailModal"
+                @favorite="handleFavorite"
+                @update:post="handlePostUpdate"
+              />
+            </el-col>
+          </el-row>
+        </div>
+
+        <!-- 普通内容 (网格布局) -->
+        <div class="regular-posts">
+          <el-row :gutter="24">
+            <el-col
+              v-for="post in displayedPosts"
+              :key="post.id"
+              :xs="24"
+              :sm="12"
+              :md="8"
+              :lg="(activeTab === 'featured' && featuredPosts.length > 0) ? 6 : 8"
+              :xl="(activeTab === 'featured' && featuredPosts.length > 0) ? 6 : 6"
+            >
+              <EnhancedShareCard
+                :post="post"
+                @like="handleLike"
+                @comment="openPostDetailModal"
+                @favorite="handleFavorite"
+                @update:post="handlePostUpdate"
+              />
+            </el-col>
+          </el-row>
+        </div>
+
+        <!-- 空状态 -->
+        <el-empty
+          v-if="displayedPosts.length === 0"
+          description="暂无相关内容，换个筛选条件试试吧！"
+        ></el-empty>
+      </template>
     </section>
 
     <!-- Pagination -->
@@ -50,55 +127,78 @@
      <PostEditor v-model:visible="isEditorVisible" @post-created="handlePostCreated" />
 
      <!-- Add Post Detail Modal -->
-     <PostDetailModal 
-         :post-id="selectedPostId" 
+     <PostDetailModal
+         :post-id="selectedPostId"
          v-model:visible="isModalVisible"
-         @postUpdated="handlePostUpdate" 
+         @postUpdated="handlePostUpdate"
      />
 
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, watch } from 'vue'
-import { EditPen } from '@element-plus/icons-vue'
-// 引入通用组件
-import ShareCard from '@/components/common/ShareCard.vue' 
-// --- 新增导入 ---
-import { PostService } from '@/services/PostService';
-// --- 移除对 Post 的直接导入，如果只使用 PostPreview ---
-// import type { Post } from '@/types/models';
-// + 导入 PostPreview
-import type { Post, PostPreview } from '@/types/models'; // Keep Post if handlePostUpdate needs it
-// --- 导入 PostEditor ---
-import PostEditor from '@/components/features/PostEditor.vue';
-// --- 新增导入 ---
-import { useUserStore } from '@/stores/modules/user';
-import { useRouter } from 'vue-router'; // 导入 useRouter
-import PostDetailModal from '@/components/common/PostDetailModal.vue'; // Import the modal
-// + Restore ElMessage import
-import { ElMessage, ElTabs, ElTabPane, ElButton, ElSkeleton, ElAlert, ElRow, ElCol, ElEmpty, ElPagination } from 'element-plus'; 
+import { ref, onMounted, reactive, watch, computed } from 'vue'
+import { EditPen, Search, Close } from '@element-plus/icons-vue'
+// 引入组件
+import EnhancedShareCard from '@/components/common/EnhancedShareCard.vue'
+import PostEditor from '@/components/features/PostEditor.vue'
+import PostDetailModal from '@/components/common/PostDetailModal.vue'
+// 引入服务
+import { PostService } from '@/services/PostService'
+import { AdminService } from '@/services/AdminService'
+// 引入类型
+import type { Post, PostPreview, Tag } from '@/types/models'
+// 引入工具
+import { useUserStore } from '@/stores/modules/user'
+import { useRouter } from 'vue-router'
+// 引入Element Plus组件
+import {
+  ElMessage, ElTabs, ElTabPane, ElButton, ElSkeleton, ElAlert,
+  ElRow, ElCol, ElEmpty, ElPagination, ElTag, ElScrollbar,
+  ElInput
+} from 'element-plus'
 
+// --- 状态管理 ---
+// 标签和搜索相关
+const availableTags = ref<Tag[]>([])
+const selectedTags = ref<string[]>([])
+const searchQuery = ref('')
+const isLoadingTags = ref(false)
+
+// 帖子相关
 const activeTab = ref('createdAt')
-
-// --- 新增状态控制编辑器显示 ---
-const isEditorVisible = ref(false);
-
-// --- 新增状态 ---
-// + Restore posts ref type to PostPreview[]
 const posts = ref<PostPreview[]>([])
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const pagination = reactive({
   currentPage: 1,
-  pageSize: 10, // 或从配置/用户选择获取
+  pageSize: 12, // 增加每页显示数量
   total: 0
 })
 
-// --- Add Modal State --- 
-const selectedPostId = ref<number | null>(null);
-const isModalVisible = ref(false);
-// --- End Modal State ---
+// 编辑器和模态框
+const isEditorVisible = ref(false)
+const selectedPostId = ref<number | null>(null)
+const isModalVisible = ref(false)
+
+// --- 计算属性 ---
+// 精选内容
+const featuredPosts = computed(() => {
+  if (activeTab.value !== 'featured') {
+    return posts.value.filter(post => post.isShowcase).slice(0, 4)
+  }
+  return posts.value.filter(post => post.isShowcase)
+})
+
+// 显示的普通内容
+const displayedPosts = computed(() => {
+  if (activeTab.value === 'featured') {
+    // 在精选标签页，显示除了前两个精选外的所有帖子
+    const featuredIds = featuredPosts.value.slice(0, 2).map(p => p.id)
+    return posts.value.filter(post => !featuredIds.includes(post.id))
+  }
+  return posts.value
+})
 
 // --- 移除模拟数据 ---
 /*
@@ -110,65 +210,129 @@ const communityPosts = ref([
 ]);
 */
 
-// --- 修改获取帖子函数以接受 sortBy ---
-const fetchPosts = async (page: number = 1, sortBy: string = 'createdAt') => {
-  isLoading.value = true;
-  error.value = null;
+// --- 数据获取函数 ---
+// 获取帖子列表
+const fetchPosts = async (page: number = 1, options: any = {}) => {
+  isLoading.value = true
+  error.value = null
   try {
-    // --- Determine correct sortBy value for API --- 
-    // Map 'popular' tab to a valid backend sort key, e.g., 'likesCount'
-    // Keep 'createdAt' as is.
-    const apiSortBy = sortBy === 'popular' ? 'likesCount' : sortBy;
-    
-    const response = await PostService.getAllPosts({
-      page: page,
+    // 确定排序方式
+    const sortBy = options.sortBy || activeTab.value
+    const apiSortBy = sortBy === 'popular' ? 'likesCount' :
+                     sortBy === 'featured' ? 'createdAt' : sortBy
+
+    // 构建请求参数
+    const params: any = {
+      page,
       limit: pagination.pageSize,
-      sortBy: apiSortBy // Pass the mapped value
-    });
-    // Now types match: PostPreview[] = PostPreview[]
-    posts.value = response.posts;
-    pagination.total = response.totalCount || 0;
-    pagination.currentPage = page;
+      sortBy: apiSortBy
+    }
+
+    // 添加标签筛选
+    if (selectedTags.value.length > 0) {
+      params.tags = selectedTags.value
+    }
+
+    // 添加搜索查询
+    if (searchQuery.value) {
+      params.search = searchQuery.value
+    }
+
+    // 添加精选筛选
+    if (sortBy === 'featured') {
+      params.showcase = true
+    }
+
+    const response = await PostService.getAllPosts(params)
+    posts.value = response.posts
+    pagination.total = response.totalCount || 0
+    pagination.currentPage = page
   } catch (err: any) {
     console.error('Failed to fetch posts:', err)
     error.value = '加载帖子失败，请稍后再试。'
     ElMessage.error(error.value)
   } finally {
-    isLoading.value = false;
+    isLoading.value = false
   }
-};
+}
 
-// --- 添加 watch 监听 activeTab 变化 ---
-watch(activeTab, (newTabName) => {
-  fetchPosts(1, newTabName); 
-});
+// 获取标签列表
+const fetchTags = async () => {
+  isLoadingTags.value = true
+  try {
+    availableTags.value = await AdminService.getAllTags()
+    console.log('[CommunityView] Fetched tags:', availableTags.value)
+  } catch (err) {
+    console.error('[CommunityView] Failed to fetch tags:', err)
+    ElMessage.warning('加载标签失败，但不影响浏览')
+  } finally {
+    isLoadingTags.value = false
+  }
+}
 
-// --- 修改分页事件处理 (传递当前排序方式) ---
+// --- 事件处理函数 ---
+// 标签点击
+const handleTagClick = (tagName: string) => {
+  const index = selectedTags.value.indexOf(tagName)
+  if (index === -1) {
+    selectedTags.value.push(tagName)
+  } else {
+    selectedTags.value.splice(index, 1)
+  }
+  fetchPosts(1)
+}
+
+// 清除标签筛选
+const clearTagFilter = () => {
+  selectedTags.value = []
+  fetchPosts(1)
+}
+
+// 搜索处理
+const handleSearch = () => {
+  fetchPosts(1)
+}
+
+// 清除搜索
+const handleSearchClear = () => {
+  if (searchQuery.value) {
+    searchQuery.value = ''
+    fetchPosts(1)
+  }
+}
+
+// 分页处理
 const handlePageChange = (newPage: number) => {
-    console.log('Current page:', newPage);
-    fetchPosts(newPage, activeTab.value);
-};
+  console.log('Current page:', newPage)
+  fetchPosts(newPage)
+}
 
-// --- 在 onMounted 中调用 (传递初始排序方式) ---
+// --- 监听变化 ---
+watch(activeTab, (newTabName) => {
+  fetchPosts(1, { sortBy: newTabName })
+})
+
+// --- 初始化 ---
 onMounted(() => {
-  fetchPosts(pagination.currentPage, activeTab.value);
-});
+  fetchTags()
+  fetchPosts(pagination.currentPage)
+})
 
 // --- 获取实例 ---
 const userStore = useUserStore();
 const router = useRouter();
 
-// --- 修改 openPostEditor 方法 ---
+// --- 修改 openPostEditor 方法，使用路由导航到新页面 ---
 const openPostEditor = () => {
     // --- 实现登录检查 ---
     if (!userStore.isLoggedIn) {
       ElMessage.warning('请先登录再发布分享');
       router.push('/login'); // 跳转到登录页
-      return; // 阻止打开编辑器
+      return;
     }
     // --- 结束登录检查 ---
-    console.log('Opening post editor...');
-    isEditorVisible.value = true; // 打开对话框
+    console.log('Navigating to post creation page...');
+    router.push({ name: 'CreatePost' }); // 导航到新的发布页面
 };
 
 // --- 新增处理帖子创建成功的方法 ---
@@ -182,7 +346,7 @@ const handleLike = (id: number | string) => {
   console.log('Liked post:', id)
 }
 
-// --- Modify handleComment to open modal --- 
+// --- Modify handleComment to open modal ---
 const openPostDetailModal = (postId: number) => {
     console.log('Opening modal for post in CommunityView:', postId);
     if (typeof postId === 'number') {
@@ -199,20 +363,20 @@ const handleFavorite = (id: number | string) => {
 }
 
 // + Restore handlePostUpdate parameter type to Post
-const handlePostUpdate = (updatedPost: Post) => { 
+const handlePostUpdate = (updatedPost: Post) => {
   const index = posts.value.findIndex(p => p.id === updatedPost.id);
   if (index !== -1) {
     const existingPreview = posts.value[index];
-    
+
     existingPreview.title = updatedPost.title;
-    existingPreview.content = updatedPost.content ?? null; 
-    existingPreview.imageUrl = updatedPost.imageUrl ?? null; 
+    existingPreview.content = updatedPost.content ?? null;
+    existingPreview.imageUrl = updatedPost.imageUrl ?? null;
     existingPreview.likesCount = updatedPost.likesCount;
     existingPreview.commentsCount = updatedPost.commentsCount;
-    existingPreview.favoritesCount = updatedPost.favoritesCount; 
+    existingPreview.favoritesCount = updatedPost.favoritesCount;
     existingPreview.isLiked = updatedPost.isLiked;
     existingPreview.isFavorited = updatedPost.isFavorited;
-    
+
     posts.value[index] = existingPreview;
   }
 };
@@ -227,29 +391,97 @@ export default {
 
 <style scoped lang="scss">
 .community-view {
-  padding-top: 30px;
-  padding-bottom: 30px;
+  padding-top: 20px;
+  padding-bottom: 40px;
 }
 
-.action-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  .tabs {
-    // - Remove empty ruleset
+.community-header {
+  margin-bottom: 24px;
+
+  .tags-nav {
+    margin-bottom: 16px;
+
+    .tags-container {
+      display: flex;
+      align-items: center;
+      padding: 8px 0;
+      gap: 10px;
+
+      .tag-item {
+        cursor: pointer;
+        transition: all 0.2s;
+
+        &:hover {
+          transform: translateY(-2px);
+        }
+      }
+
+      .clear-tags-btn {
+        margin-left: 8px;
+      }
+    }
+  }
+
+  .action-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+
+    .tabs {
+      flex-grow: 1;
+    }
+
+    .right-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .search-input {
+        width: 200px;
+      }
+    }
   }
 }
 
 .posts-list-section {
-  // - Remove empty ruleset
+  .featured-posts {
+    margin-bottom: 32px;
+  }
+
+  .regular-posts {
+    margin-bottom: 24px;
+  }
 }
 
 .pagination-section {
-    margin-top: 40px;
-    display: flex;
-    justify-content: center;
+  margin-top: 40px;
+  display: flex;
+  justify-content: center;
 }
 
-.loading-state { padding: 20px; }
-</style> 
+.loading-state {
+  padding: 20px;
+}
+
+// 响应式调整
+@media (max-width: 768px) {
+  .community-header {
+    .action-bar {
+      flex-direction: column;
+      align-items: stretch;
+
+      .right-actions {
+        width: 100%;
+        justify-content: space-between;
+
+        .search-input {
+          width: 60%;
+        }
+      }
+    }
+  }
+}
+</style>

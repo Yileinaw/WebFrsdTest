@@ -5,57 +5,73 @@ export class AdminService {
   // 获取仪表盘统计数据
   static async getDashboardStats() {
     try {
+      console.log('[AdminService] 开始获取仪表盘统计数据');
+
       // 使用事务获取所有需要的统计数据
-      const [
-        showcasesCount,
-        usersCount,
-        postsCount,
-        favoritesCount,
-        tagsWithCounts,
-        recentContent
-      ] = await prisma.$transaction([
-        // 获取美食图片总数
-        prisma.foodShowcase.count(),
-        // 获取用户总数
-        prisma.user.count(),
-        // 获取帖子总数
-        prisma.post.count(),
-        // 获取收藏总数
-        prisma.favorite.count(),
-        // 获取标签分布
-        prisma.tag.findMany({
+      // 使用多个查询获取数据
+      console.log('[AdminService] 查询美食图片数量');
+      const showcasesCount = await prisma.foodShowcase.count();
+
+      console.log('[AdminService] 查询用户数量');
+      const usersCount = await prisma.user.count();
+
+      console.log('[AdminService] 查询帖子数量');
+      const postsCount = await prisma.post.count();
+
+      console.log('[AdminService] 查询收藏数量');
+      const favoritesCount = await prisma.favorite.count();
+
+      // 单独查询标签数据
+      console.log('[AdminService] 查询标签数据');
+      const [foodTagsWithCounts, postTagsWithCounts] = await Promise.all([
+        prisma.foodTag.findMany({
           select: {
             id: true,
             name: true,
             _count: {
-              select: { foodShowcases: true, posts: true }
+              select: { foodShowcases: true }
             }
           }
         }),
-        // 获取最近内容
-        prisma.$queryRaw`
-          SELECT 
-            id, 
-            title, 
-            'showcase' as type, 
-            "createdAt" 
-          FROM "FoodShowcase" 
-          UNION ALL 
-          SELECT 
-            id, 
-            title, 
-            'post' as type, 
-            "createdAt" 
-          FROM "Post" 
-          ORDER BY "createdAt" DESC 
-          LIMIT 10
-        `
+        prisma.postTag.findMany({
+          select: {
+            id: true,
+            name: true,
+            _count: {
+              select: { posts: true }
+            }
+          }
+        })
       ]);
 
+      // 获取最近内容
+      console.log('[AdminService] 查询最近内容');
+      const recentContent = await prisma.$queryRaw`
+        SELECT
+          id,
+          title,
+          'showcase' as type,
+          "createdAt"
+        FROM "FoodShowcase"
+        UNION ALL
+        SELECT
+          id,
+          title,
+          'post' as type,
+          "createdAt"
+        FROM "Post"
+        ORDER BY "createdAt" DESC
+        LIMIT 10
+      `;
+
+
+
       // 计算内容发布趋势（过去30天）
+      console.log('[AdminService] 获取内容发布趋势');
       const contentTrend = await this.getContentTrend();
 
       // 计算增长率（与上周相比）
+      console.log('[AdminService] 计算增长率');
       const [
         showcasesLastWeek,
         usersLastWeek,
@@ -107,12 +123,24 @@ export class AdminService {
         : 0;
 
       // 格式化标签分布数据
-      const tagDistribution = tagsWithCounts.map(tag => ({
+      // 合并两种标签并添加类型标记
+      const foodTagsFormatted = foodTagsWithCounts.map((tag: { name: string; id: number; _count: { foodShowcases: number } }) => ({
         name: tag.name,
-        count: tag._count.foodShowcases + tag._count.posts,
-        // 为标签分配不同颜色
+        count: tag._count.foodShowcases,
+        type: 'food',
         color: this.getRandomColor(tag.id)
       }));
+
+      const postTagsFormatted = postTagsWithCounts.map((tag: { name: string; id: number; _count: { posts: number } }) => ({
+        name: tag.name,
+        count: tag._count.posts,
+        type: 'post',
+        color: this.getRandomColor(tag.id + 100) // 加偏移确保颜色不同
+      }));
+
+      const tagDistribution = [...foodTagsFormatted, ...postTagsFormatted]
+        .filter((tag: { count: number }) => tag.count > 0) // 去除没有关联内容的标签
+        .sort((a: { count: number }, b: { count: number }) => b.count - a.count); // 按数量降序排列
 
       // 格式化最近内容数据
       const typedRecentContent = recentContent as any[];
@@ -124,6 +152,7 @@ export class AdminService {
       }));
 
       // 返回完整的仪表盘统计数据
+      console.log('[AdminService] 所有数据获取完成，返回结果');
       return {
         showcases: {
           total: showcasesCount,
@@ -155,32 +184,61 @@ export class AdminService {
   static async getContentTrend() {
     try {
       const days = 30;
+      const today = new Date();
+      const startDate = subDays(today, days - 1);
+
+      // 设置时间范围为过去30天
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(today);
+      endDate.setHours(23, 59, 59, 999);
+
+      // 使用一次查询获取所有美食图片数据
+      const showcases = await prisma.foodShowcase.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate
+          }
+        },
+        select: {
+          createdAt: true
+        }
+      });
+
+      // 使用一次查询获取所有帖子数据
+      const posts = await prisma.post.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate
+          }
+        },
+        select: {
+          createdAt: true
+        }
+      });
+
+      // 初始化结果数组
       const result = [];
 
-      // 生成过去30天的日期
+      // 生成过去30天的日期并填充数据
       for (let i = days - 1; i >= 0; i--) {
-        const date = subDays(new Date(), i);
+        const date = subDays(today, i);
         const formattedDate = format(date, 'yyyy-MM-dd');
+        const dayStart = new Date(`${formattedDate}T00:00:00Z`);
+        const dayEnd = new Date(`${formattedDate}T23:59:59Z`);
 
-        // 获取当天的美食图片数量
-        const showcasesCount = await prisma.foodShowcase.count({
-          where: {
-            createdAt: {
-              gte: new Date(`${formattedDate}T00:00:00Z`),
-              lt: new Date(`${formattedDate}T23:59:59Z`)
-            }
-          }
-        });
+        // 计算当天的美食图片数量
+        const showcasesCount = showcases.filter(item => {
+          const itemDate = new Date(item.createdAt);
+          return itemDate >= dayStart && itemDate <= dayEnd;
+        }).length;
 
-        // 获取当天的帖子数量
-        const postsCount = await prisma.post.count({
-          where: {
-            createdAt: {
-              gte: new Date(`${formattedDate}T00:00:00Z`),
-              lt: new Date(`${formattedDate}T23:59:59Z`)
-            }
-          }
-        });
+        // 计算当天的帖子数量
+        const postsCount = posts.filter(item => {
+          const itemDate = new Date(item.createdAt);
+          return itemDate >= dayStart && itemDate <= dayEnd;
+        }).length;
 
         result.push({
           date: formattedDate,

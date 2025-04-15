@@ -138,10 +138,10 @@ export class AuthService {
 
         // 6. Generate JWT
         try {
-            console.log(`[AuthService.login] 为用户 ${user.id} 生成JWT令牌`);
+            console.log(`[AuthService.login] 为用户 ${user.id} 生成JWT令牌, 角色: ${user.role}`);
             const tokenPayload = { userId: user.id, role: user.role };
             const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: expiresInSeconds });
-            console.log(`[AuthService.login] JWT令牌生成成功，过期时间: ${expiresInSeconds}秒`);
+            console.log(`[AuthService.login] JWT令牌生成成功，过期时间: ${expiresInSeconds}秒, 包含角色: ${user.role}`);
 
             // 7. Fetch full user info including counts AFTER successful login
             console.log(`[AuthService.login] 获取用户 ${user.id} 的完整信息`);

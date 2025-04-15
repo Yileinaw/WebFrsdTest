@@ -39,6 +39,7 @@ export class PostService {
       sortBy?: string;
       search?: string;
       showcase?: boolean;
+      tags?: string[];
       currentUserId?: number | null;
     }): Promise<GetPostsResponse> { // Adjust response type if needed
         const response = await http.get<GetPostsResponse>('/posts', { params });
@@ -58,6 +59,14 @@ export class PostService {
      */
     static async updatePost(id: number, data: UpdatePostData): Promise<PostMutationResponse> {
         const response = await http.put<PostMutationResponse>(`/posts/${id}`, data);
+        return response.data;
+    }
+
+    /**
+     * 使用FormData更新帖子（包含图片）
+     */
+    static async updatePostWithImage(id: number, formData: FormData): Promise<PostMutationResponse> {
+        const response = await http.put<PostMutationResponse>(`/posts/${id}/with-image`, formData);
         return response.data;
     }
 

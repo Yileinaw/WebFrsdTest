@@ -58,6 +58,31 @@ const routes: Array<RouteRecordRaw> = [
     ]
   },
   {
+    path: '/post/create',
+    component: MainLayout,
+    children: [
+      {
+        path: '',
+        name: 'CreatePost',
+        component: () => import('@/views/post/CreatePostView.vue'),
+        meta: { requiresAuth: true }
+      }
+    ]
+  },
+  {
+    path: '/post/edit/:id',
+    component: MainLayout,
+    children: [
+      {
+        path: '',
+        name: 'EditPost',
+        component: () => import('@/views/post/EditPostView.vue'),
+        props: true,
+        meta: { requiresAuth: true }
+      }
+    ]
+  },
+  {
     path: '/login',
     name: 'Login',
     component: LoginView,
@@ -196,28 +221,22 @@ const router = createRouter({
   routes
 })
 
-// Ensure beforeEach guard logic is correct or commented out if guards module is missing
-// router.beforeEach((to, from, next) => {
-//   const userStore = useUserStore();
-//   const isLoggedIn = userStore.isLoggedIn;
-//   const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
-//
-//   // --- Remove specific log for MyFavorites ---
-//   // if (to.name === 'MyFavorites') {
-//   //     console.log(`[RouterGuard] Navigating to MyFavorites. requiresAuth: ${requiresAuth}, isLoggedIn: ${isLoggedIn}`);
-//   // }
-//   // --- End remove specific log ---
-//
-//   if (requiresAuth && !isLoggedIn) {
-//     // console.log(`[RouterGuard] Auth required but not logged in. Redirecting from ${to.fullPath} to Login.`); // Remove log
-//     next({ name: 'Login', query: { redirect: to.fullPath } });
-//   } else if ((to.name === 'Login' || to.name === 'Register') && isLoggedIn) {
-//     // console.log(`[RouterGuard] Already logged in. Redirecting from ${to.name} to Home.`); // Remove log
-//     next('/');
-//   } else {
-//     // console.log(`[RouterGuard] Allowing navigation to ${to.fullPath}`); // Remove log
-//     next();
-//   }
-// })
+// 启用路由守卫以保护需要认证的路由
+router.beforeEach((to, from, next) => {
+  const userStore = useUserStore();
+  const isLoggedIn = userStore.isLoggedIn;
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
+
+  if (requiresAuth && !isLoggedIn) {
+    // 如果路由需要认证但用户未登录，重定向到登录页面
+    next({ name: 'Login', query: { redirect: to.fullPath } });
+  } else if ((to.name === 'Login' || to.name === 'Register') && isLoggedIn) {
+    // 如果用户已登录但尝试访问登录或注册页面，重定向到首页
+    next('/');
+  } else {
+    // 其他情况正常导航
+    next();
+  }
+})
 
 export default router

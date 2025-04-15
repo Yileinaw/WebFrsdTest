@@ -11,7 +11,7 @@ import path from 'path';
 import multer from 'multer';
 
 // --- Remove Basic Multer Config ---
-// const basicUpload = multer({ dest: 'uploads/' }); 
+// const basicUpload = multer({ dest: 'uploads/' });
 // --- End Remove ---
 
 // console.log('[PostRoutes.ts] File loaded'); // Remove log
@@ -34,7 +34,7 @@ postRouter.get('/', OptionalAuthMiddleware, PostController.getAllPosts);
 
 // POST /api/posts - Use the new uploadPostImage middleware
 postRouter.post(
-    '/', 
+    '/',
     AuthMiddleware,
     uploadPostImage, // <-- Use new middleware for post images
     PostController.createPost
@@ -43,12 +43,19 @@ postRouter.post(
 // GET /api/posts/:id - Use Optional Auth
 postRouter.get('/:postId', OptionalAuthMiddleware, PostController.getPostById);
 
-// PUT /api/posts/:id - Requires Auth and handle image upload
+// PUT /api/posts/:id - Requires Auth (JSON update without image)
 postRouter.put(
-    '/:postId', 
-    AuthMiddleware, 
-    uploadPostImage, // <-- Add middleware to handle potential image upload on update
+    '/:postId',
+    AuthMiddleware,
     PostController.updatePost
+);
+
+// PUT /api/posts/:id/with-image - Requires Auth (FormData update with image)
+postRouter.put(
+    '/:postId/with-image',
+    AuthMiddleware,
+    uploadPostImage, // <-- Add middleware to handle image upload
+    PostController.updatePostWithImage
 );
 
 // DELETE /api/posts/:id - Requires Auth
@@ -76,8 +83,8 @@ commentRouter.delete('/:commentId', AuthMiddleware, CommentController.deleteComm
 // Mount comment router under post router
 postRouter.use('/:postId/comments', commentRouter);
 
-// --- Remove Catch-all --- 
+// --- Remove Catch-all ---
 
 // Export both routers
 export { postRouter, commentRouter };
-// console.log('[PostRoutes.ts] Exporting routers (Refactored upload)...'); // Remove log 
+// console.log('[PostRoutes.ts] Exporting routers (Refactored upload)...'); // Remove log

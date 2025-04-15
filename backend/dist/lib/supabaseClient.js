@@ -14,6 +14,10 @@ const supabaseUrl = process.env.SUPABASE_URL;
 // Use SUPABASE_SERVICE_KEY as provided in the .env
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('[supabaseClient] 缺少 Supabase 配置：', {
+        url: supabaseUrl ? '已配置' : '缺失',
+        serviceKey: supabaseServiceKey ? '已配置' : '缺失'
+    });
     throw new Error('Supabase URL or Service Key is missing from environment variables.');
 }
 // Create and export the Supabase client instance using the Service Key
@@ -26,5 +30,5 @@ exports.supabase = (0, supabase_js_1.createClient)(supabaseUrl, supabaseServiceK
         detectSessionInUrl: false
     }
 });
-console.log('Supabase client initialized with Service Key.'); // Optional: Log initialization 
+console.log('Supabase client initialized with Service Key.'); // Optional: Log initialization
 //# sourceMappingURL=supabaseClient.js.map

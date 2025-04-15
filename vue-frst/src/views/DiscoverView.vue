@@ -52,10 +52,10 @@
       <!-- CSS Masonry Container -->
       <div v-if="!isLoading && foodShowcases.length > 0" class="masonry-container">
         <!-- Loop through items, get index -->
-        <div 
-          v-for="(item, index) in foodShowcases" 
-          :key="item.id" 
-          :id="`showcase-${item.id}`" 
+        <div
+          v-for="(item, index) in foodShowcases"
+          :key="item.id"
+          :id="`showcase-${item.id}`"
           class="masonry-item"
         >
            <img
@@ -75,8 +75,8 @@
         </div>
       </div>
       <!-- Empty State / Error State ... -->
-       <el-empty 
-         v-if="!isLoading && foodShowcases.length === 0 && !error" 
+       <el-empty
+         v-if="!isLoading && foodShowcases.length === 0 && !error"
          :description="emptyStateDescription"
        />
        <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
@@ -96,7 +96,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
-// Use AdminService instead of FoodShowcaseService
+// 使用FoodTagService获取美食标签
+import { FoodTagService } from '@/services/FoodTagService';
 import { AdminService } from '@/services/AdminService';
 // Assume FoodShowcasePreview type exists in models.ts
 // Also import Tag type
@@ -163,7 +164,7 @@ watch(searchQuery, (newValue, oldValue) => {
   if (newValue === '' && oldValue !== '') {
     // Handle clear event immediately (or use handleSearchClear)
     // console.log('Search query cleared, fetching all.');
-    handleSearchClear(); 
+    handleSearchClear();
   } else if (newValue !== oldValue && newValue !== '') {
     // Set new debounce timer only if value changed and is not empty
     searchDebounceTimer = setTimeout(() => {
@@ -184,10 +185,14 @@ const fetchAvailableTags = async () => {
   isLoadingTags.value = true;
   errorTags.value = null;
   try {
-    availableTags.value = await AdminService.getAllTags();
-    console.log('[DiscoverView] Fetched available tags:', availableTags.value);
+    availableTags.value = await FoodTagService.getAllTags();
+    if (import.meta.env.DEV) {
+        console.log('[DiscoverView] Fetched available food tags:', availableTags.value);
+    }
   } catch (err) {
-    console.error('[DiscoverView] Failed to fetch tags:', err);
+    if (import.meta.env.DEV) {
+        console.error('[DiscoverView] Failed to fetch tags:', err);
+    }
     errorTags.value = '加载标签列表失败';
     availableTags.value = []; // Reset on error
   } finally {
@@ -203,7 +208,7 @@ const handleTagClick = (tagName: string) => {
   } else {
     selectedTags.value.splice(index, 1);
   }
-  searchQuery.value = ''; 
+  searchQuery.value = '';
   fetchFoodShowcases({ tags: selectedTags.value.length > 0 ? selectedTags.value : undefined });
 };
 
@@ -216,7 +221,7 @@ const clearTagFilter = () => {
 
 const performSearch = () => {
   // Debounce logic is now in watch, this function is called after debounce
-  // console.log('Performing search for:', searchQuery.value); 
+  // console.log('Performing search for:', searchQuery.value);
   selectedTags.value = []; // Clear tags when searching
   fetchFoodShowcases({ search: searchQuery.value || undefined });
 };
@@ -238,7 +243,9 @@ const handleSearchClear = () => {
 // --- API Interaction ---
 const fetchFoodShowcases = async (params: { search?: string; tags?: string[] } = {}) => { // Expect tags array
     if (isLoading.value) return;
-    console.log('[DiscoverView] Fetching with params:', params);
+    if (import.meta.env.DEV) {
+        console.log('[DiscoverView] Fetching with params:', params);
+    }
     isLoading.value = true;
     error.value = null;
     try {
@@ -250,37 +257,51 @@ const fetchFoodShowcases = async (params: { search?: string; tags?: string[] } =
             page: 1, // Always fetch the first page for simplicity here
             includeTags: false // Tags might not be needed in discovery view
         });
-        console.log('[DiscoverView] API Response received:', response);
+        if (import.meta.env.DEV) {
+            console.log('[DiscoverView] API Response received:', response);
+        }
         // Extract items from the paginated response
         foodShowcases.value = response.items;
-        console.log(`[DiscoverView] Successfully fetched ${foodShowcases.value.length} showcases.`);
-       
+        if (import.meta.env.DEV) {
+            console.log(`[DiscoverView] Successfully fetched ${foodShowcases.value.length} showcases.`);
+        }
+
     } catch (err: any) {
-        console.error("[DiscoverView] Failed to fetch food showcases:", err);
+        if (import.meta.env.DEV) {
+            console.error("[DiscoverView] Failed to fetch food showcases:", err);
+        }
         error.value = '加载美食展示失败，请稍后再试。';
         foodShowcases.value = [];
     } finally {
         isLoading.value = false;
-        console.log(`[DiscoverView] Fetch finished. isLoading: ${isLoading.value}, showcases count: ${foodShowcases.value.length}, error: ${error.value}`);
+        if (import.meta.env.DEV) {
+            console.log(`[DiscoverView] Fetch finished. isLoading: ${isLoading.value}, showcases count: ${foodShowcases.value.length}, error: ${error.value}`);
+        }
     }
 };
 
 // --- Function to scroll to element ---
 const scrollToElement = async (elementId: string) => {
   // Ensure DOM is updated before trying to scroll
-  await nextTick(); 
+  await nextTick();
   const element = document.getElementById(elementId);
   if (element) {
-    console.log(`Scrolling to element: ${elementId}`);
+    if (import.meta.env.DEV) {
+        console.log(`Scrolling to element: ${elementId}`);
+    }
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
   } else {
-    console.warn(`Element with ID ${elementId} not found for scrolling.`);
+    if (import.meta.env.DEV) {
+        console.warn(`Element with ID ${elementId} not found for scrolling.`);
+    }
     }
 };
 
 // --- Lifecycle Hooks ---
 onMounted(() => {
-    console.log('[DiscoverView] Mounted - Fetching initial data and tags');
+    if (import.meta.env.DEV) {
+        console.log('[DiscoverView] Mounted - Fetching initial data and tags');
+    }
     fetchFoodShowcases(); // Initial fetch (no filters)
     fetchAvailableTags(); // Fetch tags from backend
 
@@ -307,7 +328,7 @@ onMounted(() => {
 /* --- Hero Section --- */
 .hero-section-simplified {
   // Adjust styles if needed, example uses existing gradient/image
-  background: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url('https://media.istockphoto.com/id/492301737/zh/%E7%85%A7%E7%89%87/delicious-breakfast.jpg?s=2048x2048&w=is&k=20&c=_k-olo7WGLG-JB36DVgaqq6UsW6g-QKLQpUThBY3Y60=');
+  background: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url('/images/food-hero-bg.jpg');
   background-size: cover;
   background-position: center;
   padding: 60px 0; // Reset padding if search bar space is removed
@@ -374,7 +395,7 @@ onMounted(() => {
 .masonry-item {
   /* Ensure items are identifiable and have some margin/padding if needed */
   break-inside: avoid; /* Prevent breaking inside an item */
-  margin-bottom: 20px; 
+  margin-bottom: 20px;
   position: relative; /* Needed for overlay */
   overflow: hidden; /* Needed for overlay */
   border-radius: 8px; /* Add rounding */
@@ -438,4 +459,4 @@ onMounted(() => {
   opacity: 1;
 }
 
-</style> 
+</style>

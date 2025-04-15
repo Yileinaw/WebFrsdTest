@@ -6,10 +6,11 @@ import prisma from '../db'; // 引入 Prisma Client
 // 从环境变量获取 JWT 密钥，与 AuthService 保持一致
 const JWT_SECRET = process.env.JWT_SECRET || 'YOUR_SUPER_SECRET_KEY';
 
-// 定义一个接口来扩展 Express 的 Request 类型，以包含 userId
+// 定义一个接口来扩展 Express 的 Request 类型，以包含 userId 和 userRole
 // 添加 export 使其可以被其他模块导入
 export interface AuthenticatedRequest extends Request {
     userId?: number; // 将 userId 设为可选，因为并非所有请求都需要它
+    userRole?: string; // 添加用户角色信息
 }
 
 export const AuthMiddleware = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -30,12 +31,13 @@ export const AuthMiddleware = async (req: AuthenticatedRequest, res: Response, n
 
     try {
         // 4. 验证 Token
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; email: string; iat: number; exp: number };
-        console.log(`[AuthMiddleware] Token解码成功，用户ID: ${decoded.userId}`);
+        const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; role?: string; email: string; iat: number; exp: number };
+        console.log(`[AuthMiddleware] Token解码成功，用户ID: ${decoded.userId}, 角色: ${decoded.role || '未指定'}`);
 
         // 5. (可选但推荐) 检查用户是否存在于数据库中
         const user = await prisma.user.findUnique({
             where: { id: decoded.userId },
+            select: { id: true, username: true, email: true, role: true }
         });
 
         if (!user) {
@@ -44,11 +46,12 @@ export const AuthMiddleware = async (req: AuthenticatedRequest, res: Response, n
             return;
         }
 
-        console.log(`[AuthMiddleware] 用户验证成功: ${user.username || user.email}`);
+        console.log(`[AuthMiddleware] 用户验证成功: ${user.username || user.email}, 角色: ${user.role}`);
 
-        // 6. 将解码出的 userId 附加到请求对象上
+        // 6. 将解码出的 userId 和 userRole 附加到请求对象上
         req.userId = decoded.userId;
-        console.log(`[AuthMiddleware] 用户ID ${req.userId} 已附加到请求对象上，调用next()`);
+        req.userRole = user.role; // 使用数据库中的角色，而不是 token 中的角色，更可靠
+        console.log(`[AuthMiddleware] 用户ID ${req.userId}, 角色 ${req.userRole} 已附加到请求对象上，调用next()`);
 
         // 7. 调用 next() 将控制权传递给下一个中间件或路由处理程序
         next();

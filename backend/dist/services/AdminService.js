@@ -21,7 +21,7 @@ class AdminService {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 // 使用事务获取所有需要的统计数据
-                const [showcasesCount, usersCount, postsCount, favoritesCount, tagsWithCounts, recentContent] = yield db_1.default.$transaction([
+                const [showcasesCount, usersCount, postsCount, favoritesCount, [foodTagsWithCounts, postTagsWithCounts], recentContent] = yield db_1.default.$transaction([
                     // 获取美食图片总数
                     db_1.default.foodShowcase.count(),
                     // 获取用户总数
@@ -30,32 +30,45 @@ class AdminService {
                     db_1.default.post.count(),
                     // 获取收藏总数
                     db_1.default.favorite.count(),
-                    // 获取标签分布
-                    db_1.default.tag.findMany({
-                        select: {
-                            id: true,
-                            name: true,
-                            _count: {
-                                select: { foodShowcases: true, posts: true }
+                    // 获取标签分布 - 分别查询两种标签
+                    Promise.all([
+                        // 获取美食标签
+                        db_1.default.foodTag.findMany({
+                            select: {
+                                id: true,
+                                name: true,
+                                _count: {
+                                    select: { foodShowcases: true }
+                                }
                             }
-                        }
-                    }),
+                        }),
+                        // 获取帖子标签
+                        db_1.default.postTag.findMany({
+                            select: {
+                                id: true,
+                                name: true,
+                                _count: {
+                                    select: { posts: true }
+                                }
+                            }
+                        })
+                    ]),
                     // 获取最近内容
                     db_1.default.$queryRaw `
-          SELECT 
-            id, 
-            title, 
-            'showcase' as type, 
-            "createdAt" 
-          FROM "FoodShowcase" 
-          UNION ALL 
-          SELECT 
-            id, 
-            title, 
-            'post' as type, 
-            "createdAt" 
-          FROM "Post" 
-          ORDER BY "createdAt" DESC 
+          SELECT
+            id,
+            title,
+            'showcase' as type,
+            "createdAt"
+          FROM "FoodShowcase"
+          UNION ALL
+          SELECT
+            id,
+            title,
+            'post' as type,
+            "createdAt"
+          FROM "Post"
+          ORDER BY "createdAt" DESC
           LIMIT 10
         `
                 ]);
@@ -106,12 +119,22 @@ class AdminService {
                     ? Math.round(((favoritesCount - favoritesLastWeek) / favoritesLastWeek) * 100)
                     : 0;
                 // 格式化标签分布数据
-                const tagDistribution = tagsWithCounts.map(tag => ({
+                // 合并两种标签并添加类型标记
+                const foodTagsFormatted = foodTagsWithCounts.map((tag) => ({
                     name: tag.name,
-                    count: tag._count.foodShowcases + tag._count.posts,
-                    // 为标签分配不同颜色
+                    count: tag._count.foodShowcases,
+                    type: 'food',
                     color: this.getRandomColor(tag.id)
                 }));
+                const postTagsFormatted = postTagsWithCounts.map((tag) => ({
+                    name: tag.name,
+                    count: tag._count.posts,
+                    type: 'post',
+                    color: this.getRandomColor(tag.id + 100) // 加偏移确保颜色不同
+                }));
+                const tagDistribution = [...foodTagsFormatted, ...postTagsFormatted]
+                    .filter((tag) => tag.count > 0) // 去除没有关联内容的标签
+                    .sort((a, b) => b.count - a.count); // 按数量降序排列
                 // 格式化最近内容数据
                 const typedRecentContent = recentContent;
                 const formattedRecentContent = typedRecentContent.map(item => ({

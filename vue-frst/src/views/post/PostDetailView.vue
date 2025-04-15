@@ -13,7 +13,7 @@
       <!-- Post Header -->
       <div class="post-header">
         <h1>{{ post.title }}</h1>
-        <div class="meta-bar"> 
+        <div class="meta-bar">
           <div class="author-info">
             <router-link :to="{ name: 'UserProfile', params: { userId: post.author?.id } }">
                <el-avatar :size="32" :src="resolveStaticAssetUrl(post.author?.avatarUrl)" class="author-avatar" />
@@ -41,14 +41,22 @@
             <el-button text :icon="post.isLiked ? StarFilled : Star" :type="post.isLiked ? 'primary' : ''" @click.stop="handleLike" :loading="isLiking">
               {{ post.likesCount || 0 }} 点赞
             </el-button>
-            <el-button 
-              text 
-              :icon="post.isFavorited ? StarFilled : Star" 
-              :type="post.isFavorited ? 'warning' : ''"  
-              @click.stop="handleFavorite" 
+            <el-button
+              text
+              :icon="post.isFavorited ? StarFilled : Star"
+              :type="post.isFavorited ? 'warning' : ''"
+              @click.stop="handleFavorite"
               :loading="isFavoriting"
             >
               {{ post.favoritesCount || 0 }} 收藏
+            </el-button>
+            <el-button
+              v-if="isAuthor"
+              text
+              :icon="Edit"
+              @click="navigateToEdit"
+            >
+              编辑
             </el-button>
           </div>
         </div>
@@ -59,7 +67,7 @@
         <el-image
           :src="resolveStaticAssetUrl(post.imageUrl)"
           :alt="post.title"
-          fit="contain" 
+          fit="contain"
           class="post-detail-image"
           lazy
           :preview-src-list="[resolveStaticAssetUrl(post.imageUrl)]"
@@ -74,17 +82,17 @@
 
       <!-- Comments Section -->
       <div class="comments-section">
-        <h2>评论 ({{ post?.commentsCount || 0 }})</h2> 
-        
+        <h2>评论 ({{ post?.commentsCount || 0 }})</h2>
+
         <!-- Top-level Comment Input -->
         <div class="comment-input-area top-level-input">
           <el-avatar :size="32" :src="userStore.resolvedAvatarUrl" class="comment-avatar"/>
           <div class="input-wrapper">
              <el-input type="textarea" :rows="2" placeholder="添加评论..." v-model="newCommentText"></el-input>
-             <el-button 
-                type="primary" 
-                @click="submitComment({ parentId: null, text: newCommentText })" 
-                :disabled="!newCommentText.trim()" 
+             <el-button
+                type="primary"
+                @click="submitComment({ parentId: null, text: newCommentText })"
+                :disabled="!newCommentText.trim()"
                 :loading="isSubmittingComment && replyingToCommentId === null"
               >
                 发表评论
@@ -105,22 +113,22 @@
                  <template v-for="topLevelComment in nestedComments" :key="topLevelComment.id">
                     <CommentItem
                         :comment="topLevelComment"
-                        @toggle-reply="handleToggleReply"      
-                        @submit-comment="submitComment"  
-                        @delete-comment="deleteComment" 
-                        :reply-to-author-name="null"  
+                        @toggle-reply="handleToggleReply"
+                        @submit-comment="submitComment"
+                        @delete-comment="deleteComment"
+                        :reply-to-author-name="null"
                     />
                     <!-- Render ALL descendants flattened into the second level -->
-                    <div 
-                        v-if="topLevelComment.children && topLevelComment.children.length > 0" 
-                        class="replies-container" 
-                        style="margin-left: 40px;" > 
+                    <div
+                        v-if="topLevelComment.children && topLevelComment.children.length > 0"
+                        class="replies-container"
+                        style="margin-left: 40px;" >
                         <!-- Use flattenDescendants to get all replies -->
                         <CommentItem
-                            v-for="reply in flattenDescendants(topLevelComment)" 
+                            v-for="reply in flattenDescendants(topLevelComment)"
                             :key="reply.id"
-                            :comment="reply" 
-                            :reply-to-author-name="reply.replyToAuthorName" 
+                            :comment="reply"
+                            :reply-to-author-name="reply.replyToAuthorName"
                             @toggle-reply="handleToggleReply"
                             @submit-comment="submitComment"
                             @delete-comment="deleteComment"
@@ -141,7 +149,7 @@
 import { ref, onMounted, computed, watch, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElSkeleton, ElAlert, ElEmpty, ElAvatar, ElButton, ElInput, ElMessage, ElDivider } from 'element-plus';
-import { Star, StarFilled, ChatLineSquare, Delete, Back } from '@element-plus/icons-vue';
+import { Star, StarFilled, ChatLineSquare, Delete, Back, Edit } from '@element-plus/icons-vue';
 import { PostService } from '@/services/PostService';
 import { UserService } from '@/services/UserService';
 import type { Post, Comment, User } from '@/types/models';
@@ -238,7 +246,7 @@ const flattenDescendants = (comment: NestedComment): CommentWithReplyTo[] => {
         if (currentComment.children && currentComment.children.length > 0) {
             currentComment.children.forEach(child => {
                 // The child is replying to the currentComment's author
-                processComment(child, currentComment.author?.name || null); 
+                processComment(child, currentComment.author?.name || null);
             });
         }
     };
@@ -247,7 +255,7 @@ const flattenDescendants = (comment: NestedComment): CommentWithReplyTo[] => {
     if (comment.children && comment.children.length > 0) {
         comment.children.forEach(child => {
             // These first-level replies are replying to the top-level comment's author
-            processComment(child, comment.author?.name || null); 
+            processComment(child, comment.author?.name || null);
         });
     }
     return flattened;
@@ -276,7 +284,7 @@ const fetchComments = async () => {
         // Ensure PostService.getCommentsByPostId returns an array or handle null/undefined
         const response = await PostService.getCommentsByPostId(postId.value);
         console.log('[PostDetailView] Raw comments response from API:', JSON.stringify(response, null, 2)); // Log the raw response
-        comments.value = Array.isArray(response) ? response : []; 
+        comments.value = Array.isArray(response) ? response : [];
     } catch (err: any) {
         console.error('Error fetching comments:', err);
         commentsError.value = err.response?.data?.message || '加载评论失败';
@@ -341,7 +349,7 @@ const handleLike = async () => {
 
   try {
     // Create a non-reactive copy to avoid potential direct mutation issues if needed
-    // const currentPostData = { ...post.value }; 
+    // const currentPostData = { ...post.value };
     const postIdValue = post.value.id; // Store id in case post.value changes unexpectedly
 
     if (post.value.isLiked) {
@@ -375,7 +383,7 @@ const handleFavorite = async () => {
   if (!userStore.isLoggedIn) return ElMessage.warning('请先登录');
   if (isFavoriting.value) return;
   isFavoriting.value = true;
-  
+
   try {
     const postIdValue = post.value.id;
 
@@ -413,10 +421,10 @@ const submitComment = async (payload: { parentId: number | null; text: string })
         ElMessage.warning('请先登录');
         return;
     }
-    
+
     // Determine which loading state to use based on parentId ONLY
     const isLoadingTopLevel = parentId === null;
-    
+
     // Prevent double submission
     if ((isLoadingTopLevel && isSubmittingComment.value) /* || (check specific reply loading state if implemented) */) {
         return;
@@ -450,7 +458,7 @@ const submitComment = async (payload: { parentId: number | null; text: string })
 
         // Refresh comments AND potentially the post count from server
         // Option 1: Just fetch comments (if post count isn't critical or backend updates it reliably)
-         await fetchComments(); 
+         await fetchComments();
         // Option 2: Fetch both post details and comments (safer for count)
         // await fetchPostDetails(); // This will also call fetchComments
 
@@ -487,7 +495,7 @@ const deleteComment = async (id: number) => {
     if (!post.value || !post.value.id || !userStore.isLoggedIn) return;
 
     // Optional: Confirmation dialog here
-    // ElMessageBox.confirm(...) 
+    // ElMessageBox.confirm(...)
 
     try {
         await PostService.deleteComment(id);
@@ -497,14 +505,14 @@ const deleteComment = async (id: number) => {
         // Rely on fetching fresh data from the server.
 
         // Refresh comments list from the server
-        await fetchComments(); 
-        
+        await fetchComments();
+
         // OPTIONAL: Fetch post details if comment count is crucial and needs server verification
         // await fetchPostDetails(); // This also refetches comments
 
         // Fallback local count decrement (less reliable)
         if(post.value && post.value.commentsCount) {
-             post.value.commentsCount = Math.max(0, post.value.commentsCount - 1); 
+             post.value.commentsCount = Math.max(0, post.value.commentsCount - 1);
              // Note: This doesn't account for deleted replies reducing the count more.
         }
 
@@ -551,7 +559,7 @@ watch(() => route.params.id, (newId) => {
 const goBack = () => {
   // Check if there's history to go back to, otherwise navigate to a default route (e.g., home)
   if (window.history.length > 1) {
-     router.back(); 
+     router.back();
   } else {
      router.push('/'); // Navigate to home or another default page
   }
@@ -565,6 +573,24 @@ const showFollowAuthorButton = computed(() => {
         userStore.currentUser?.id !== post.value.author.id
     );
 });
+
+// 判断当前用户是否是帖子作者
+const isAuthor = computed(() => {
+    return (
+        userStore.isLoggedIn &&
+        post.value?.author?.id &&
+        userStore.currentUser?.id === post.value.author.id
+    );
+});
+
+// 导航到编辑页面
+const navigateToEdit = () => {
+    if (!post.value?.id || !isAuthor.value) return;
+    router.push({
+        name: 'EditPost',
+        params: { id: post.value.id }
+    });
+};
 
 // + Method to handle follow/unfollow button click
 const handleFollowAuthor = async () => {
@@ -679,11 +705,11 @@ const handleFollowAuthor = async () => {
 }
 
 .post-body {
-  line-height: 1.8; 
+  line-height: 1.8;
   font-size: 1rem;
   color: #333;
   margin-bottom: 30px;
-  
+
   /* Deep styles for rendered Markdown content */
   :deep(h1),
   :deep(h2),
@@ -701,11 +727,11 @@ const handleFollowAuthor = async () => {
   :deep(h3) { font-size: 1.3em; }
   :deep(h4) { font-size: 1.1em; }
 
-  :deep(p) { 
+  :deep(p) {
      margin-bottom: 1.2em;
      word-wrap: break-word; // Ensure long words wrap
   }
-  
+
    :deep(ul),
    :deep(ol) {
      padding-left: 2em;
@@ -715,7 +741,7 @@ const handleFollowAuthor = async () => {
        margin-bottom: 0.5em;
    }
 
-   :deep(img) { 
+   :deep(img) {
       max-width: 100%;
       height: auto;
       border-radius: 6px;
@@ -723,7 +749,7 @@ const handleFollowAuthor = async () => {
       display: block; // Prevent extra space below image
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
    }
-   
+
    :deep(blockquote) {
        margin: 1.5em 0;
        padding: 10px 15px;
@@ -734,7 +760,7 @@ const handleFollowAuthor = async () => {
            margin-bottom: 0; // Remove bottom margin for paragraphs inside blockquote
        }
    }
-   
+
    :deep(pre) {
        margin: 1.5em 0;
        padding: 15px;
@@ -749,7 +775,7 @@ const handleFollowAuthor = async () => {
            padding: 0; // Override potential inner padding
        }
    }
-   
+
    :deep(code) { // Inline code
        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
        background-color: #f0f2f5;
@@ -757,7 +783,7 @@ const handleFollowAuthor = async () => {
        border-radius: 3px;
        font-size: 0.9em;
    }
-   
+
    :deep(a) {
        color: var(--el-color-primary);
        text-decoration: none;
@@ -765,7 +791,7 @@ const handleFollowAuthor = async () => {
            text-decoration: underline;
        }
    }
-   
+
    :deep(hr) {
        border: none;
        border-top: 1px solid var(--el-border-color-lighter);
@@ -856,4 +882,4 @@ const handleFollowAuthor = async () => {
     padding: 4px 8px; // Make it smaller
     font-size: 0.75rem;
 }
-</style> 
+</style>

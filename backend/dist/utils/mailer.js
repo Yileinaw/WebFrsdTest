@@ -21,7 +21,45 @@ let transporter;
 // 初始化邮件传输器
 function initializeMailer() {
     return __awaiter(this, void 0, void 0, function* () {
-        if (process.env.ETHEREAL_HOST && process.env.ETHEREAL_USER && process.env.ETHEREAL_PASS) {
+        // 检查是否配置了 Elastic Email
+        if (process.env.ELASTIC_EMAIL_API_KEY && process.env.EMAIL_FROM) {
+            console.log('Using Elastic Email for email delivery...');
+            transporter = nodemailer_1.default.createTransport({
+                host: 'smtp.elasticemail.com',
+                port: 2525,
+                secure: false, // 升级到 TLS
+                auth: {
+                    user: process.env.EMAIL_FROM,
+                    pass: process.env.ELASTIC_EMAIL_API_KEY,
+                },
+            });
+        }
+        // 检查是否配置了 SendGrid
+        else if (process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM) {
+            console.log('Using SendGrid for email delivery...');
+            transporter = nodemailer_1.default.createTransport({
+                service: 'SendGrid',
+                auth: {
+                    user: 'apikey',
+                    pass: process.env.SENDGRID_API_KEY,
+                },
+            });
+        }
+        // 检查是否配置了 SMTP
+        else if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+            console.log(`Using SMTP (${process.env.SMTP_HOST}) for email delivery...`);
+            transporter = nodemailer_1.default.createTransport({
+                host: process.env.SMTP_HOST,
+                port: parseInt(process.env.SMTP_PORT || '587', 10),
+                secure: parseInt(process.env.SMTP_PORT || '587', 10) === 465,
+                auth: {
+                    user: process.env.SMTP_USER,
+                    pass: process.env.SMTP_PASS,
+                },
+            });
+        }
+        // 检查是否配置了 Ethereal
+        else if (process.env.ETHEREAL_HOST && process.env.ETHEREAL_USER && process.env.ETHEREAL_PASS) {
             // 如果环境变量中有 Ethereal 配置，则使用 Ethereal
             console.log('Using Ethereal for email testing...');
             transporter = nodemailer_1.default.createTransport({
@@ -36,7 +74,8 @@ function initializeMailer() {
         }
         else {
             // 否则，尝试创建 Ethereal 测试账户 (首次运行时或没有配置时)
-            console.log('No Ethereal config found in .env, creating a test account...');
+            console.log('No email configuration found in .env, creating an Ethereal test account...');
+            console.log('NOTE: In production, emails will not be delivered to real recipients!');
             try {
                 const testAccount = yield nodemailer_1.default.createTestAccount();
                 console.log('Ethereal test account created:');
@@ -46,11 +85,7 @@ function initializeMailer() {
                 console.log('Port:', testAccount.smtp.port);
                 console.log('Secure:', testAccount.smtp.secure);
                 console.log('------------------------------------');
-                console.log('Please add these credentials to your .env file as:');
-                console.log('ETHEREAL_HOST=...');
-                console.log('ETHEREAL_PORT=...');
-                console.log('ETHEREAL_USER=...');
-                console.log('ETHEREAL_PASS=...');
+                console.log('Preview URL will be shown in logs when emails are sent');
                 console.log('------------------------------------');
                 transporter = nodemailer_1.default.createTransport({
                     host: testAccount.smtp.host,
@@ -62,7 +97,7 @@ function initializeMailer() {
                     },
                 });
                 // 提示用户将凭据保存到 .env 文件
-                console.warn('Remember to save these Ethereal credentials to your .env file for future use!');
+                console.warn('For production use, configure a real email service in .env!');
             }
             catch (error) {
                 console.error('Failed to create Ethereal test account:', error);
@@ -91,15 +126,17 @@ function sendMail(options) {
                 return false; // 如果初始化仍然失败
         }
         try {
+            // 使用配置的发件人邮箱或默认值
+            const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.ETHEREAL_USER || 'noreply@example.com';
             const info = yield transporter.sendMail({
-                from: `"Your App Name" <${process.env.ETHEREAL_USER || 'noreply@example.com'}>`, // 发件人地址 (使用 Ethereal 用户名或默认值)
+                from: `"美食社区" <${fromEmail}>`, // 发件人地址
                 to: options.to,
                 subject: options.subject,
                 text: options.text,
                 html: options.html,
             });
             console.log('Message sent: %s', info.messageId);
-            // Ethereal 会提供一个预览 URL
+            // 如果是 Ethereal，则提供预览 URL
             const previewUrl = nodemailer_1.default.getTestMessageUrl(info);
             if (previewUrl) {
                 console.log('Preview URL: %s', previewUrl);

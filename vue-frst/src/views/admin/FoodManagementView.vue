@@ -18,17 +18,17 @@
             <el-col :span="8">
               <el-select v-model="selectedTags" multiple filterable placeholder="筛选标签" style="width: 100%;" clearable @change="fetchShowcases()">
                 <el-option
-                  v-for="tag in availableTags" 
-                  :key="tag.id || tag.name" 
+                  v-for="tag in availableTags"
+                  :key="tag.id || tag.name"
                   :label="tag.name"
                   :value="tag.name"
                 />
               </el-select>
             </el-col>
              <el-col :span="8" class="bulk-actions-col">
-                 <el-button 
-                   type="danger" 
-                   :disabled="selectedRows.length === 0" 
+                 <el-button
+                   type="danger"
+                   :disabled="selectedRows.length === 0"
                    @click="handleBulkDelete"
                  >
                    批量删除 ({{ selectedRows.length }})
@@ -59,8 +59,8 @@
                    <div class="tag-popover-content">
                       <el-tag
                         v-for="tag in row.tags"
-                        :key="tag.id + '-popover'" 
-                        type="info" 
+                        :key="tag.id + '-popover'"
+                        type="info"
                         size="small"
                         style="margin: 2px;"
                       >
@@ -74,7 +74,7 @@
                        <el-tag
                          v-for="tag in row.tags.slice(0, 2)"
                          :key="tag.id"
-                         type="info" 
+                         type="info"
                          size="small"
                          style="margin-right: 5px; cursor: pointer;"
                        >
@@ -105,7 +105,7 @@
 
           <!-- Pagination -->
           <el-pagination
-            v-if="totalItems > 0" 
+            v-if="totalItems > 0"
             class="pagination-container"
             layout="total, sizes, prev, pager, next, jumper"
             :total="totalItems"
@@ -121,7 +121,7 @@
         <!-- Statistics Chart Placeholder (Bottom) - Removed inner card -->
         <Transition name="fade">
           <div v-if="!shouldShowChartInSidebar" class="bottom-stats-container" style="margin-top: 20px;">
-            <el-divider /> 
+            <el-divider />
             <h4>统计信息</h4>
             <FoodStatsChart v-if="statsData" :stats-data="statsData" />
             <el-skeleton v-if="loadingStats" :rows="5" animated />
@@ -296,6 +296,7 @@ import { Plus } from '@element-plus/icons-vue';
 import type { FormInstance, FormRules, UploadInstance, UploadProps, UploadRawFile, UploadFile, UploadRequestHandler, UploadUserFile } from 'element-plus';
 import { getImageUrl } from '@/utils/imageUrl';
 import { AdminService } from '@/services/AdminService';
+import { FoodTagService } from '@/services/FoodTagService'; // 导入美食标签服务
 import type { FoodShowcasePreview, Tag } from '@/types/models';
 import FoodStatsChart from '@/components/admin/FoodStatsChart.vue';
 import { useWindowSize } from '@vueuse/core';
@@ -329,11 +330,11 @@ const loadingStats = ref(false); // Loading state for stats
 // Get reactive window size
 const { width } = useWindowSize();
 
-const formModel = reactive<{ 
-    imageFile: UploadRawFile | null; 
+const formModel = reactive<{
+    imageFile: UploadRawFile | null;
     imageUrlPreview: string | null;
-    title: string; 
-    description: string; 
+    title: string;
+    description: string;
     tagNames: string[];
 }> ({
     imageFile: null,
@@ -363,7 +364,7 @@ const shouldShowChartInSidebar = computed(() => width.value >= 992);
 const fetchTags = async () => {
   loadingTags.value = true; // Start loading
   try {
-    availableTags.value = await AdminService.getAllTags();
+    availableTags.value = await FoodTagService.getAllTags();
   } catch (error) {
     ElMessage.error('获取标签列表失败');
     console.error('[FoodManagementView] Error fetching tags:', error);
@@ -377,7 +378,7 @@ const fetchShowcases = async () => {
   loadingShowcases.value = true;
   try {
     console.log(`Fetching showcases (page: ${currentPage.value}, limit: ${pageSize.value}, search: ${searchQuery.value || 'N/A'}, tags: ${selectedTags.value.join('|') || 'N/A'}`);
-    
+
     // Call AdminService with current pagination and filter state
     const response = await AdminService.getFoodShowcases({
       page: currentPage.value,
@@ -386,7 +387,7 @@ const fetchShowcases = async () => {
       tags: selectedTags.value.length > 0 ? selectedTags.value : undefined, // Send undefined if empty
       includeTags: true // Always include tags for display
     });
-    
+
     showcases.value = response.items; // Update table data
     totalItems.value = response.totalCount; // Update total count for pagination
 
@@ -536,13 +537,13 @@ const handleDelete = async (id: number) => {
     );
     await AdminService.deleteFoodShowcase(id);
     ElMessage.success('删除成功!');
-    await fetchShowcases(); 
+    await fetchShowcases();
     await fetchStats(); // Refresh stats
     if (isEditing.value && currentEditId.value === id) {
         prepareNewForm();
     }
   } catch (error: any) {
-    if (typeof error === 'string' && error === 'cancel') { /* User cancelled */ } 
+    if (typeof error === 'string' && error === 'cancel') { /* User cancelled */ }
     else { ElMessage.error(`删除失败: ${error?.message || '请稍后重试'}`); }
   }
 };
@@ -755,7 +756,7 @@ onMounted(() => {
   flex-grow: 1;
   overflow-y: auto;
   /* Remove the old fixed height calculation */
-  /* height: calc(100vh - 200px); */ 
+  /* height: calc(100vh - 200px); */
 }
 
 .card-header {
@@ -893,4 +894,4 @@ onMounted(() => {
      height: var(--el-upload-picture-card-size);
      margin: 0; // Remove default margin if using gap
 }
-</style> 
+</style>

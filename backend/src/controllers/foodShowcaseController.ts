@@ -8,36 +8,49 @@ import path from 'path'; // Import path module for extension extraction
 // 获取所有 FoodShowcase 记录 (支持筛选和分页)
 export const getAllFoodShowcases = async (req: Request, res: Response) => {
   try {
+    // 打印请求信息以便于调试
+    console.log(`[FoodShowcaseController] 收到请求: ${req.method} ${req.originalUrl}`);
+    console.log(`[FoodShowcaseController] 查询参数:`, req.query);
+
     // Extract search, tags, page, and limit query parameters
     const search = req.query.search as string | undefined;
     // Expect tags as a pipe-separated string (e.g., "tag1|tag2|tag3")
-    const tagsQuery = req.query.tags as string | undefined; 
+    const tagsQuery = req.query.tags as string | undefined;
     const tagNames = tagsQuery ? tagsQuery.split('|').map(tag => tag.trim()).filter(Boolean) : undefined;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const includeTags = req.query.includeTags === 'true';
 
-    // console.log(`[FoodShowcaseController] Received request with search: '${search}', tags: ${tagNames?.join(',')}, page: ${page}, limit: ${limit}, includeTags: ${includeTags}`); // Log parsed tags
+    console.log(`[FoodShowcaseController] 解析后的参数: search='${search}', tags=${tagNames?.join(',')}, page=${page}, limit=${limit}, includeTags=${includeTags}`);
 
     // Pass the parsed tagNames array to the service
     const { items, totalCount } = await FoodShowcaseService.getAllShowcases({
-      search, 
+      search,
       tagNames, // Use the parsed array
-      page, 
+      page,
       limit,
       includeTags // Pass includeTags option
     });
-    
+
+    // 检查返回的数据
+    console.log(`[FoodShowcaseController] 服务返回数据: items.length=${items?.length || 0}, totalCount=${totalCount}`);
+
+    // 确保 items 是数组
+    const safeItems = Array.isArray(items) ? items : [];
+
     // Calculate total pages
     const totalPages = Math.ceil(totalCount / limit);
 
     // Return paginated response structure expected by frontend
-    res.json({ 
-      items,
+    const response = {
+      items: safeItems,
       totalCount,
       page,
       totalPages
-    });
+    };
+
+    console.log(`[FoodShowcaseController] 响应数据结构: keys=${Object.keys(response).join(',')}`);
+    res.json(response);
   } catch (error) {
     console.error('[FoodShowcaseController] Error fetching food showcases:', error);
     // Distinguish between expected errors (like invalid input) and server errors if needed
@@ -291,4 +304,4 @@ export const getShowcaseStats = async (req: Request, res: Response) => {
     console.error('[FoodShowcaseController] Error fetching showcase stats:', error);
     res.status(500).json({ message: error.message || '获取统计数据时发生内部错误' });
   }
-}; 
+};

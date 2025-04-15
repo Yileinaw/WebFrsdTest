@@ -20,6 +20,9 @@ const path_1 = __importDefault(require("path")); // Import path module for exten
 // 获取所有 FoodShowcase 记录 (支持筛选和分页)
 const getAllFoodShowcases = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
+        // 打印请求信息以便于调试
+        console.log(`[FoodShowcaseController] 收到请求: ${req.method} ${req.originalUrl}`);
+        console.log(`[FoodShowcaseController] 查询参数:`, req.query);
         // Extract search, tags, page, and limit query parameters
         const search = req.query.search;
         // Expect tags as a pipe-separated string (e.g., "tag1|tag2|tag3")
@@ -28,7 +31,7 @@ const getAllFoodShowcases = (req, res) => __awaiter(void 0, void 0, void 0, func
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const includeTags = req.query.includeTags === 'true';
-        // console.log(`[FoodShowcaseController] Received request with search: '${search}', tags: ${tagNames?.join(',')}, page: ${page}, limit: ${limit}, includeTags: ${includeTags}`); // Log parsed tags
+        console.log(`[FoodShowcaseController] 解析后的参数: search='${search}', tags=${tagNames === null || tagNames === void 0 ? void 0 : tagNames.join(',')}, page=${page}, limit=${limit}, includeTags=${includeTags}`);
         // Pass the parsed tagNames array to the service
         const { items, totalCount } = yield FoodShowcaseService_1.FoodShowcaseService.getAllShowcases({
             search,
@@ -37,15 +40,21 @@ const getAllFoodShowcases = (req, res) => __awaiter(void 0, void 0, void 0, func
             limit,
             includeTags // Pass includeTags option
         });
+        // 检查返回的数据
+        console.log(`[FoodShowcaseController] 服务返回数据: items.length=${(items === null || items === void 0 ? void 0 : items.length) || 0}, totalCount=${totalCount}`);
+        // 确保 items 是数组
+        const safeItems = Array.isArray(items) ? items : [];
         // Calculate total pages
         const totalPages = Math.ceil(totalCount / limit);
         // Return paginated response structure expected by frontend
-        res.json({
-            items,
+        const response = {
+            items: safeItems,
             totalCount,
             page,
             totalPages
-        });
+        };
+        console.log(`[FoodShowcaseController] 响应数据结构: keys=${Object.keys(response).join(',')}`);
+        res.json(response);
     }
     catch (error) {
         console.error('[FoodShowcaseController] Error fetching food showcases:', error);

@@ -7,6 +7,8 @@
     "build": "tsc && copyfiles ./public/**/* ./dist/public",
     "start": "node dist/server.js",
     "dev": "nodemon src/server.ts",
+    "migrate": "prisma migrate dev",
+    "migrate:tags": "ts-node src/scripts/migrateTags.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

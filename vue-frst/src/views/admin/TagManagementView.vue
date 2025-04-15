@@ -11,6 +11,14 @@
             </div>
         </template>
 
+        <!-- 标签类型选择 -->
+        <div class="tag-type-selector">
+            <el-radio-group v-model="activeTagType" @change="handleTagTypeChange">
+                <el-radio-button label="food">美食标签</el-radio-button>
+                <el-radio-button label="post">帖子标签</el-radio-button>
+            </el-radio-group>
+        </div>
+
         <el-table :data="tags" v-loading="isLoading" style="width: 100%; margin-bottom: 20px;">
             <el-table-column prop="name" label="标签名称" sortable />
 
@@ -52,6 +60,13 @@
                 <el-form-item label="标签名称" prop="name" :rules="[{ required: true, message: '标签名称不能为空', trigger: 'blur' }]">
                     <el-input v-model="editFormData.name" placeholder="请输入新的标签名称" />
                 </el-form-item>
+                <el-form-item label="标签类型" prop="type">
+                    <el-select v-model="editFormData.type" placeholder="请选择标签类型" disabled>
+                        <el-option label="美食标签" value="food" />
+                        <el-option label="帖子标签" value="post" />
+                    </el-select>
+                    <div class="form-help-text">标签类型不可更改</div>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <span class="dialog-footer">
@@ -67,6 +82,12 @@
                 <el-form-item label="标签名称" prop="name" :rules="[{ required: true, message: '标签名称不能为空', trigger: 'blur' }]">
                     <el-input v-model="createFormData.name" placeholder="请输入新标签名称" />
                 </el-form-item>
+                <el-form-item label="标签类型" prop="type">
+                    <el-select v-model="createFormData.type" placeholder="请选择标签类型">
+                        <el-option label="美食标签" value="food" />
+                        <el-option label="帖子标签" value="post" />
+                    </el-select>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <span class="dialog-footer">
@@ -81,29 +102,39 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue';
-import { 
-    ElCard, ElButton, ElTable, ElTableColumn, ElTag, ElAlert, ElMessageBox, 
-    ElMessage, ElDialog, ElForm, ElFormItem, ElInput, ElIcon 
+import { ref, onMounted, reactive, computed } from 'vue';
+import {
+    ElCard, ElButton, ElTable, ElTableColumn, ElTag, ElAlert, ElMessageBox,
+    ElMessage, ElDialog, ElForm, ElFormItem, ElInput, ElIcon, ElTabs, ElTabPane, ElSelect, ElOption
 } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue'; // Import Plus icon
-import type { FormInstance } from 'element-plus' 
-import { AdminService } from '@/services/AdminService';
-import type { Tag } from '@/types/models'; 
+import type { FormInstance } from 'element-plus'
+import { FoodTagService } from '@/services/FoodTagService';
+import { PostTagService } from '@/services/PostTagService';
+import type { Tag } from '@/types/models';
 
-const tags = ref<Tag[]>([]);
+// 标签类型选择
+const activeTagType = ref('food'); // 默认选择美食标签
+
+// 标签数据
+const foodTags = ref<Tag[]>([]);
+const postTags = ref<Tag[]>([]);
+
+// 计算当前显示的标签列表
+const tags = computed(() => activeTagType.value === 'food' ? foodTags.value : postTags.value);
+
 const isLoading = ref(false);
 const error = ref<string | null>(null);
 
 // --- State for Edit Dialog ---
 const editDialogVisible = ref(false);
-const editFormData = reactive({ id: null as number | null, name: '' });
+const editFormData = reactive({ id: null as number | null, name: '', type: 'food' });
 const editingTag = ref<Tag | null>(null);
 const editFormRef = ref<FormInstance>();
 
 // --- State for Create Dialog ---
 const createDialogVisible = ref(false);
-const createFormData = reactive({ name: '' });
+const createFormData = reactive({ name: '', type: 'food' });
 const createFormRef = ref<FormInstance>();
 const isCreating = ref(false); // Loading state for create button
 
@@ -112,11 +143,20 @@ const fetchTags = async () => {
   isLoading.value = true;
   error.value = null;
   try {
-    tags.value = await AdminService.getAllTags();
+    // 根据当前选择的标签类型获取标签
+    if (activeTagType.value === 'food') {
+      foodTags.value = await FoodTagService.getAllTags();
+    } else {
+      postTags.value = await PostTagService.getAllTags();
+    }
   } catch (err) {
     console.error('[TagManagementView] Failed to fetch tags:', err);
     error.value = '加载标签列表失败';
-    tags.value = [];
+    if (activeTagType.value === 'food') {
+      foodTags.value = [];
+    } else {
+      postTags.value = [];
+    }
   } finally {
     isLoading.value = false;
   }
@@ -127,17 +167,24 @@ const handleEdit = (tag: Tag) => {
   editingTag.value = tag;
   editFormData.id = tag.id ?? null;
   editFormData.name = tag.name;
+  editFormData.type = activeTagType.value;
   editDialogVisible.value = true;
-  editFormRef.value?.clearValidate('name'); 
+  editFormRef.value?.clearValidate('name');
 };
 
 const confirmEdit = async () => {
     if (!editFormRef.value) return;
     try {
-        await editFormRef.value.validate(); 
+        await editFormRef.value.validate();
         if (editingTag.value && typeof editingTag.value.id === 'number' && editFormData.name !== editingTag.value.name) {
             try {
-                await AdminService.updateTag(editingTag.value.id, { name: editFormData.name }); 
+                // 根据标签类型选择服务
+                if (editFormData.type === 'food') {
+                    await FoodTagService.updateTag(editingTag.value.id, editFormData.name);
+                } else {
+                    await PostTagService.updateTag(editingTag.value.id, editFormData.name);
+                }
+
                 ElMessage.success(`标签 "${editingTag.value.name}" 更新为 "${editFormData.name}" 成功`);
                 editDialogVisible.value = false;
                 await fetchTags();
@@ -173,7 +220,14 @@ const handleDelete = async (tag: Tag) => {
          ElMessage.error('标签 ID 无效，无法删除');
          return;
     }
-    await AdminService.deleteTag(tag.id);
+
+    // 根据当前标签类型选择服务
+    if (activeTagType.value === 'food') {
+        await FoodTagService.deleteTag(tag.id);
+    } else {
+        await PostTagService.deleteTag(tag.id);
+    }
+
     ElMessage.success(`标签 "${tag.name}" 删除成功`);
     await fetchTags();
   } catch (error) {
@@ -190,6 +244,7 @@ const handleDelete = async (tag: Tag) => {
 // --- Create Tag Handlers ---
 const openCreateDialog = () => {
     createFormData.name = ''; // Reset name
+    createFormData.type = activeTagType.value; // 设置当前标签类型
     createDialogVisible.value = true;
     createFormRef.value?.clearValidate('name');
 };
@@ -199,19 +254,24 @@ const confirmCreate = async () => {
     try {
         // Validate form
         await createFormRef.value.validate();
-        
+
         // Proceed if validation is successful
         isCreating.value = true;
-        console.log(`Creating tag with name: ${createFormData.name}`);
-        
+        console.log(`Creating ${createFormData.type} tag with name: ${createFormData.name}`);
+
         try {
-            // --- Call API to create --- 
-            const newTag = await AdminService.createTag({ name: createFormData.name }); 
-            
+            // --- Call API to create ---
+            let newTag;
+            if (createFormData.type === 'food') {
+                newTag = await FoodTagService.createTag(createFormData.name);
+            } else {
+                newTag = await PostTagService.createTag(createFormData.name);
+            }
+
             ElMessage.success(`标签 "${newTag.name}" 创建成功`); // Use name from response
             createDialogVisible.value = false;
             await fetchTags(); // Refresh list
-        
+
         } catch (apiError) {
              // --- Catch API errors ---
              console.error('[TagManagementView] Failed to create tag:', apiError);
@@ -228,9 +288,21 @@ const confirmCreate = async () => {
     }
 };
 
+// 切换标签类型
+const handleTagTypeChange = (type: string) => {
+  activeTagType.value = type;
+  fetchTags();
+};
+
 // --- Lifecycle Hooks ---
 onMounted(() => {
+  // 初始加载美食标签
   fetchTags();
+  // 加载帖子标签
+  activeTagType.value = 'post';
+  fetchTags();
+  // 切回美食标签
+  activeTagType.value = 'food';
 });
 </script>
 
@@ -244,4 +316,4 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
 }
-</style> 
+</style>

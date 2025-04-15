@@ -56,7 +56,8 @@ const PostRoutes_1 = require("./routes/PostRoutes");
 const FeedRoutes_1 = __importDefault(require("./routes/FeedRoutes"));
 const NotificationRoutes_1 = __importDefault(require("./routes/NotificationRoutes"));
 const foodShowcaseRoutes_1 = __importDefault(require("./routes/foodShowcaseRoutes"));
-const TagRoutes_1 = __importDefault(require("./routes/TagRoutes")); // Import tag routes
+const PostTagRoutes_1 = __importDefault(require("./routes/PostTagRoutes"));
+const FoodTagRoutes_1 = __importDefault(require("./routes/FoodTagRoutes"));
 const AdminRoutes_1 = __importDefault(require("./routes/AdminRoutes")); // Import admin routes
 const ErrorHandlingMiddleware_1 = require("./middleware/ErrorHandlingMiddleware");
 const mailer_1 = require("./utils/mailer"); // <-- 导入邮件初始化函数
@@ -79,21 +80,20 @@ const port = process.env.PORT || 3001;
 //   next();
 // });
 // Explicitly configure CORS
-const allowedOrigins = ['http://localhost:5173']; // Add other origins if needed
+const allowedOrigins = [
+    'http://localhost:5173',
+    'https://web-frsd-test.vercel.app',
+    'https://web-frsd-test-git-master-yileinaws-projects.vercel.app',
+    'http://120.227.223.28:3001',
+    'http://120.227.223.28',
+    'https://f9ea-120-227-223-28.ngrok-free.app'
+]; // 添加 Vercel 域名、公网IP 和 ngrok URL
+// 使用更宽松的 CORS 配置
 const corsOptions = {
-    origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin)
-            return callback(null, true);
-        if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-            return callback(new Error(msg), false);
-        }
-        return callback(null, true);
-    },
+    origin: '*', // 允许所有来源
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true // If you need to handle cookies or authorization headers
+    credentials: true // 如果需要处理 cookie 或授权标头
 };
 app.use(cors.default(corsOptions));
 // --- Ensure Body Parsers are Active ---
@@ -121,6 +121,18 @@ console.log(`[Server] Serving user uploads from: ${uploadsRootDirectory} at /upl
 app.get('/', (req, res) => {
     res.send('TDFRS Backend API is running!');
 });
+// --- 直接挂载路由到根路径，而不是重定向 ---
+// 将 /api/auth 路由同时挂载到 /auth 路径
+app.use('/auth', AuthRoutes_1.default);
+app.use('/posts', PostRoutes_1.postRouter);
+app.use('/comments', PostRoutes_1.commentRouter);
+app.use('/feed', FeedRoutes_1.default);
+app.use('/notifications', NotificationRoutes_1.default);
+app.use('/food-showcase', foodShowcaseRoutes_1.default);
+app.use('/post-tags', PostTagRoutes_1.default);
+app.use('/food-tags', FoodTagRoutes_1.default);
+app.use('/admin', AdminRoutes_1.default);
+app.use('/users', UserRoutes_1.userRouter);
 // --- Restore Original API Route Order ---
 // 添加调试日志
 console.log('[server.ts] 挂载认证路由到 /api/auth');
@@ -138,19 +150,88 @@ app.use('/api/comments', PostRoutes_1.commentRouter);
 app.use('/api/feed', FeedRoutes_1.default);
 app.use('/api/notifications', NotificationRoutes_1.default);
 app.use('/api/food-showcase', foodShowcaseRoutes_1.default);
-app.use('/api/tags', TagRoutes_1.default); // Mount tag routes
+app.use('/api/post-tags', PostTagRoutes_1.default); // 挂载帖子标签路由
+app.use('/api/food-tags', FoodTagRoutes_1.default); // 挂载美食标签路由
 app.use('/api/admin', AdminRoutes_1.default); // Mount admin routes
+// --- 添加详细的错误日志中间件 ---
+app.use((err, req, res, next) => {
+    console.error('[ErrorLoggerMiddleware] 详细错误日志:', {
+        url: req.originalUrl,
+        method: req.method,
+        errorMessage: err.message,
+        errorStack: err.stack,
+        errorName: err.name,
+        errorCode: err.code
+    });
+    next(err);
+});
+// --- 404 处理中间件 ---
+app.use('/api/*', (req, res) => {
+    console.log(`[Server] API 路径不存在: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ message: 'API 路径不存在', path: req.originalUrl });
+});
 // --- 全局错误处理中间件 ---
 app.use(ErrorHandlingMiddleware_1.errorHandler);
+// --- 添加前端路由回退处理 ---
+// 这个中间件必须放在所有API路由之后，用于处理前端路由刷新问题
+// 添加通用的前端路由处理，不依赖于前端构建目录
+// 所有未匹配的路由都返回 200 状态码，允许前端路由处理
+app.use('*', (req, res, next) => {
+    const url = req.originalUrl || req.url;
+    // 打印所有请求以便于调试
+    console.log(`[Server] 收到请求: ${req.method} ${url}`);
+    // 如果是 API 请求或静态资源请求，则交给下一个中间件处理
+    if (req.method !== 'GET' ||
+        url.startsWith('/api/') ||
+        url.startsWith('/auth/') ||
+        url.startsWith('/posts/') ||
+        url.startsWith('/comments/') ||
+        url.startsWith('/feed/') ||
+        url.startsWith('/notifications/') ||
+        url.startsWith('/food-showcase/') ||
+        url.startsWith('/post-tags/') ||
+        url.startsWith('/food-tags/') ||
+        url.startsWith('/admin/') ||
+        url.startsWith('/users/') ||
+        url.startsWith('/uploads/') ||
+        url.includes('.')) {
+        return next();
+    }
+    // 如果是前端路由请求，则返回 200 状态码
+    console.log(`[Server] 处理前端路由请求: ${req.path}`);
+    // 尝试从前端构建目录返回 index.html
+    const frontendDistPath = path_1.default.resolve(__dirname, '..', 'public', 'frontend');
+    const fs = require('fs');
+    const indexPath = path_1.default.join(frontendDistPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+    }
+    // 如果前端构建目录不存在，则返回简单的 HTML
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>API Server</title>
+    </head>
+    <body>
+      <h1>API Server is running</h1>
+      <p>This is a backend API server. Frontend routes are being handled.</p>
+    </body>
+    </html>
+  `);
+});
 // --- End API Routes ---
 // 异步启动函数
 function startServer() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             yield (0, mailer_1.initializeMailer)(); // <-- 初始化邮件服务
-            app.listen(port, () => {
+            // 确保 port 是数字类型
+            const portNumber = typeof port === 'string' ? parseInt(port, 10) : port;
+            app.listen(portNumber, '0.0.0.0', () => {
                 // Keep this log
-                console.log(`[Server]: Server is running at http://localhost:${port}`);
+                console.log(`[Server]: Server is running at http://0.0.0.0:${portNumber} (accessible from all network interfaces)`);
             });
         }
         catch (error) {

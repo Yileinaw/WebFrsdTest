@@ -18,13 +18,13 @@
         <router-link to="/discover?filter=featured" class="view-more-link">查看更多推荐 &gt;</router-link>
       </div>
       <div v-if="loadingFeatured" class="loading-indicator">加载中...</div>
-      
+
       <!-- Replace Scrollbar with Carousel -->
-      <el-carousel 
-        v-else-if="featuredPosts.length > 0" 
-        :interval="5000" 
-        type="card" 
-        height="350px" 
+      <el-carousel
+        v-else-if="featuredPosts.length > 0"
+        :interval="5000"
+        type="card"
+        height="350px"
         arrow="always"
         indicator-position="none"
         class="featured-carousel"
@@ -36,7 +36,7 @@
            </div>
         </el-carousel-item>
       </el-carousel>
-      
+
       <el-empty v-else-if="!errorFeatured" description="暂无热门推荐"></el-empty>
       <el-alert v-if="errorFeatured" :title="errorFeatured" type="error" show-icon :closable="false" />
     </section>
@@ -45,20 +45,23 @@
     <section class="latest-section container">
       <div class="section-header">
         <h2><el-icon><ChatLineSquare /></el-icon> 最新分享</h2>
-        <router-link to="/community" class="view-more-link">进入社区 &gt;</router-link>
+        <div class="header-actions">
+          <el-button type="primary" size="small" @click="navigateToCreatePost">发布帖子</el-button>
+          <router-link to="/community" class="view-more-link">进入社区 &gt;</router-link>
+        </div>
       </div>
       <div v-if="loadingCommunity" class="loading-indicator">加载中...</div>
-      
+
       <!-- Removed el-scrollbar, use a simple div for vertical list -->
       <div v-else-if="latestCommunityPosts.length > 0" class="latest-posts-list vertical-list">
-          <FoodCard 
-            v-for="post in latestCommunityPosts" 
-            :key="post.id" 
-            :post="post" 
-            class="latest-post-card horizontal-layout" 
+          <FoodCard
+            v-for="post in latestCommunityPosts"
+            :key="post.id"
+            :post="post"
+            class="latest-post-card horizontal-layout"
           />
       </div>
-      
+
       <el-empty v-else-if="!errorCommunity" description="暂无最新分享"></el-empty>
       <el-alert v-if="errorCommunity" :title="errorCommunity" type="error" show-icon :closable="false" />
     </section>
@@ -68,13 +71,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { RouterLink } from 'vue-router';
-import { ElIcon, ElEmpty, ElAlert, ElCarousel, ElCarouselItem } from 'element-plus';
+import { RouterLink, useRouter } from 'vue-router';
+import { ElIcon, ElEmpty, ElAlert, ElCarousel, ElCarouselItem, ElButton, ElMessage } from 'element-plus';
 import { Star, ChatLineSquare } from '@element-plus/icons-vue';
 import FoodCard from '@/components/common/FoodCard.vue';
 import { PostService } from '@/services/PostService';
 import type { PostPreview, FoodShowcasePreview } from '@/types/models';
 import { AdminService } from '@/services/AdminService';
+import { useUserStore } from '@/stores/modules/user';
 
 function shuffleArray<T>(array: T[]): T[] {
   for (let i = array.length - 1; i > 0; i--) {
@@ -84,6 +88,9 @@ function shuffleArray<T>(array: T[]): T[] {
   return array;
 }
 
+const router = useRouter();
+const userStore = useUserStore();
+
 const featuredPosts = ref<FoodShowcasePreview[]>([]);
 const loadingFeatured = ref(false);
 const errorFeatured = ref<string | null>(null);
@@ -91,15 +98,43 @@ const latestCommunityPosts = ref<PostPreview[]>([]);
 const loadingCommunity = ref(false);
 const errorCommunity = ref<string | null>(null);
 
+// 导航到发布帖子页面
+const navigateToCreatePost = () => {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning('请先登录再发布帖子');
+    router.push('/login');
+    return;
+  }
+  router.push({ name: 'CreatePost' });
+};
+
 const fetchFeaturedPosts = async () => {
   loadingFeatured.value = true;
   errorFeatured.value = null;
   try {
+    console.log('[HomeView] 开始获取特色帖子...');
     const response = await AdminService.getFoodShowcases({ page: 1, limit: 12 });
-    featuredPosts.value = shuffleArray([...response.items]).slice(0, 6);
+    console.log('[HomeView] 获取特色帖子响应:', response);
+
+    // 检查响应格式并进行适当处理
+    if (response && response.items && Array.isArray(response.items)) {
+      // 正常情况：响应包含 items 数组
+      featuredPosts.value = shuffleArray([...response.items]).slice(0, 6);
+      console.log('[HomeView] 处理后的特色帖子:', featuredPosts.value);
+    } else if (response && Array.isArray(response)) {
+      // 备选情况：响应本身就是数组
+      featuredPosts.value = shuffleArray([...response]).slice(0, 6);
+      console.log('[HomeView] 处理后的特色帖子(数组响应):', featuredPosts.value);
+    } else {
+      // 无法处理的响应格式
+      console.error('[HomeView] 无法处理的响应格式:', response);
+      throw new Error('响应格式不符合预期');
+    }
   } catch (err) {
     console.error("[HomeView] Failed to fetch featured posts:", err);
     errorFeatured.value = '加载热门推荐失败';
+    // 设置空数组确保不会出现 items is not iterable 错误
+    featuredPosts.value = [];
   } finally {
     loadingFeatured.value = false;
   }
@@ -109,11 +144,29 @@ const fetchLatestCommunityPosts = async () => {
   loadingCommunity.value = true;
   errorCommunity.value = null;
   try {
+    console.log('[HomeView] 开始获取最新社区帖子...');
     const response = await PostService.getAllPosts({ sortBy: 'createdAt', limit: 4 });
-    latestCommunityPosts.value = response.posts;
+    console.log('[HomeView] 获取最新社区帖子响应:', response);
+
+    // 检查响应格式并进行适当处理
+    if (response && response.posts && Array.isArray(response.posts)) {
+      // 正常情况：响应包含 posts 数组
+      latestCommunityPosts.value = response.posts;
+      console.log('[HomeView] 处理后的最新社区帖子:', latestCommunityPosts.value);
+    } else if (response && Array.isArray(response)) {
+      // 备选情况：响应本身就是数组
+      latestCommunityPosts.value = response;
+      console.log('[HomeView] 处理后的最新社区帖子(数组响应):', latestCommunityPosts.value);
+    } else {
+      // 无法处理的响应格式
+      console.error('[HomeView] 无法处理的响应格式:', response);
+      throw new Error('响应格式不符合预期');
+    }
   } catch (err) {
     console.error("[HomeView] Failed to fetch latest community posts:", err);
     errorCommunity.value = '加载最新分享失败';
+    // 设置空数组确保不会出现错误
+    latestCommunityPosts.value = [];
   } finally {
     loadingCommunity.value = false;
   }
@@ -173,6 +226,12 @@ onMounted(() => {
     color: #333;
   }
 
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+  }
+
   .view-more-link {
     font-size: 0.9rem;
     color: var(--el-color-primary);
@@ -203,28 +262,28 @@ onMounted(() => {
 
 .featured-carousel {
   margin: 0 -10px;
-  
+
   .el-carousel__item {
     display: flex;
     justify-content: center;
     align-items: center;
   }
-  
+
   .carousel-card-wrapper {
-      width: 90%; 
-      height: 100%; 
+      width: 90%;
+      height: 100%;
       display: flex;
       justify-content: center;
   }
 
   .featured-post-card {
-     width: 100%; 
-     height: 100%; 
-     box-shadow: 0 2px 12px rgba(0,0,0,0.1); 
+     width: 100%;
+     height: 100%;
+     box-shadow: 0 2px 12px rgba(0,0,0,0.1);
   }
 
   :deep(.el-carousel__arrow) {
-      background-color: rgba(31, 45, 61, 0.6); 
+      background-color: rgba(31, 45, 61, 0.6);
       &:hover {
          background-color: rgba(31, 45, 61, 0.8);
       }
@@ -233,13 +292,13 @@ onMounted(() => {
 
 /* --- Latest Posts Section - Vertical List Styles --- */
 .latest-section {
-   margin-bottom: 30px; 
+   margin-bottom: 30px;
 }
 
 .latest-posts-list.vertical-list {
-  display: flex;          
+  display: flex;
   flex-direction: column;
-  gap: 25px;             
+  gap: 25px;
 }
 
 .latest-post-card {

@@ -40,6 +40,7 @@ interface ResetPasswordData {
 export const AuthService = {
     async register(data: RegisterData): Promise<RegisterResponse> {
         // 注意：Axios 返回的数据在 response.data 中
+        // 注意：这里不需要添加 /api 前缀，因为 http 实例已经配置了 baseURL
         const response = await http.post<RegisterResponse>('/auth/register', data);
         return response.data;
     },

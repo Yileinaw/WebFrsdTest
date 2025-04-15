@@ -2,8 +2,47 @@
   <div class="dashboard-view">
     <h2 class="page-title">仪表盘</h2>
 
+    <!-- 加载状态 -->
+    <el-row v-if="loading" class="loading-container">
+      <el-col :span="24" class="loading-col">
+        <el-skeleton :rows="10" animated />
+      </el-col>
+    </el-row>
+
+    <!-- 错误提示 -->
+    <el-alert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      :closable="false"
+      class="error-alert"
+    >
+      <!-- 开发环境下显示设置管理员按钮 -->
+      <template v-if="isDev && error.includes('权限不足')" #default>
+        <div class="mt-2">
+          <el-button type="primary" size="small" @click="makeAdmin" :loading="makingAdmin">
+            设置为管理员
+          </el-button>
+          <p class="text-xs mt-1">注意：此功能仅在开发环境下可用</p>
+        </div>
+      </template>
+    </el-alert>
+
+    <!-- 刷新按钮 -->
+    <div class="refresh-container">
+      <el-button
+        type="primary"
+        :icon="RefreshRight"
+        :loading="loading"
+        @click="fetchDashboardStats"
+      >
+        刷新数据
+      </el-button>
+    </div>
+
     <!-- 数据概览卡片 -->
-    <el-row :gutter="20" class="stat-cards">
+    <el-row v-if="!loading && !error" :gutter="20" class="stat-cards">
       <el-col :xs="24" :sm="12" :md="6" :lg="6" :xl="6">
         <el-card shadow="hover" class="stat-card">
           <template #header>
@@ -82,7 +121,7 @@
     </el-row>
 
     <!-- 图表区域 -->
-    <el-row :gutter="20" class="chart-row">
+    <el-row v-if="!loading && !error" :gutter="20" class="chart-row">
       <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
         <el-card shadow="hover" class="chart-card">
           <template #header>
@@ -111,7 +150,7 @@
     </el-row>
 
     <!-- 最近内容列表 -->
-    <el-row class="recent-content-row">
+    <el-row v-if="!loading && !error" class="recent-content-row">
       <el-col :span="24">
         <el-card shadow="hover">
           <template #header>
@@ -157,10 +196,11 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import {
-  ElRow, ElCol, ElCard, ElTable, ElTableColumn, ElTag, ElButton, ElIcon
+  ElRow, ElCol, ElCard, ElTable, ElTableColumn, ElTag, ElButton, ElIcon,
+  ElSkeleton, ElAlert, ElMessage
 } from 'element-plus';
 import {
-  Picture, Document, User, Star, ArrowUp, ArrowDown
+  Picture, Document, User, Star, ArrowUp, ArrowDown, RefreshRight
 } from '@element-plus/icons-vue';
 import { AdminService } from '@/services/AdminService';
 // 自定义日期格式化函数
@@ -197,7 +237,10 @@ use([
 
 const router = useRouter();
 const loading = ref(true);
+const error = ref('');
 const dashboardStats = ref<any>(null);
+const isDev = import.meta.env.DEV;
+const makingAdmin = ref(false);
 
 // 获取仪表盘数据
 const fetchDashboardStats = async () => {
@@ -206,8 +249,22 @@ const fetchDashboardStats = async () => {
     const response = await AdminService.getDashboardStats();
     dashboardStats.value = response;
     console.log('Dashboard stats:', dashboardStats.value);
-  } catch (error) {
-    console.error('Error fetching dashboard stats:', error);
+    // 清除错误信息
+    error.value = '';
+  } catch (err: any) {
+    console.error('Error fetching dashboard stats:', err);
+    // 设置错误信息
+    error.value = err.message || '获取仪表盘数据失败';
+    // 初始化空数据
+    dashboardStats.value = {
+      showcases: { total: 0, growth: 0 },
+      users: { total: 0, growth: 0 },
+      posts: { total: 0, growth: 0 },
+      favorites: { total: 0, growth: 0 },
+      contentTrend: [],
+      tagDistribution: [],
+      recentContent: []
+    };
   } finally {
     loading.value = false;
   }
@@ -327,8 +384,42 @@ const viewContent = (row: any) => {
   }
 };
 
+// 将当前用户设置为管理员（仅开发环境）
+const makeAdmin = async () => {
+  if (!isDev) return;
+
+  try {
+    makingAdmin.value = true;
+    const result = await AdminService.makeAdmin();
+    ElMessage.success(result.message || '您已被设置为管理员');
+    // 清除错误并重新获取数据
+    error.value = '';
+    await fetchDashboardStats();
+  } catch (err: any) {
+    ElMessage.error(err.message || '设置管理员失败');
+  } finally {
+    makingAdmin.value = false;
+  }
+};
+
+// 添加重试机制
+const retryCount = ref(0);
+const maxRetries = 3;
+
+const fetchWithRetry = async () => {
+  try {
+    await fetchDashboardStats();
+  } catch (err) {
+    if (retryCount.value < maxRetries) {
+      retryCount.value++;
+      console.log(`重试获取仪表盘数据 (第${retryCount.value}次)`);
+      setTimeout(fetchWithRetry, 1000); // 等待1秒后重试
+    }
+  }
+};
+
 onMounted(() => {
-  fetchDashboardStats();
+  fetchWithRetry();
 });
 </script>
 
@@ -411,5 +502,28 @@ onMounted(() => {
 
 .recent-content-row {
   margin-bottom: 24px;
+}
+
+.loading-container {
+  margin-bottom: 20px;
+}
+
+.error-alert {
+  margin-bottom: 20px;
+
+  .mt-2 {
+    margin-top: 0.5rem;
+  }
+
+  .text-xs {
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+  }
+}
+
+.refresh-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
 }
 </style>
