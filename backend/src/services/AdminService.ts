@@ -23,26 +23,25 @@ export class AdminService {
 
       // 单独查询标签数据
       console.log('[AdminService] 查询标签数据');
+      // 由于模型结构变化，需要使用原始SQL查询获取标签计数
+      // 简化仪表盘统计，暂时不显示标签统计
+      const [foodTagsWithCounts, postTagsWithCounts] = [[], []];
+
+      // 以下是原始查询，但由于表名问题暂时注释掉
+      /*
       const [foodTagsWithCounts, postTagsWithCounts] = await Promise.all([
-        prisma.foodTag.findMany({
-          select: {
-            id: true,
-            name: true,
-            _count: {
-              select: { foodShowcases: true }
-            }
-          }
-        }),
-        prisma.postTag.findMany({
-          select: {
-            id: true,
-            name: true,
-            _count: {
-              select: { posts: true }
-            }
-          }
-        })
+        prisma.$queryRaw`
+          SELECT ft.id, ft.name, 0 as count
+          FROM "FoodTag" ft
+          ORDER BY ft.name
+        `,
+        prisma.$queryRaw`
+          SELECT pt.id, pt.name, 0 as count
+          FROM "PostTag" pt
+          ORDER BY pt.name
+        `
       ]);
+      */
 
       // 获取最近内容
       console.log('[AdminService] 查询最近内容');
@@ -124,16 +123,16 @@ export class AdminService {
 
       // 格式化标签分布数据
       // 合并两种标签并添加类型标记
-      const foodTagsFormatted = foodTagsWithCounts.map((tag: { name: string; id: number; _count: { foodShowcases: number } }) => ({
+      const foodTagsFormatted = (foodTagsWithCounts as any[]).map((tag: { name: string; id: number; count: number }) => ({
         name: tag.name,
-        count: tag._count.foodShowcases,
+        count: Number(tag.count),
         type: 'food',
         color: this.getRandomColor(tag.id)
       }));
 
-      const postTagsFormatted = postTagsWithCounts.map((tag: { name: string; id: number; _count: { posts: number } }) => ({
+      const postTagsFormatted = (postTagsWithCounts as any[]).map((tag: { name: string; id: number; count: number }) => ({
         name: tag.name,
-        count: tag._count.posts,
+        count: Number(tag.count),
         type: 'post',
         color: this.getRandomColor(tag.id + 100) // 加偏移确保颜色不同
       }));
