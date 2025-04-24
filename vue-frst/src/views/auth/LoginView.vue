@@ -304,7 +304,28 @@ const handleSendResetCode = async () => {
 
 // --- Resend Verification Logic ---
 const handleResendVerification = async () => {
-  ElMessage.info('请确保您的账户已激活。如果需要重新发送验证邮件，请联系支持。')
+  const identifier = loginForm.identifier
+  // 简单的邮箱格式校验
+  const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/
+  if (!identifier || !emailRegex.test(identifier)) {
+      // 修改错误提示，引导用户输入邮箱
+      ElMessage.error('请在"用户名或邮箱"输入框中输入您注册时使用的邮箱地址，然后重试发送验证邮件。')
+      return
+  }
+
+  // 如果是有效的邮箱地址，则继续
+  const email = identifier;
+  isResending.value = true
+  try {
+      const response = await AuthService.resendVerificationEmail(email)
+      ElMessage.success(response.message || '验证邮件已发送，请检查您的收件箱。')
+      showResendLink.value = false // 发送成功后可以隐藏链接
+  } catch (error: any) {
+      console.error('Resend verification email failed:', error)
+      ElMessage.error(error.response?.data?.message || '重新发送验证邮件失败，请稍后重试。')
+  } finally {
+      isResending.value = false
+  }
 }
 </script>
 
@@ -326,51 +347,29 @@ $success-color: #67c23a;
 $warning-color: #e6a23c;
 $danger-color: #f56c6c;
 
-// 全局容器样式
+// 全局容器样式 - 设为全屏高度
 .auth-container {
   display: flex;
-  justify-content: center;
-  align-items: center;
   min-height: 100vh;
   background-color: $background-light;
-  overflow: hidden;
-  position: relative;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, rgba($primary-color, 0.05) 0%, rgba($secondary-color, 0.05) 100%);
-    z-index: 0;
-  }
 }
 
-// 主内容区域
+// 主内容区域 - 取消固定大小和阴影
 .auth-content {
   display: flex;
-  width: 900px;
-  height: 600px;
-  background-color: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 30px $shadow-color;
-  overflow: hidden;
-  position: relative;
-  z-index: 1;
+  width: 100%;
 }
 
-// 左侧品牌区域
+// 左侧品牌区域 - 调整 flex 比例和内边距
 .auth-branding {
-  flex: 1;
+  flex: 0 0 45%;
   background: linear-gradient(135deg, $primary-color 0%, color.adjust($primary-color, $lightness: -15%) 100%);
   color: white;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 40px;
+  padding: 60px 40px;
   position: relative;
   overflow: hidden;
 
@@ -381,7 +380,7 @@ $danger-color: #f56c6c;
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: url('/assets/images/pattern.svg');
+    background-image: url('/assets/images/pattern.svg'); // Keep pattern if desired
     background-size: cover;
     opacity: 0.1;
   }
@@ -391,289 +390,112 @@ $danger-color: #f56c6c;
     z-index: 2;
     text-align: center;
     width: 100%;
+    max-width: 450px;
   }
 
-  .logo-container {
-    margin-bottom: 20px;
-
-    .logo {
-      width: 80px;
-      height: 80px;
-      object-fit: contain;
-    }
-  }
-
-  .brand-title {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 10px;
-    letter-spacing: 1px;
-  }
-
-  .brand-slogan {
-    font-size: 1.2rem;
-    opacity: 0.9;
-    margin-bottom: 40px;
-  }
-
-  .illustration {
-    max-width: 80%;
-    margin: 0 auto;
-
-    img {
-      width: 100%;
-      height: auto;
-    }
-  }
+  .logo-container { margin-bottom: 25px; .logo { width: 90px; height: 90px; object-fit: contain; }}
+  .brand-title { font-size: 2.8rem; font-weight: 700; margin-bottom: 15px; letter-spacing: 1px; }
+  .brand-slogan { font-size: 1.3rem; opacity: 0.9; margin-bottom: 50px; }
+  .illustration { max-width: 90%; margin: 0 auto; img { width: 100%; height: auto; } }
 }
 
-// 右侧表单区域
+// 右侧表单区域 - 调整 flex 比例，允许滚动
 .auth-forms {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 40px;
+  justify-content: center; // Center form vertically
+  padding: 60px 40px;
+  overflow-y: auto; // Allow scrolling
 
   .form-container {
     width: 100%;
-    max-width: 380px;
+    max-width: 400px;
     margin: 0 auto;
   }
 
-  .form-header {
-    margin-bottom: 30px;
-
-    .form-title {
-      font-size: 1.8rem;
-      font-weight: 600;
-      color: $text-primary;
-      margin-bottom: 8px;
-    }
-
-    .form-subtitle {
-      font-size: 1rem;
-      color: $text-secondary;
-    }
+  .form-header { margin-bottom: 35px;
+     .form-title { font-size: 1.8rem; font-weight: 600; color: $text-primary; margin-bottom: 8px; }
+     .form-subtitle { font-size: 1rem; color: $text-secondary; }
   }
-
-  .form-wrapper {
-    .auth-form {
-      margin-bottom: 20px;
-    }
-  }
-
-  // 自定义表单元素
+  .form-wrapper { .auth-form { margin-bottom: 20px; } }
   .custom-form-item {
-    margin-bottom: 24px;
-
-    :deep(.el-form-item__label) {
-      padding-bottom: 8px;
-      font-weight: 500;
-      color: $text-primary;
-    }
-
+    margin-bottom: 28px;
+    :deep(.el-form-item__label) { padding-bottom: 8px; font-weight: 500; color: $text-primary; }
     .custom-input {
       :deep(.el-input__wrapper) {
-        padding: 0 15px;
-        height: 48px;
-        box-shadow: 0 0 0 1px $border-color inset;
-        border-radius: 8px;
-        transition: all 0.3s;
-
-        &:hover {
-          box-shadow: 0 0 0 1px $primary-color inset;
-        }
-
-        &.is-focus {
-          box-shadow: 0 0 0 1px $primary-color inset;
-        }
+        padding: 0 15px; height: 48px; box-shadow: 0 0 0 1px $border-color inset; border-radius: 8px; transition: all 0.3s;
+        &:hover { box-shadow: 0 0 0 1px $primary-color inset; }
+        &.is-focus { box-shadow: 0 0 0 1px $primary-color inset; }
       }
-
-      :deep(.el-input__prefix) {
-        color: $text-light;
-      }
+      :deep(.el-input__prefix) { color: $text-light; }
     }
   }
-
-  // 记住我和忘记密码选项
-  .form-options {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-
-    :deep(.el-checkbox__label) {
-      color: $text-secondary;
-    }
-
-    .forgot-link {
-      font-size: 0.9rem;
-    }
+  .form-options { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px;
+    :deep(.el-checkbox__label) { color: $text-secondary; }
+    .forgot-link { font-size: 0.9rem; }
   }
-
-  // 登录按钮
   .button-item {
-    margin-bottom: 20px;
-
+    margin-bottom: 25px;
     .submit-button {
-      width: 100%;
-      height: 48px;
-      font-size: 1rem;
-      font-weight: 500;
-      border-radius: 8px;
-      background-color: $primary-color;
-      border-color: $primary-color;
-      transition: all 0.3s;
-
-      &:hover {
-        background-color: color.adjust($primary-color, $lightness: -5%);
-        border-color: color.adjust($primary-color, $lightness: -5%);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba($primary-color, 0.4);
-      }
-
-      &:active {
-        transform: translateY(0);
-      }
+      width: 100%; height: 48px; font-size: 1rem; font-weight: 500; border-radius: 8px; background-color: $primary-color; border-color: $primary-color; transition: all 0.3s;
+      &:hover { background-color: color.adjust($primary-color, $lightness: -5%); border-color: color.adjust($primary-color, $lightness: -5%); transform: translateY(-1px); box-shadow: 0 4px 12px rgba($primary-color, 0.4); }
+      &:active { transform: translateY(0); }
     }
   }
-
-  // 验证邮件链接
-  .verification-item {
-    text-align: center;
-    margin-bottom: 20px;
-
-    .verification-link {
-      font-size: 0.9rem;
-    }
-  }
-
-  // 社交登录选项
+  .verification-item { text-align: center; margin-bottom: 20px; .verification-link { font-size: 0.9rem; } }
   .social-login {
-    margin-bottom: 30px;
-
-    .divider {
-      display: flex;
-      align-items: center;
-      margin: 20px 0;
-      color: $text-light;
-      font-size: 0.9rem;
-
-      &::before,
-      &::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background-color: $border-color;
-      }
-
-      span {
-        padding: 0 15px;
-      }
+    margin-bottom: 35px;
+    .divider { display: flex; align-items: center; margin: 20px 0; color: $text-light; font-size: 0.9rem;
+      &::before, &::after { content: ''; flex: 1; height: 1px; background-color: $border-color; }
+      span { padding: 0 15px; }
     }
-
-    .social-icons {
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-
+    .social-icons { display: flex; justify-content: center; gap: 20px;
       .social-icon {
-        width: 44px;
-        height: 44px;
-        font-size: 1.2rem;
-        border: 1px solid $border-color;
-        background-color: white;
-        transition: all 0.3s;
-
-        &:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        &.wechat:hover {
-          color: #07c160;
-          border-color: #07c160;
-        }
-
-        &.qq:hover {
-          color: #12b7f5;
-          border-color: #12b7f5;
-        }
-
-        &.weibo:hover {
-          color: #e6162d;
-          border-color: #e6162d;
-        }
+        width: 44px; height: 44px; font-size: 1.2rem; border: 1px solid $border-color; background-color: white; transition: all 0.3s;
+        &:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); }
+        &.wechat:hover { color: #07c160; border-color: #07c160; }
+        &.qq:hover { color: #12b7f5; border-color: #12b7f5; }
+        &.weibo:hover { color: #e6162d; border-color: #e6162d; }
       }
     }
   }
-
-  // 注册链接
-  .register-link-container {
-    text-align: center;
-    color: $text-secondary;
-    font-size: 0.9rem;
-
-    .register-link {
-      color: $primary-color;
-      font-weight: 500;
-      margin-left: 5px;
-      text-decoration: none;
-      transition: color 0.3s;
-
-      &:hover {
-        color: color.adjust($primary-color, $lightness: -10%);
-        text-decoration: underline;
-      }
-    }
+  .register-link-container { text-align: center; color: $text-secondary; font-size: 0.9rem; margin-top: 20px;
+    .register-link { color: $primary-color; font-weight: 500; margin-left: 5px; text-decoration: none; transition: color 0.3s; &:hover { color: color.adjust($primary-color, $lightness: -10%); text-decoration: underline; } }
   }
-
-  // 返回登录链接
-  .back-to-login {
-    text-align: center;
-    margin-top: 20px;
-
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      font-size: 0.9rem;
-
-      i {
-        margin-right: 5px;
-      }
-    }
+  .back-to-login { text-align: center; margin-top: 25px;
+    .back-link { display: inline-flex; align-items: center; font-size: 0.9rem; i { margin-right: 5px; } }
   }
 }
 
 // 响应式设计
-@media (max-width: 768px) {
-  .auth-content {
-    flex-direction: column;
-    width: 100%;
-    height: auto;
-    border-radius: 0;
-  }
-
+@media (max-width: 992px) {
+  .auth-content { flex-direction: column; }
   .auth-branding {
-    padding: 30px 20px;
-
-    .brand-title {
-      font-size: 2rem;
-    }
-
-    .brand-slogan {
-      font-size: 1rem;
-      margin-bottom: 20px;
-    }
-
-    .illustration {
-      display: none;
-    }
+    flex: 0 0 auto;
+    padding: 40px 20px;
+    min-height: 300px;
+    .brand-content { max-width: 400px; }
+    .logo-container { margin-bottom: 20px; .logo { width: 70px; height: 70px; } }
+    .brand-title { font-size: 2.2rem; }
+    .brand-slogan { font-size: 1.1rem; margin-bottom: 30px; }
+    .illustration { max-width: 60%; }
   }
-
   .auth-forms {
-    padding: 30px 20px;
+    flex: 1;
+    padding: 40px 20px;
+    justify-content: flex-start;
+    .form-container {
+       max-width: 450px;
+       margin-top: 30px;
+       margin-bottom: 30px;
+    }
   }
+}
+
+@media (max-width: 576px) {
+   .auth-branding { padding: 30px 15px; min-height: 250px; }
+   .auth-forms { padding: 30px 15px; }
+   .form-container { margin-top: 20px; margin-bottom: 20px; }
 }
 </style>

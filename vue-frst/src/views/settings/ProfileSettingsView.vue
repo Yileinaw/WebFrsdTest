@@ -42,7 +42,7 @@
             <!-- Preview of pending avatar -->
             <div class="preview-section">
                 <label>预览</label>
-                <el-avatar :size="120" :src="resolveStaticAssetUrl(pendingAvatarUrl)" />
+                <el-avatar :size="120" :src="resolveStaticAssetUrl(uploadedAvatarPreviewUrl || selectedAvatarUrlInModal)" />
             </div>
 
             <!-- Upload New Avatar - MOVED HERE -->
@@ -77,10 +77,10 @@
                     :src="resolveStaticAssetUrl(presetUrl)"
                     @click="selectPresetOrRemove(presetUrl)"
                     class="preset-avatar"
-                    :class="{ 'selected': pendingAvatarUrl === presetUrl }"
+                    :class="{ 'selected': selectedAvatarUrlInModal === presetUrl }"
                     />
                     <!-- Button to select removing avatar -->
-                    <el-button text @click="selectPresetOrRemove(null)" class="preset-avatar remove-avatar-btn" :class="{ 'selected': pendingAvatarUrl === null }">移除头像</el-button>
+                    <el-button text @click="selectPresetOrRemove(null)" class="preset-avatar remove-avatar-btn" :class="{ 'selected': selectedAvatarUrlInModal === null }">移除头像</el-button>
                 </div>
             </div>
         </div>
@@ -112,8 +112,8 @@ const userStore = useUserStore();
 const editableName = ref('');
 const isUpdatingName = ref(false);
 const avatarDialogVisible = ref(false);
-const pendingAvatarUrl = ref<string | null>(null);
-const isNewUploadPending = ref(false);
+const selectedAvatarUrlInModal = ref<string | null>(null);
+const uploadedAvatarPreviewUrl = ref<string | null>(null);
 const presetAvatarUrls = ref<string[]>([]);
 const showPasswordModal = ref(false); // <-- Define state for modal
 
@@ -179,8 +179,10 @@ const handleAvatarSuccess: UploadProps['onSuccess'] = (
 ) => {
   console.log('[ProfileSettingsView] Avatar Upload Success Response:', response);
   if (response && response.avatarUrl) {
-    pendingAvatarUrl.value = response.avatarUrl;
-    isNewUploadPending.value = true;
+    const newUrl = response.avatarUrl;
+    uploadedAvatarPreviewUrl.value = newUrl; // Set preview for newly uploaded
+    selectedAvatarUrlInModal.value = newUrl; // Also select it automatically
+    console.log(`[ProfileSettingsView] Avatar Upload Success: uploadedAvatarPreviewUrl=${uploadedAvatarPreviewUrl.value}, selectedAvatarUrlInModal=${selectedAvatarUrlInModal.value}`); // Log state after upload
     ElMessage.success('头像上传成功! 请点击保存以应用更改。');
   } else {
      ElMessage.error(response?.message || '头像上传失败，响应无效');
@@ -203,8 +205,9 @@ const beforeAvatarUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile)
 
 // Open avatar dialog
 const openAvatarDialog = () => {
-  pendingAvatarUrl.value = userStore.currentUser?.avatarUrl || null;
-  isNewUploadPending.value = false;
+  selectedAvatarUrlInModal.value = userStore.currentUser?.avatarUrl || null;
+  uploadedAvatarPreviewUrl.value = null; // Clear upload preview
+  console.log(`[ProfileSettingsView] Opening Dialog: initial selectedAvatarUrlInModal=${selectedAvatarUrlInModal.value}`); // Log initial state
   if (presetAvatarUrls.value.length === 0) {
       fetchPresetAvatars();
   }
@@ -214,7 +217,7 @@ const openAvatarDialog = () => {
 // 保存头像选择 (包括上传的、预设的或移除)
 const saveAvatarSelection = async () => {
   const currentStoredUrl = userStore.currentUser?.avatarUrl || null;
-  const urlToSave = pendingAvatarUrl.value;
+  const urlToSave = selectedAvatarUrlInModal.value; // The final choice in modal
 
   if (urlToSave === currentStoredUrl) {
     ElMessage.info('头像未更改');
@@ -222,51 +225,21 @@ const saveAvatarSelection = async () => {
     return;
   }
 
-  console.log('[ProfileSettingsView] Saving avatar selection. New URL:', urlToSave, 'Is new upload:', isNewUploadPending.value);
+  console.log('[ProfileSettingsView] Saving avatar selection. Final URL chosen in modal:', urlToSave); // Log URL to be saved
 
-  // --- 修正逻辑 ---
-  if (isNewUploadPending.value) {
-      // 如果是新上传的头像，后端 POST 已处理。只需更新本地 Store 并关闭。
-      console.log('[ProfileSettingsView] New upload detected. Updating local store and closing.');
-      if (userStore.currentUser && urlToSave) { // 确保 user 存在且 URL 不为 null
-          // 使用 Pinia store 的 action 直接更新头像 URL
-          userStore.updateAvatarUrl(urlToSave);
-          ElMessage.success('新头像已保存!');
-          avatarDialogVisible.value = false;
-          isNewUploadPending.value = false; // 重置标记
-      } else {
-          console.error('[ProfileSettingsView] Cannot update local store after upload: user or URL missing.');
-          // 如果本地更新失败，可以尝试重新获取，但这应该是备选方案
-          try {
-              await userStore.fetchUserProfile();
-              ElMessage.success('新头像已保存! (通过刷新信息)');
-              avatarDialogVisible.value = false;
-              isNewUploadPending.value = false;
-          } catch (fetchError) {
-                console.error('Fallback fetchUserProfile failed:', fetchError);
-                ElMessage.error('保存新头像后同步信息失败');
-                // 即使同步失败，也关闭对话框
-                avatarDialogVisible.value = false;
-                isNewUploadPending.value = false;
-          }
-      }
-  } else {
-      // 如果是选择预设或移除，调用 PUT /me/profile
-      console.log('[ProfileSettingsView] Preset/Remove selected, calling updateMyProfile API.');
-      try {
-          const response = await UserService.updateMyProfile({ avatarUrl: urlToSave });
-          if (response && response.user) {
-              userStore.setUser(response.user); // 使用后端返回的完整用户信息更新 store
-              ElMessage.success('头像更新成功!');
-              avatarDialogVisible.value = false;
-          } else {
-              throw new Error('更新头像后响应无效');
-          }
-      } catch (error: any) {
-          console.error('Failed to update avatar (preset/null):', error);
-          // 显示后端返回的错误信息（如果存在）
-          ElMessage.error(error.response?.data?.message || error.message || '头像更新失败');
-      }
+  // Remove assumption about upload endpoint handling DB update.
+  // Always call the store action which now handles the backend update.
+  console.log(`[ProfileSettingsView] Calling userStore.updateAvatarUrl with:`, urlToSave);
+  try {
+      await userStore.updateAvatarUrl(urlToSave);
+
+      ElMessage.success('头像已更新!');
+      avatarDialogVisible.value = false;
+  } catch (error) {
+      console.error('[ProfileSettingsView] Failed to save avatar selection:', error);
+      ElMessage.error('保存头像失败，请重试。');
+      // Consider fetching profile again to ensure sync on error
+      // await userStore.fetchUserProfile();
   }
 };
 
@@ -295,8 +268,10 @@ const updateName = async () => {
 };
 
 const selectPresetOrRemove = (url: string | null) => {
-    pendingAvatarUrl.value = url;
-    isNewUploadPending.value = false;
+    console.log(`[ProfileSettingsView] Preset/Remove Clicked: url=${url}`); // Log clicked URL
+    selectedAvatarUrlInModal.value = url;
+    uploadedAvatarPreviewUrl.value = null; // Clear upload preview when preset is chosen
+    console.log(`[ProfileSettingsView] State after Preset/Remove Click: selectedAvatarUrlInModal=${selectedAvatarUrlInModal.value}, uploadedAvatarPreviewUrl=${uploadedAvatarPreviewUrl.value}`); // Log state after click
 };
 
 </script>

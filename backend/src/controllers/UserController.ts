@@ -250,36 +250,7 @@ export class UserController {
              return res.status(400).json({ message: 'No valid fields provided for update' });
         }
 
-        let oldSupabasePathToDelete: string | null = null;
-        const bucketName = process.env.SUPABASE_BUCKET_NAME;
-
         try {
-            // --- Step 1: Check and prepare for old avatar deletion if needed --- 
-            if (isUpdatingAvatar && bucketName) { // Only proceed if avatar is being updated and bucket is configured
-                const currentUserData = await prisma.user.findUnique({
-                    where: { id: userId },
-                    select: { avatarUrl: true }
-                });
-                const currentAvatarUrl = currentUserData?.avatarUrl;
-
-                // Check if the current avatar is a Supabase URL
-                if (currentAvatarUrl && currentAvatarUrl.includes(process.env.SUPABASE_URL ?? 'supabase.co')) {
-                    try {
-                        const url = new URL(currentAvatarUrl);
-                        const pathSegments = url.pathname.split('/');
-                        const bucketNameIndex = pathSegments.findIndex(segment => segment === bucketName);
-                        // Ensure the path is within the expected user-avatars folder as well
-                        if (bucketNameIndex > -1 && pathSegments.length > bucketNameIndex + 1 && pathSegments[bucketNameIndex+1] === 'user-avatars') {
-                            oldSupabasePathToDelete = pathSegments.slice(bucketNameIndex + 1).join('/');
-                            console.log(`[UserController.updateMe] User ${userId} is switching to preset avatar. Found old Supabase path to delete: ${oldSupabasePathToDelete}`);
-                        }
-                    } catch (parseError) {
-                        console.error(`[UserController.updateMe] Failed to parse current avatar URL ${currentAvatarUrl} for user ${userId}:`, parseError);
-                    }
-                }
-            }
-            // --- End Step 1 --- 
-
             // --- Step 2: Call Service to update the database --- 
             const updatedUser = await UserService.updateUserProfile(userId, updateData);
 
@@ -287,21 +258,6 @@ export class UserController {
                  return res.status(404).json({ message: 'User not found or update failed internally' });
              }
             // --- End Step 2 --- 
-
-            // --- Step 3: Delete old Supabase avatar if path was found --- 
-            if (oldSupabasePathToDelete && bucketName) {
-                console.log(`[UserController.updateMe] Attempting to delete old Supabase avatar for user ${userId}: ${oldSupabasePathToDelete}`);
-                const { error: deleteError } = await supabase.storage
-                    .from(bucketName)
-                    .remove([oldSupabasePathToDelete]);
-                
-                if (deleteError) {
-                    console.error(`[UserController.updateMe] Failed to delete old Supabase avatar ${oldSupabasePathToDelete} for user ${userId}:`, deleteError);
-                } else {
-                    console.log(`[UserController.updateMe] Successfully deleted old Supabase avatar: ${oldSupabasePathToDelete}`);
-                }
-            }
-            // --- End Step 3 --- 
 
             // --- Step 4: Return success response --- 
             return res.status(200).json({
@@ -451,8 +407,13 @@ export class UserController {
                         const pathSegments = url.pathname.split('/');
                         const bucketNameIndex = pathSegments.findIndex(segment => segment === bucketName);
                         if (bucketNameIndex > -1 && pathSegments.length > bucketNameIndex + 1) {
-                            oldSupabasePath = pathSegments.slice(bucketNameIndex + 1).join('/');
-                             console.log(`[UserController.uploadAvatar] Found old Supabase path to delete: ${oldSupabasePath}`);
+                            const potentialPath = pathSegments.slice(bucketNameIndex + 1).join('/');
+                            if (potentialPath.startsWith('user-avatars/')) {
+                                oldSupabasePath = potentialPath;
+                                console.log(`[UserController.uploadAvatar] Found old USER avatar path to delete: ${oldSupabasePath}`);
+                            } else {
+                                console.log(`[UserController.uploadAvatar] Old avatar path ${potentialPath} is not a user avatar, skipping deletion.`);
+                            }
                         }
                     } catch (parseError) {
                         console.error(`[UserController.uploadAvatar] Failed to parse old avatar URL ${oldAvatarUrl}:`, parseError);
@@ -461,6 +422,7 @@ export class UserController {
                 }
 
                 // 3. Upload the new file to Supabase Storage
+                console.log(`[UserController.uploadAvatar] Attempting to upload to Supabase. Bucket: ${bucketName}, Path: ${filePath}`); // Log upload details
                 const { data: uploadData, error: uploadError } = await supabase.storage
                     .from(bucketName)
                     .upload(filePath, fileBuffer, {
@@ -469,31 +431,47 @@ export class UserController {
                         upsert: false // Don't overwrite
                     });
 
+                // Log Supabase upload result unconditionally
+                console.log('[UserController.uploadAvatar] Supabase upload result:', { uploadData, uploadError });
+
                 if (uploadError) {
                     console.error(`[UserController.uploadAvatar] Supabase upload error for user ${userId}:`, uploadError);
                     res.status(500).json({ message: '上传新头像到云存储失败。', error: uploadError.message });
                     return;
                 }
+                // Add check if uploadData is valid (it might be null even without error in some cases)
+                if (!uploadData || !uploadData.path) {
+                    console.error(`[UserController.uploadAvatar] Supabase upload returned no data/path even without explicit error. Response:`, uploadData);
+                    res.status(500).json({ message: '上传新头像到云存储失败 (无有效响应)。' });
+                    return;
+                }
 
                 // 4. Get the public URL for the newly uploaded file
+                console.log(`[UserController.uploadAvatar] Attempting to get public URL for path: ${filePath}`); // Log path for getPublicUrl
                 const { data: urlData } = supabase.storage
                     .from(bucketName)
                     .getPublicUrl(filePath);
 
+                console.log('[UserController.uploadAvatar] Supabase getPublicUrl result:', { urlData }); // Log getPublicUrl result
+
                 if (!urlData || !urlData.publicUrl) {
                     console.error(`[UserController.uploadAvatar] Failed to get public URL from Supabase for new avatar:`, filePath);
                     // Attempt to clean up the uploaded file if URL retrieval fails
+                    console.log(`[UserController.uploadAvatar] Cleaning up potentially uploaded file due to URL failure: ${filePath}`);
                     await supabase.storage.from(bucketName).remove([filePath]);
                     res.status(500).json({ message: '获取新头像链接失败。' });
                     return;
                 }
                 const newImageUrl = urlData.publicUrl;
+                console.log(`[UserController.uploadAvatar] Obtained new public URL: ${newImageUrl}`); // Log the new URL
 
                 // 5. Update user's avatarUrl in the database with the new Supabase URL
+                console.log(`[UserController.uploadAvatar] Attempting to update user ${userId} avatarUrl in DB to: ${newImageUrl}`); // Log before DB update
                 await prisma.user.update({
                     where: { id: userId },
                     data: { avatarUrl: newImageUrl }
                 });
+                console.log(`[UserController.uploadAvatar] Successfully updated user ${userId} avatarUrl in DB.`); // Log after DB update
 
                 // 6. Delete the old avatar file from Supabase if a path was successfully extracted
                 if (oldSupabasePath) {
@@ -511,6 +489,7 @@ export class UserController {
                 }
 
                 // 7. Return success response with the new URL
+                console.log(`[UserController.uploadAvatar] Sending success response for user ${userId}`); // Log before sending response
                 res.status(200).json({ 
                     message: 'Avatar uploaded successfully', 
                     avatarUrl: newImageUrl // Return the new Supabase public URL

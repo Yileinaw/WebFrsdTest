@@ -189,14 +189,14 @@ const submitRegister = async () => {
 
       loading.value = true
       try {
-        await AuthService.register({
+        const response = await AuthService.register({
           name: registerForm.username,
           username: registerForm.username,
           email: registerForm.email,
           password: registerForm.password,
         })
 
-        ElMessage.success('注册成功，请登录')
+        ElMessage.success(response.message || '注册成功！验证邮件已发送至您的邮箱。')
         router.push('/login')
       } catch (error: any) {
         let errorMessage = '注册失败，请稍后再试'
@@ -239,51 +239,29 @@ $success-color: #67c23a;
 $warning-color: #e6a23c;
 $danger-color: #f56c6c;
 
-// 全局容器样式
+// 全局容器样式 - 设为全屏高度
 .auth-container {
   display: flex;
-  justify-content: center;
-  align-items: center;
   min-height: 100vh;
   background-color: $background-light;
-  overflow: hidden;
-  position: relative;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, rgba($primary-color, 0.05) 0%, rgba($secondary-color, 0.05) 100%);
-    z-index: 0;
-  }
 }
 
-// 主内容区域
+// 主内容区域 - 取消固定大小和阴影
 .auth-content {
   display: flex;
-  width: 900px;
-  height: 600px;
-  background-color: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 30px $shadow-color;
-  overflow: hidden;
-  position: relative;
-  z-index: 1;
+  width: 100%;
 }
 
-// 左侧品牌区域
+// 左侧品牌区域 - 调整 flex 比例和内边距
 .auth-branding {
-  flex: 1;
+  flex: 0 0 45%;
   background: linear-gradient(135deg, $primary-color 0%, color.adjust($primary-color, $lightness: -15%) 100%);
   color: white;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 40px;
+  padding: 60px 40px;
   position: relative;
   overflow: hidden;
 
@@ -294,7 +272,7 @@ $danger-color: #f56c6c;
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: url('/assets/images/pattern.svg');
+    background-image: url('/assets/images/pattern.svg'); // Keep pattern if desired
     background-size: cover;
     opacity: 0.1;
   }
@@ -304,198 +282,98 @@ $danger-color: #f56c6c;
     z-index: 2;
     text-align: center;
     width: 100%;
+    max-width: 450px;
   }
 
-  .logo-container {
-    margin-bottom: 20px;
-
-    .logo {
-      width: 80px;
-      height: 80px;
-      object-fit: contain;
-    }
-  }
-
-  .brand-title {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 10px;
-    letter-spacing: 1px;
-  }
-
-  .brand-slogan {
-    font-size: 1.2rem;
-    opacity: 0.9;
-    margin-bottom: 40px;
-  }
-
-  .illustration {
-    max-width: 80%;
-    margin: 0 auto;
-
-    img {
-      width: 100%;
-      height: auto;
-    }
-  }
+  .logo-container { margin-bottom: 25px; .logo { width: 90px; height: 90px; object-fit: contain; }}
+  .brand-title { font-size: 2.8rem; font-weight: 700; margin-bottom: 15px; letter-spacing: 1px; }
+  .brand-slogan { font-size: 1.3rem; opacity: 0.9; margin-bottom: 50px; }
+  .illustration { max-width: 90%; margin: 0 auto; img { width: 100%; height: auto; } }
 }
 
-// 右侧表单区域
+// 右侧表单区域 - 调整 flex 比例，允许滚动
 .auth-forms {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 40px;
+  justify-content: center; // Center form vertically
+  padding: 60px 40px;
+  overflow-y: auto; // Allow scrolling
 
   .form-container {
     width: 100%;
-    max-width: 380px;
+    max-width: 400px;
     margin: 0 auto;
+    // Removed padding-bottom from previous edit as centering handles spacing
   }
 
-  .form-header {
-    margin-bottom: 30px;
-
-    .form-title {
-      font-size: 1.8rem;
-      font-weight: 600;
-      color: $text-primary;
-      margin-bottom: 8px;
-    }
-
-    .form-subtitle {
-      font-size: 1rem;
-      color: $text-secondary;
-    }
+  .form-header { margin-bottom: 35px;
+     .form-title { font-size: 1.8rem; font-weight: 600; color: $text-primary; margin-bottom: 8px; }
+     .form-subtitle { font-size: 1rem; color: $text-secondary; }
   }
-
-  .form-wrapper {
-    .auth-form {
-      margin-bottom: 20px;
-    }
-  }
-
-  // 自定义表单元素
+  .form-wrapper { .auth-form { margin-bottom: 20px; } }
   .custom-form-item {
-    margin-bottom: 24px;
-
-    :deep(.el-form-item__label) {
-      padding-bottom: 8px;
-      font-weight: 500;
-      color: $text-primary;
-    }
-
+    margin-bottom: 28px;
+    :deep(.el-form-item__label) { padding-bottom: 8px; font-weight: 500; color: $text-primary; }
     .custom-input {
       :deep(.el-input__wrapper) {
-        padding: 0 15px;
-        height: 48px;
-        box-shadow: 0 0 0 1px $border-color inset;
-        border-radius: 8px;
-        transition: all 0.3s;
-
-        &:hover {
-          box-shadow: 0 0 0 1px $primary-color inset;
-        }
-
-        &.is-focus {
-          box-shadow: 0 0 0 1px $primary-color inset;
-        }
+        padding: 0 15px; height: 48px; box-shadow: 0 0 0 1px $border-color inset; border-radius: 8px; transition: all 0.3s;
+        &:hover { box-shadow: 0 0 0 1px $primary-color inset; }
+        &.is-focus { box-shadow: 0 0 0 1px $primary-color inset; }
       }
-
-      :deep(.el-input__prefix) {
-        color: $text-light;
-      }
+      :deep(.el-input__prefix) { color: $text-light; }
     }
   }
-
-  // 协议选项
   .agreement-item {
-    margin-bottom: 24px;
-
+    margin-bottom: 28px; // Consistent margin
     :deep(.el-checkbox__label) {
       color: $text-secondary;
       font-size: 0.9rem;
-
-      .el-link {
-        font-size: 0.9rem;
-      }
+      .el-link { font-size: 0.9rem; vertical-align: baseline; }
     }
   }
-
-  // 注册按钮
   .button-item {
-    margin-bottom: 20px;
-
+    margin-bottom: 25px;
     .submit-button {
-      width: 100%;
-      height: 48px;
-      font-size: 1rem;
-      font-weight: 500;
-      border-radius: 8px;
-      background-color: $primary-color;
-      border-color: $primary-color;
-      transition: all 0.3s;
-
-      &:hover {
-        background-color: color.adjust($primary-color, $lightness: -5%);
-        border-color: color.adjust($primary-color, $lightness: -5%);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba($primary-color, 0.4);
-      }
-
-      &:active {
-        transform: translateY(0);
-      }
+      width: 100%; height: 48px; font-size: 1rem; font-weight: 500; border-radius: 8px; background-color: $primary-color; border-color: $primary-color; transition: all 0.3s;
+      &:hover { background-color: color.adjust($primary-color, $lightness: -5%); border-color: color.adjust($primary-color, $lightness: -5%); transform: translateY(-1px); box-shadow: 0 4px 12px rgba($primary-color, 0.4); }
+      &:active { transform: translateY(0); }
     }
   }
-
-  // 登录链接
-  .login-link-container {
-    text-align: center;
-    color: $text-secondary;
-    font-size: 0.9rem;
-
-    .login-link {
-      font-weight: 500;
-      margin-left: 5px;
-      transition: color 0.3s;
-
-      &:hover {
-        color: color.adjust($primary-color, $lightness: -10%);
-      }
-    }
+  .login-link-container { // Ensure spacing at the bottom
+     text-align: center; color: $text-secondary; font-size: 0.9rem; margin-top: 20px;
+     .login-link { color: $primary-color; font-weight: 500; margin-left: 5px; transition: color 0.3s; &:hover { color: color.adjust($primary-color, $lightness: -10%); } }
   }
 }
 
 // 响应式设计
-@media (max-width: 768px) {
-  .auth-content {
-    flex-direction: column;
-    width: 100%;
-    height: auto;
-    border-radius: 0;
-  }
-
+@media (max-width: 992px) {
+  .auth-content { flex-direction: column; }
   .auth-branding {
-    padding: 30px 20px;
-
-    .brand-title {
-      font-size: 2rem;
-    }
-
-    .brand-slogan {
-      font-size: 1rem;
-      margin-bottom: 20px;
-    }
-
-    .illustration {
-      display: none;
-    }
+    flex: 0 0 auto;
+    padding: 40px 20px;
+    min-height: 300px;
+    .brand-content { max-width: 400px; }
+    .logo-container { margin-bottom: 20px; .logo { width: 70px; height: 70px; } }
+    .brand-title { font-size: 2.2rem; }
+    .brand-slogan { font-size: 1.1rem; margin-bottom: 30px; }
+    .illustration { max-width: 60%; }
   }
-
   .auth-forms {
-    padding: 30px 20px;
+    flex: 1;
+    padding: 40px 20px;
+    justify-content: flex-start;
+    .form-container {
+       max-width: 450px;
+       margin-top: 30px;
+       margin-bottom: 30px;
+    }
   }
+}
+
+@media (max-width: 576px) {
+   .auth-branding { padding: 30px 15px; min-height: 250px; }
+   .auth-forms { padding: 30px 15px; }
+   .form-container { margin-top: 20px; margin-bottom: 20px; }
 }
 </style>

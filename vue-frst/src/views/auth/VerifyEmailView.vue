@@ -12,9 +12,9 @@
       </div>
       <div v-else-if="verificationStatus === 'success'" class="status-section success">
         <el-icon color="var(--el-color-success)" :size="24"><CircleCheckFilled /></el-icon>
-        <p>{{ message || '邮箱验证成功！' }}</p>
+        <p>{{ message || '邮箱验证成功！即将跳转到登录页面...' }}</p>
         <router-link to="/login">
-          <el-button type="primary">前往登录</el-button>
+          <el-button type="primary">立即登录</el-button>
         </router-link>
       </div>
       <div v-else class="status-section error">
@@ -31,12 +31,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElCard, ElButton, ElIcon, ElEmpty } from 'element-plus';
 import { Loading, CircleCheckFilled, CircleCloseFilled } from '@element-plus/icons-vue';
 import { AuthService } from '@/services/AuthService'; // Assuming AuthService exists
 
 const route = useRoute();
+const router = useRouter();
 const isLoading = ref(true);
 const verificationStatus = ref<'pending' | 'success' | 'error'>('pending');
 const message = ref('');
@@ -49,8 +50,13 @@ const verifyEmailToken = async (token: string) => {
     try {
         // This method needs to be added to AuthService
         const response = await AuthService.verifyEmail(token);
-        message.value = response.message;
+        message.value = response.message + ' 3秒后将自动跳转到登录页面...';
         verificationStatus.value = 'success';
+
+        setTimeout(() => {
+            router.push('/login');
+        }, 3000);
+
     } catch (error: any) {
         console.error('Email verification failed:', error);
         message.value = error.response?.data?.message || '邮箱验证失败，请稍后重试或联系支持。'

@@ -95,7 +95,7 @@ export const AdminService = {
                 queryParams.append('tags', tags.join('|'));
             }
 
-            const response = await http.get<PaginatedFoodShowcaseResponse>(`/api/food-showcase?${queryParams.toString()}`);
+            const response = await http.get<PaginatedFoodShowcaseResponse>(`/food-showcase?${queryParams.toString()}`);
             return response.data;
         } catch (error: any) {
             if (import.meta.env.DEV) {
@@ -105,97 +105,90 @@ export const AdminService = {
         }
     },
 
+    /**
+     * 创建新的美食展示项
+     * Calls POST /api/food-showcase
+     */
     async createFoodShowcase(formData: FormData): Promise<ShowcaseMutationResponse> {
         try {
-            console.log('[AdminService] 发送美食图片上传请求');
-            const response = await http.post<ShowcaseMutationResponse>('/api/food-showcase', formData, {
+            // Remove /api prefix
+            const response = await http.post<ShowcaseMutationResponse>('/food-showcase', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }
             });
-            console.log('[AdminService] 美食图片上传成功:', response.data);
             return response.data;
         } catch (error: any) {
-            console.error('[AdminService] 美食图片上传失败:', error.response || error);
-            // 如果是认证错误，添加更明确的错误信息
-            if (error.response?.status === 401) {
-                throw new Error('认证失败，请重新登录后再试');
-            }
-            throw error;
+            console.error('[AdminService] Error creating food showcase:', error);
+            throw new Error(error.response?.data?.message || '创建美食展示失败');
         }
     },
 
+    /**
+     * 更新美食展示项
+     * Calls PUT /api/food-showcase/:id
+     */
     async updateFoodShowcase(id: number, formData: FormData): Promise<ShowcaseMutationResponse> {
         try {
-            console.log(`[AdminService] 发送美食图片更新请求 ID: ${id}`);
-            const response = await http.put<ShowcaseMutationResponse>(`/api/food-showcase/${id}`, formData, {
+            // Remove /api prefix
+            const response = await http.put<ShowcaseMutationResponse>(`/food-showcase/${id}`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }
             });
-            console.log('[AdminService] 美食图片更新成功:', response.data);
             return response.data;
         } catch (error: any) {
-            console.error(`[AdminService] 美食图片更新失败 ID: ${id}:`, error.response || error);
-            // 如果是认证错误，添加更明确的错误信息
-            if (error.response?.status === 401) {
-                throw new Error('认证失败，请重新登录后再试');
-            }
-            throw error;
+            console.error(`[AdminService] Error updating food showcase ${id}:`, error);
+            throw new Error(error.response?.data?.message || '更新美食展示失败');
         }
     },
 
+    /**
+     * 删除美食展示项
+     * Calls DELETE /api/food-showcase/:id
+     */
     async deleteFoodShowcase(id: number): Promise<{ message: string }> {
         try {
-            console.log(`[AdminService] 发送美食图片删除请求 ID: ${id}`);
-            const response = await http.delete<{ message: string }>(`/api/food-showcase/${id}`);
-            console.log('[AdminService] 美食图片删除成功:', response.data);
+            // Remove /api prefix
+            const response = await http.delete<{ message: string }>(`/food-showcase/${id}`);
             return response.data;
         } catch (error: any) {
-            console.error(`[AdminService] 美食图片删除失败 ID: ${id}:`, error.response || error);
-            // 如果是认证错误，添加更明确的错误信息
-            if (error.response?.status === 401) {
-                throw new Error('认证失败，请重新登录后再试');
-            }
-            throw error;
+            console.error(`[AdminService] Error deleting food showcase ${id}:`, error);
+            throw new Error(error.response?.data?.message || '删除美食展示失败');
         }
     },
 
-    // --- Add Bulk Delete method (now using POST) ---
-    async deleteFoodShowcasesBulk(ids: number[]): Promise<{ message: string; count?: number }> {
+    /**
+     * 批量删除美食展示项
+     * Calls POST /api/food-showcase/bulk-delete
+     */
+    async bulkDeleteFoodShowcases(ids: number[]): Promise<{ message: string; count?: number }> {
         try {
-            console.log(`[AdminService] 发送美食图片批量删除请求 IDs: ${ids.join(', ')}`);
-            const response = await http.post<{ message: string; count?: number }>('/api/food-showcase/bulk-delete', {
-                ids // 在请求体中发送ID数组
+            // Remove /api prefix
+            const response = await http.post<{ message: string; count?: number }>('/food-showcase/bulk-delete', {
+                ids: ids
             });
-            console.log('[AdminService] 美食图片批量删除成功:', response.data);
             return response.data;
         } catch (error: any) {
-            console.error('[AdminService] 美食图片批量删除失败:', error.response || error);
-            // 如果是认证错误，添加更明确的错误信息
-            if (error.response?.status === 401) {
-                throw new Error('认证失败，请重新登录后再试');
-            }
-            throw error;
+            console.error('[AdminService] Error bulk deleting food showcases:', error);
+            throw new Error(error.response?.data?.message || '批量删除美食展示失败');
         }
     },
 
     // --- Tag Management --- //
-    // 已分离到PostTagService和FoodTagService中
-    async getAllTags(): Promise<TagListResponse> {
+    /**
+     * 获取所有标签 (已弃用, 请使用 PostTagService 或 FoodTagService)
+     */
+    async getAllTags(tagType: 'post' | 'food' = 'food'): Promise<TagListResponse> {
         console.warn('[AdminService] getAllTags方法已弃用，请使用PostTagService或FoodTagService');
+        const endpoint = tagType === 'post' ? '/post-tags' : '/food-tags';
         try {
-            console.log('[AdminService] 获取标签列表');
-            const response = await http.get<TagListResponse>('/api/food-tags'); // 默认使用美食标签
-            console.log('[AdminService] 标签列表获取成功:', response.data);
+            // Remove /api prefix
+            const response = await http.get<TagListResponse>(endpoint);
             return response.data;
         } catch (error: any) {
-            console.error('[AdminService] 标签列表获取失败:', error.response || error);
-            // 如果是认证错误，不显示错误提示，因为这可能是公开接口
-            if (error.response?.status !== 401) {
-                ElMessage.error('获取标签列表失败');
-            }
-            return []; // 错误时返回空数组
+            console.error(`[AdminService] 标签列表获取失败:`, error);
+            throw new Error('获取标签列表失败');
         }
     },
 
@@ -205,7 +198,7 @@ export const AdminService = {
         console.warn('[AdminService] updateTag方法已弃用，请使用PostTagService或FoodTagService');
         try {
             console.log(`[AdminService] 发送标签更新请求 ID: ${tagId}, 新名称: ${data.name}`);
-            const response = await http.put<Tag>(`/api/food-tags/${tagId}`, data); // 默认使用美食标签
+            const response = await http.put<Tag>(`/food-tags/${tagId}`, data); // 默认使用美食标签
             console.log('[AdminService] 标签更新成功:', response.data);
             return response.data;
         } catch (error: any) {
@@ -224,7 +217,7 @@ export const AdminService = {
         console.warn('[AdminService] deleteTag方法已弃用，请使用PostTagService或FoodTagService');
         try {
             console.log(`[AdminService] 发送标签删除请求 ID: ${tagId}`);
-            const response = await http.delete<{ message: string }>(`/api/food-tags/${tagId}`); // 默认使用美食标签
+            const response = await http.delete<{ message: string }>(`/food-tags/${tagId}`); // 默认使用美食标签
             console.log('[AdminService] 标签删除成功:', response.data);
             return response.data;
         } catch (error: any) {
@@ -237,108 +230,102 @@ export const AdminService = {
         }
     },
 
-    // --- Add createTag method ---
-    // 已分离到PostTagService和FoodTagService中
-    async createTag(data: { name: string }): Promise<Tag> {
+    /**
+     * 创建新标签 (已弃用, 请使用 PostTagService 或 FoodTagService)
+     */
+    async createTag(name: string, tagType: 'post' | 'food' = 'food'): Promise<Tag> {
         console.warn('[AdminService] createTag方法已弃用，请使用PostTagService或FoodTagService');
+        const endpoint = tagType === 'post' ? '/post-tags' : '/food-tags';
         try {
-            console.log(`[AdminService] 发送标签创建请求，名称: ${data.name}`);
-            const response = await http.post<Tag>(`/api/food-tags`, data); // 默认使用美食标签
-            console.log('[AdminService] 标签创建成功:', response.data);
+            // Remove /api prefix
+            const response = await http.post<Tag>(endpoint, { name });
             return response.data;
         } catch (error: any) {
-            console.error(`[AdminService] 标签创建失败，名称: ${data.name}:`, error.response || error);
-            // 如果是认证错误，添加更明确的错误信息
-            if (error.response?.status === 401) {
-                throw new Error('认证失败，请重新登录后再试');
-            }
-            throw error;
+            console.error(`[AdminService] 创建标签失败:`, error);
+            throw new Error(error.response?.data?.message || '创建标签失败');
         }
     },
 
     // --- Statistics --- //
+    /**
+     * 获取美食展示统计信息
+     * Calls GET /api/food-showcase/stats
+     */
     async getShowcaseStats(): Promise<ShowcaseStatsResponse> {
         try {
-            console.log('[AdminService] 获取美食图片统计数据');
-            const response = await http.get<ShowcaseStatsResponse>('/api/food-showcase/stats');
-            console.log('[AdminService] 统计数据获取成功:', response.data);
+            // Remove /api prefix
+            const response = await http.get<ShowcaseStatsResponse>('/food-showcase/stats');
             return response.data;
         } catch (error: any) {
-            console.error('[AdminService] 统计数据获取失败:', error.response || error);
-            // 如果是认证错误，不显示错误提示，因为这可能是公开接口
-            if (error.response?.status === 401) {
-                throw new Error('认证失败，请重新登录后再试');
-            }
-            throw new Error('获取统计数据失败');
+            console.error('[AdminService] 获取美食展示统计失败:', error);
+            throw new Error(error.response?.data?.message || '获取统计信息失败');
         }
     },
 
-    // --- Admin Role Check --- //
+    // --- Admin Role Check ---
+    /**
+     * 检查当前用户是否是管理员
+     * Calls GET /api/admin/check-role
+     */
     async checkAdminRole(): Promise<AdminRoleCheckResponse> {
         try {
-            console.log('[AdminService] 检查管理员角色');
-            const response = await http.get<AdminRoleCheckResponse>('/api/admin/check-role');
-            console.log('[AdminService] 角色检查成功:', response.data);
+            // Remove /api prefix
+            const response = await http.get<AdminRoleCheckResponse>('/admin/check-role');
             return response.data;
         } catch (error: any) {
-            console.error('[AdminService] 角色检查失败:', error.response || error);
-
-            if (error.response) {
-                if (error.response.status === 401) {
-                    throw new Error('认证失败，请重新登录后再试');
-                } else if (error.response.status === 403) {
-                    throw new Error('权限不足，需要管理员权限');
-                }
+            console.error('[AdminService] 检查管理员角色失败:', error);
+            // 如果是403 Forbidden，说明用户不是管理员
+            if (error.response?.status === 403) {
+                // 返回符合 AdminRoleCheckResponse 结构的对象
+                return {
+                    userId: 0, // Assuming 0 or null indicates no specific user ID in this context
+                    role: 'user', // Default to 'user' role
+                    isAdmin: false,
+                    isModerator: false,
+                    hasAdminAccess: false
+                };
             }
-
-            throw new Error('检查管理员角色失败');
+            throw new Error(error.response?.data?.message || '检查权限失败');
         }
     },
 
-    // --- Make Admin (Development Only) --- //
-    async makeAdmin(): Promise<{ message: string; user: any }> {
+    // --- Development Only - Make Admin ---
+    /**
+     * (开发用) 将指定用户设置为管理员
+     * Calls POST /api/auth/dev/make-admin
+     */
+    async makeUserAdmin(userId: number): Promise<{ message: string; user: any }> {
+        if (import.meta.env.PROD) {
+            throw new Error('This function is only available in development mode.');
+        }
         try {
-            console.log('[AdminService] 将当前用户设置为管理员');
-            const response = await http.post<{ message: string; user: any }>('/api/auth/dev/make-admin');
-            console.log('[AdminService] 设置管理员成功:', response.data);
+            // Remove /api prefix
+            const response = await http.post<{ message: string; user: any }>('/auth/dev/make-admin', { userId });
             return response.data;
         } catch (error: any) {
-            console.error('[AdminService] 设置管理员失败:', error.response || error);
-
-            if (error.response && error.response.data && error.response.data.message) {
-                throw new Error(error.response.data.message);
-            }
-
-            throw new Error('设置管理员失败');
+            console.error(`[AdminService] 设为管理员失败 (用户ID: ${userId}):`, error);
+            throw new Error(error.response?.data?.message || '设置管理员失败');
         }
     },
 
-    // --- Dashboard Stats --- //
+    // --- Dashboard Stats --- (Placeholder)
+    /**
+     * 获取管理员仪表盘统计数据
+     * Calls GET /api/admin/dashboard/stats
+     */
     async getDashboardStats(): Promise<DashboardStatsResponse> {
+        console.log('[AdminService] Fetching dashboard stats...');
         try {
-            console.log('[AdminService] 获取仪表盘统计数据');
-            // 修正API路径，使用 /api/admin/dashboard/stats 而不是 /admin/dashboard/stats
-            const response = await http.get<DashboardStatsResponse>('/api/admin/dashboard/stats');
-            console.log('[AdminService] 仪表盘统计数据获取成功:', response.data);
+            // Remove /api prefix
+            const response = await http.get<DashboardStatsResponse>('/admin/dashboard/stats');
+            console.log('[AdminService] Dashboard stats fetched:', response.data);
             return response.data;
         } catch (error: any) {
-            console.error('[AdminService] 仪表盘统计数据获取失败:', error.response || error);
-
-            // 检查是否有响应数据
-            if (error.response) {
-                // 服务器返回了错误响应
-                if (error.response.status === 401) {
-                    throw new Error('认证失败，请重新登录后再试');
-                } else if (error.response.status === 403) {
-                    throw new Error('权限不足，需要管理员权限');
-                } else if (error.response.data && error.response.data.message) {
-                    // 使用服务器返回的错误消息
-                    throw new Error(error.response.data.message);
-                }
-            }
-
-            // 如果没有特定错误信息，使用通用错误消息
-            throw new Error(error.message || '获取仪表盘统计数据失败');
+            console.error('[AdminService] 获取仪表盘统计失败:', error);
+            // Provide a more specific error message
+            const message = error.response?.data?.message || '获取仪表盘统计数据失败，请稍后重试。';
+            // Rethrow a new error with the potentially more informative message
+            throw new Error(message);
         }
-    }
+    },
 };

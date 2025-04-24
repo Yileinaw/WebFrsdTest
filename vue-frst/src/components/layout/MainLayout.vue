@@ -37,12 +37,8 @@ const isAdminRoute = computed(() => route.matched.some(record => record.meta.isA
 
 .main-content {
   flex-grow: 1; // 让主内容区域填充可用空间
-  // Add max-width, centering, and padding for better layout on wide screens
-  max-width: 1200px;
-  width: 100%; // Ensure it takes full width up to max-width
-  margin-left: auto;
-  margin-right: auto;
-  padding: 20px; // Add padding around the content area
+  width: 100%; // Take full width available from parent
+  padding: 20px; // Keep padding around the content area
 }
 
 /* Define transition styles */

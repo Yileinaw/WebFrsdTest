@@ -138,10 +138,14 @@
       <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
         <el-card shadow="hover" class="chart-card">
           <template #header>
-            <div class="card-header">
-              <span>标签分布</span>
-            </div>
+            <div class="card-header">标签分布</div>
           </template>
+          <!-- 添加标签类型选择器 -->
+          <el-radio-group v-model="selectedTagType" size="small" style="margin-bottom: 15px;">
+            <el-radio-button label="all">全部标签</el-radio-button>
+            <el-radio-button label="food">美食标签</el-radio-button>
+            <el-radio-button label="post">帖子标签</el-radio-button>
+          </el-radio-group>
           <div class="chart-container">
             <v-chart class="chart" :option="tagDistributionOption" autoresize />
           </div>
@@ -197,7 +201,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   ElRow, ElCol, ElCard, ElTable, ElTableColumn, ElTag, ElButton, ElIcon,
-  ElSkeleton, ElAlert, ElMessage
+  ElSkeleton, ElAlert, ElMessage, ElRadioGroup, ElRadioButton
 } from 'element-plus';
 import {
   Picture, Document, User, Star, ArrowUp, ArrowDown, RefreshRight
@@ -239,6 +243,7 @@ const router = useRouter();
 const loading = ref(true);
 const error = ref('');
 const dashboardStats = ref<any>(null);
+const selectedTagType = ref('all');
 const isDev = import.meta.env.DEV;
 const makingAdmin = ref(false);
 
@@ -331,23 +336,55 @@ const contentTrendOption = computed(() => {
 
 // 标签分布图表配置
 const tagDistributionOption = computed(() => {
-  const tagData = dashboardStats.value?.tagDistribution || [];
+  const allTagData = dashboardStats.value?.tagDistribution || [];
+  // 根据 selectedTagType 过滤数据
+  const filteredTagData = allTagData.filter((tag: any) => {
+    if (selectedTagType.value === 'all') {
+      return true;
+    }
+    return tag.type === selectedTagType.value;
+  });
+
+  // 如果过滤后没有数据，准备一个空状态的配置
+  if (filteredTagData.length === 0) {
+    return {
+      title: {
+        text: '暂无数据',
+        left: 'center',
+        top: 'center',
+        textStyle: {
+          color: '#909399',
+          fontSize: 14
+        }
+      },
+      tooltip: {},
+      legend: {},
+      series: []
+    };
+  }
 
   return {
     tooltip: {
       trigger: 'item',
-      formatter: '{a} <br/>{b}: {c} ({d}%)'
+      formatter: (params: any) => { // 添加类型显示
+        const { name, value, percent, data } = params;
+        const typeLabel = data.type === 'food' ? '美食' : '帖子';
+        return `${name} (${typeLabel})<br/>数量: ${value} (${percent}%)`;
+      }
     },
     legend: {
-      orient: 'vertical',
-      left: 10,
-      data: tagData.map((item: any) => item.name)
+      // orient: 'vertical', // 在较少标签时，水平可能更好
+      // left: 10,
+      type: 'scroll', // 当标签过多时允许滚动
+      bottom: 10, // 移到底部
+      data: filteredTagData.map((item: any) => item.name)
     },
     series: [
       {
         name: '标签分布',
         type: 'pie',
-        radius: ['50%', '70%'],
+        radius: ['45%', '65%'], // 调整半径以适应图例
+        center: ['50%', '45%'], // 稍微上移以给图例留空间
         avoidLabelOverlap: false,
         label: {
           show: false,
@@ -363,16 +400,16 @@ const tagDistributionOption = computed(() => {
         labelLine: {
           show: false
         },
-        data: tagData.map((item: any) => ({
+        // 使用过滤后的数据，并传递类型信息给 formatter
+        data: filteredTagData.map((item: any) => ({
           name: item.name,
-          value: item.count
+          value: item.count,
+          type: item.type // 传递类型
         }))
       }
     ]
   };
 });
-
-
 
 // 查看内容详情
 const viewContent = (row: any) => {

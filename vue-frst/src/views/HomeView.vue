@@ -256,8 +256,11 @@ onMounted(() => {
 
 .container {
   max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 15px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 20px;
+  padding-right: 20px;
 }
 
 .featured-carousel {

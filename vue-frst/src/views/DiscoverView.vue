@@ -323,94 +323,120 @@ onMounted(() => {
 <style scoped lang="scss">
 .discover-view {
   background-color: #f8f9fa;
+  width: 100%; // Ensure the view takes full width
 }
 
 /* --- Hero Section --- */
 .hero-section-simplified {
-  // Adjust styles if needed, example uses existing gradient/image
-  background: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url('/images/food-hero-bg.jpg');
+  // Add background image and styles
+  background-image: url('https://youimg1.c-ctrip.com/target/100u16000000zgsvpFB4F.jpg'); // Updated URL
   background-size: cover;
   background-position: center;
-  padding: 60px 0; // Reset padding if search bar space is removed
+  background-repeat: no-repeat;
+  padding: 60px 20px; // Adjust padding as needed
   text-align: center;
-  color: #fff;
+  color: #fff; // Ensure text is visible on the background
 
-  h1 {
-    font-size: 2.8rem;
-    margin-bottom: 0.5em;
-    font-weight: 600;
-  }
+  .hero-content {
+    // max-width: 800px; // Max width for the content within the hero
+    // margin: 0 auto; // Center the content
+    h1 {
+      font-size: 2.8rem; // Adjust font size
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
 
-  p {
-    font-size: 1.1rem;
-    margin-bottom: 0; // Removed margin as search is gone
+    p {
+      font-size: 1.2rem; // Adjust font size
+      margin-bottom: 30px;
+    }
+
+    .search-container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
   }
 }
 
 /* --- Tags Section --- */
 .tags-section {
-  padding: 20px 0;
-  text-align: center;
-  border-bottom: 1px solid #eee;
-  margin-bottom: 30px;
-  position: relative; // For positioning the clear button
-}
+  padding: 20px 0; // Keep padding for tags section
+  text-align: center; // Center the tags
 
-.tag-button {
-  margin: 5px 8px;
-}
+  .tag-button {
+    margin: 5px; // Spacing between tags
+  }
 
-// Style for the clear tag button
-.clear-tag-button {
-    margin-left: 15px; // Space from the tags
-    // Optional: Adjust position if needed relative to tags
-    // position: absolute;
-    // right: 0;
-    // top: 50%;
-    // transform: translateY(-50%);
+  .clear-tag-button {
+      margin-left: 10px; // Space between tags and clear button
+      vertical-align: middle; // Align with buttons
+  }
 }
 
 /* --- Results Section & Masonry --- */
 .results-section {
-  padding-top: 30px;
-  padding-bottom: 30px;
-}
-
-.masonry-container {
-  // Define columns - Adjust count based on screen size via media queries
-  column-count: 4; // Default for larger screens
-  column-gap: 15px; // Space between columns
-
-  @media (max-width: 1200px) {
-    column-count: 3;
-  }
-  @media (max-width: 768px) {
-    column-count: 2;
-  }
-  @media (max-width: 480px) {
-    column-count: 1;
-  }
-}
-
-.masonry-item {
-  /* Ensure items are identifiable and have some margin/padding if needed */
-  break-inside: avoid; /* Prevent breaking inside an item */
-  margin-bottom: 20px;
-  position: relative; /* Needed for overlay */
-  overflow: hidden; /* Needed for overlay */
-  border-radius: 8px; /* Add rounding */
-}
-
-.food-image {
-  width: 100%;
-  display: block;
-  border-radius: 8px; /* Match item rounding */
+  padding: 20px 0; // Padding for the results area
 }
 
 .loading-indicator {
   text-align: center;
   padding: 40px;
-  color: #666;
+  font-size: 1.2rem;
+}
+
+.masonry-container {
+  display: grid; // Ensure grid layout
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); // Responsive columns
+  gap: 20px; // Spacing between grid items
+  /* Ensure old column styles are definitely removed, not just commented */
+}
+
+.masonry-item {
+  /* Ensure old break-inside is definitely removed */
+  margin-bottom: 20px; /* Space below each item */
+  position: relative; // Needed for overlay positioning
+  overflow: hidden; // Keep overlay contained
+  border-radius: 8px; // Optional: rounded corners for items
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); // Optional: subtle shadow
+  width: 100%; // Make item fill grid cell width
+
+  img.food-image {
+    display: block; // Remove extra space below image
+    width: 100%; // Make image fill the item width
+    height: auto; // Maintain aspect ratio
+    border-radius: 8px 8px 0 0; // Round top corners if needed
+    transition: transform 0.3s ease; // Smooth zoom effect on hover
+  }
+
+  &:hover img.food-image {
+      transform: scale(1.05); // Slight zoom on hover
+  }
+
+  .image-info-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0)); // Gradient background
+    color: white;
+    padding: 20px 10px 10px 10px; // Padding (more top padding for gradient)
+    opacity: 0; // Hidden by default
+    transition: opacity 0.3s ease;
+    border-radius: 0 0 8px 8px; // Match item rounding
+
+    h4 {
+      margin: 0 0 5px 0; // Spacing for title
+      font-size: 1rem;
+      font-weight: bold;
+      white-space: nowrap; // Prevent title wrap
+      overflow: hidden;
+      text-overflow: ellipsis; // Add ellipsis if title is too long
+    }
+  }
+
+  &:hover .image-info-overlay {
+      opacity: 1; // Show overlay on hover
+  }
 }
 
 /* --- Common styles --- */

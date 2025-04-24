@@ -6,20 +6,6 @@ import { Request } from 'express';
 // Log the current working directory
 // console.log('[UploadMiddleware] process.cwd():', process.cwd()); // Comment out log
 
-// Define the upload directory path relative to the project root (process.cwd())
-// const foodShowcaseUploadDir = path.resolve(process.cwd(), 'backend', 'storage', 'uploads', 'food-showcase'); // Old incorrect path
-const foodShowcaseUploadDir = path.resolve(__dirname, '..', '..', 'storage', 'uploads', 'food-showcase'); // Correct path relative to middleware dir
-
-// console.log(`[UploadMiddleware] Target upload dir (calculated): ${foodShowcaseUploadDir}`); // Log for verification
-try {
-    // Ensure the full path exists, including intermediate directories
-    fs.mkdirSync(foodShowcaseUploadDir, { recursive: true });
-    // console.log(`[UploadMiddleware] Ensured directory exists or created: ${foodShowcaseUploadDir}`); // Comment out log
-} catch (error) {
-    // Keep this error log, it's important if directory creation fails
-    console.error(`[UploadMiddleware] Failed to create directory ${foodShowcaseUploadDir}:`, error); 
-}
-
 // Define storage settings for FoodShowcase images using memory storage
 const memoryStorage = multer.memoryStorage(); // Use memory storage
 

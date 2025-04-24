@@ -9,13 +9,13 @@ export const FoodTagService = {
      * @returns 所有美食标签列表
      */
     async getAllTags(): Promise<TagListResponse> {
+        console.log('[FoodTagService] Fetching all food tags...');
         try {
-            const response = await http.get<TagListResponse>('/api/food-tags');
+            const response = await http.get<TagListResponse>('/food-tags');
+            console.log('[FoodTagService] Tags fetched successfully:', response.data);
             return response.data;
-        } catch (error) {
-            if (import.meta.env.DEV) {
-                console.error('[FoodTagService] Error fetching tags:', error);
-            }
+        } catch (error: any) {
+            console.error('[FoodTagService] Error fetching tags:', error);
             throw new Error('获取美食标签列表失败');
         }
     },
@@ -26,12 +26,14 @@ export const FoodTagService = {
      * @returns 新创建的标签对象
      */
     async createTag(name: string): Promise<Tag> {
+        console.log(`[FoodTagService] Creating tag: ${name}`);
         try {
-            const response = await http.post<Tag>('/api/food-tags', { name });
+            const response = await http.post<Tag>('/food-tags', { name });
+            console.log('[FoodTagService] Tag created successfully:', response.data);
             return response.data;
-        } catch (error) {
-            console.error(`[FoodTagService] Error creating tag with name ${name}:`, error);
-            throw error;
+        } catch (error: any) {
+            console.error('[FoodTagService] Error creating tag:', error);
+            throw new Error(error.response?.data?.message || '创建美食标签失败');
         }
     },
 

@@ -170,16 +170,40 @@ export const useUserStore = defineStore('user', () => {
     }
 
     // --- 新增 Action: 更新头像 URL ---
-    function updateAvatarUrl(newAvatarUrl: string) {
+    // Accept string or null, and call backend API
+    async function updateAvatarUrl(newAvatarUrl: string | null) {
         console.log('[updateAvatarUrl] Updating avatar URL to:', newAvatarUrl);
-        if (currentUser.value) {
-            const oldAvatar = currentUser.value.avatarUrl;
-            currentUser.value = { ...currentUser.value, avatarUrl: newAvatarUrl };
-            console.log('[updateAvatarUrl] Avatar URL changed:', oldAvatar, '->', currentUser.value.avatarUrl);
-            // Persist change to localStorage
-            localStorage.setItem('currentUserInfo', JSON.stringify(currentUser.value));
-        } else {
+        if (!currentUser.value) {
             console.warn("[updateAvatarUrl] No current user to update.");
+            throw new Error('用户未登录'); // Throw error if no user
+        }
+
+        const userId = currentUser.value.id;
+
+        try {
+            // Call backend API to persist the change
+            console.log(`[updateAvatarUrl] Calling UserService.updateProfile for user ${userId} with avatarUrl:`, newAvatarUrl);
+            // Use updateMyProfile which seems to be the correct method based on UserController
+            const response = await UserService.updateMyProfile({ avatarUrl: newAvatarUrl });
+            console.log('[updateAvatarUrl] Backend update response:', response);
+
+            if (response && response.user) {
+                // Backend successful, now update local state
+                const oldAvatar = currentUser.value.avatarUrl;
+                // IMPORTANT: Use the user data returned from the backend to ensure consistency
+                // This updates the entire user object, not just avatarUrl
+                setUser(response.user); // Use setUser to update the whole user object
+                // currentUser.value = { ...currentUser.value, avatarUrl: newAvatarUrl }; // Old way, less safe
+                console.log('[updateAvatarUrl] Local store updated using setUser. Avatar URL changed:', oldAvatar, '->', currentUser.value?.avatarUrl);
+                // localStorage update is handled within setUser -> _setLoginInfo
+            } else {
+                 throw new Error('后端更新头像后响应无效');
+            }
+
+        } catch (error) {
+            console.error("[updateAvatarUrl] Failed to update avatar via backend:", error);
+            // Rethrow or handle error appropriately, maybe show a message to the user
+            throw error; // Rethrow to be caught by the calling component
         }
     }
 
