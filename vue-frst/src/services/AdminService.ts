@@ -51,6 +51,7 @@ interface DashboardStatsResponse {
     tagDistribution: Array<{
         name: string;
         count: number;
+        type: string; // 'food' 或 'post'
     }>;
     recentContent: Array<{
         id: number;

@@ -336,14 +336,16 @@ const contentTrendOption = computed(() => {
 
 // 标签分布图表配置
 const tagDistributionOption = computed(() => {
-  const allTagData = dashboardStats.value?.tagDistribution || [];
-  // 根据 selectedTagType 过滤数据
-  const filteredTagData = allTagData.filter((tag: any) => {
-    if (selectedTagType.value === 'all') {
-      return true;
-    }
-    return tag.type === selectedTagType.value;
-  });
+  if (!dashboardStats.value?.tagDistribution) { // Use tagDistribution
+    return {}; // 返回空对象或者一个基础的加载状态
+  }
+
+  // 根据选择的类型过滤标签数据
+  const filteredTagData = (dashboardStats.value.tagDistribution || []) // Use tagDistribution
+    .filter((tag: any) => {
+      if (selectedTagType.value === 'all') return true;
+      return tag.type === selectedTagType.value;
+    });
 
   // 如果过滤后没有数据，准备一个空状态的配置
   if (filteredTagData.length === 0) {

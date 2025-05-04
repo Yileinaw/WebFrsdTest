@@ -24,24 +24,28 @@ export class AdminService {
       // 单独查询标签数据
       console.log('[AdminService] 查询标签数据');
       // 由于模型结构变化，需要使用原始SQL查询获取标签计数
-      // 简化仪表盘统计，暂时不显示标签统计
-      const [foodTagsWithCounts, postTagsWithCounts] = [[], []];
-
-      // 以下是原始查询，但由于表名问题暂时注释掉
-      /*
       const [foodTagsWithCounts, postTagsWithCounts] = await Promise.all([
         prisma.$queryRaw`
-          SELECT ft.id, ft.name, 0 as count
+          SELECT
+            ft.id,
+            ft.name,
+            CAST(COUNT(fst."B") AS INTEGER) as count -- Count related showcases
           FROM "FoodTag" ft
+          LEFT JOIN "_FoodShowcaseTags" fst ON ft.id = fst."A" -- Join with relation table
+          GROUP BY ft.id, ft.name -- Group by tag to count per tag
           ORDER BY ft.name
         `,
         prisma.$queryRaw`
-          SELECT pt.id, pt.name, 0 as count
+          SELECT
+            pt.id,
+            pt.name,
+            CAST(COUNT(ptg."B") AS INTEGER) as count -- Count related posts
           FROM "PostTag" pt
+          LEFT JOIN "_PostTags" ptg ON pt.id = ptg."A" -- Join with relation table
+          GROUP BY pt.id, pt.name -- Group by tag to count per tag
           ORDER BY pt.name
         `
       ]);
-      */
 
       // 获取最近内容
       console.log('[AdminService] 查询最近内容');
@@ -126,14 +130,14 @@ export class AdminService {
       const foodTagsFormatted = (foodTagsWithCounts as any[]).map((tag: { name: string; id: number; count: number }) => ({
         name: tag.name,
         count: Number(tag.count),
-        type: 'food',
+        type: 'FOOD',
         color: this.getRandomColor(tag.id)
       }));
 
       const postTagsFormatted = (postTagsWithCounts as any[]).map((tag: { name: string; id: number; count: number }) => ({
         name: tag.name,
         count: Number(tag.count),
-        type: 'post',
+        type: 'POST',
         color: this.getRandomColor(tag.id + 100) // 加偏移确保颜色不同
       }));
 
