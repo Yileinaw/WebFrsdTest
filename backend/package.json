@@ -45,7 +45,6 @@
     "typescript": "^5.5.3"
   },
   "prisma": {
-    "schema": "prisma/schema.prisma",
-    "seed": "ts-node prisma/seed.ts"
+    "schema": "prisma/schema.prisma"
   }
 }
