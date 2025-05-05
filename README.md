@@ -17,7 +17,7 @@
 在开始之前，请确保你的开发环境中安装了以下软件：
 
 * **Node.js**：(建议使用 LTS 版本，例如 v18 或 v20)
-* **npm** 或 **yarn**：Node.js 包管理器
+* **pnpm** 或 **npm** 或 **yarn**：Node.js 包管理器
 * **PostgreSQL 客户端工具**：(例如 `psql`, `pg_dump`, `pg_restore`) 用于数据库操作和备份恢复。需要能够连接到 Neon 云数据库。
 * **Git**：(可选，用于克隆项目仓库)
 
@@ -39,16 +39,14 @@ cd backend
 
 安装依赖：
 ```bash
-npm install
-# 或者
-# yarn install
+pnpm install
 ```
 
 配置环境变量：
 - 在 backend 目录下找到或创建名为 `.env` 的文件（可以复制 `.env.example` 并重命名）。
 - 添加或修改以下内容，特别是 DATABASE_URL，应指向你当前使用的 Neon 数据库分支的连接字符串（例如 dev-clean-start 分支）：
 
-```
+```bash
 # backend/.env
 DATABASE_URL="postgresql://YOUR_NEON_USER:YOUR_NEON_PASSWORD@YOUR_NEON_HOST:YOUR_NEON_PORT/YOUR_NEON_DBNAME?sslmode=require"
 PORT=3001 # (可选) 后端服务器运行端口，默认为 3001
@@ -59,22 +57,35 @@ PORT=3001 # (可选) 后端服务器运行端口，默认为 3001
 
 数据库同步：
 ```bash
-npx prisma db push
+pnpm prisma db push
 ```
 
-**重要提示**：由于项目之前遇到过迁移问题，并且可能直接修改过数据库结构或清除了迁移历史，推荐使用 `npx prisma db push` 命令将 `prisma/schema.prisma` 的当前状态直接同步到数据库。不建议在此阶段使用 `npx prisma migrate dev`，除非你确定要创建一个新的迁移记录。
+**重要提示**：由于项目之前遇到过迁移问题，并且可能直接修改过数据库结构或清除了迁移历史，推荐使用 `pnpm prisma db push` 命令将 `prisma/schema.prisma` 的当前状态直接同步到数据库。不建议在此阶段使用 `pnpm prisma migrate dev`，除非你确定要创建一个新的迁移记录。
 
-启动后端服务：
+ 
+
+运行数据库迁移:
+
+```bash
+# 应用所有待处理的迁移
+pnpm prisma migrate deploy
+
+# （可选）如果需要重置数据库（会清空数据），请务必跳过种子脚本，因为种子脚本已被移除以防止数据污染：
+# pnpm prisma migrate reset --skip-seed
+```
+
+启动后端服务:
 
 开发模式（推荐）：
 ```bash
-npm run dev
+pnpm run dev
 ```
 
-生产模式：
+生产模式:
+
 ```bash
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 后端服务默认将在 http://localhost:3001（或你在 `.env` 中指定的端口）上运行。
@@ -83,21 +94,19 @@ npm start
 
 导航到前端目录（假设你当前在项目根目录）：
 ```bash
-cd vue-frst
+cd ../vue-frst
 ```
 
 安装依赖：
 ```bash
-npm install
-# 或者
-# yarn install
+pnpm install
 ```
 
 配置环境变量：
 - 在 vue-frst 目录下创建一个名为 `.env` 的文件。
 - 添加以下内容，指向你正在运行的后端 API 地址：
 
-```
+```bash
 # vue-frst/.env
 VITE_API_BASE_URL=http://localhost:3001/api
 ```
@@ -106,7 +115,7 @@ VITE_API_BASE_URL=http://localhost:3001/api
 
 启动前端开发服务器：
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 前端开发服务器通常会运行在 http://localhost:5173（或其他 Vite 默认或配置的端口）。打开浏览器访问此地址即可看到应用界面。
@@ -121,7 +130,7 @@ npm run dev
 
 ## 数据库结构变更
 
-项目最近进行了数据库结构变更，将标签系统分为了 `FoodTag` 和 `PostTag` 两个独立的表。如果遇到与标签相关的错误，请确保已应用最新的数据库结构（`npx prisma db push`）。
+项目最近进行了数据库结构变更，将标签系统分为了 `FoodTag` 和 `PostTag` 两个独立的表。如果遇到与标签相关的错误，请确保已应用最新的数据库结构（`pnpm prisma db push`）。
 
 ## 已知问题
 
@@ -198,7 +207,7 @@ vue-frst/
 
 5. **更新 .env**：修改 `backend/.env` 文件中的 `DATABASE_URL`，使其指向新的 `dev-clean-start` 分支的连接字符串。
 
-6. **初始化新迁移**：在 backend 目录下运行 `npx prisma migrate dev --name init`。这在新分支上应用了 `schema.prisma` 定义的当前数据库结构，并生成了全新的初始迁移文件。
+6. **初始化新迁移**：在 backend 目录下运行 `pnpm prisma migrate dev --name init`。这在新分支上应用了 `schema.prisma` 定义的当前数据库结构，并生成了全新的初始迁移文件。
 
 7. **解决恢复密码问题**：
    - 确认 `PGSSLMODE=require` 环境变量已设置，但这并未解决 `pg_restore` 的密码问题。
@@ -214,10 +223,12 @@ vue-frst/
 
 9. **清理旧分支**：删除了 Neon 项目中不再需要的旧开发分支，只保留 `main` 和 `dev-clean-start`。
 
-通过以上步骤，成功解决了迁移问题，并建立了一个包含最新数据且迁移历史干净的新开发分支。后续开发应基于 `dev-clean-start` 分支进行，数据库同步推荐使用 `npx prisma db push`。
+通过以上步骤，成功解决了迁移问题，并建立了一个包含最新数据且迁移历史干净的新开发分支。后续开发应基于 `dev-clean-start` 分支进行，数据库同步推荐使用 `pnpm prisma db push`。
 
 ## 贡献指南
 
-- 请确保在提交代码前测试所有功能。
-- 不要提交 `.env` 文件。
-- 如果修改了数据库结构 (`schema.prisma`)，请确保使用 `npx prisma db push` 更新数据库。
+欢迎对项目做出贡献！请遵循以下基本准则：
+
+* 请确保在提交代码前测试所有功能。
+* 不要提交 `.env` 文件。
+* 如果修改了数据库结构 (`schema.prisma`)，请确保使用 `pnpm prisma db push` 更新数据库。
