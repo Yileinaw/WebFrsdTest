@@ -111,7 +111,6 @@
     </section>
 
     <!-- Pagination -->
-    <!-- *** 修改：更新分页器的 v-if 条件 和属性绑定 *** -->
     <section class="pagination-section" v-if="!isLoading && !error && pagination.total > pagination.pageSize">
        <el-pagination
             background
@@ -145,7 +144,7 @@ import PostEditor from '@/components/features/PostEditor.vue'
 import PostDetailModal from '@/components/common/PostDetailModal.vue'
 // 引入服务
 import { PostService } from '@/services/PostService'
-import { AdminService } from '@/services/AdminService'
+import { PostTagService } from '@/services/PostTagService'
 // 引入类型
 import type { Post, PostPreview, Tag } from '@/types/models'
 // 引入工具
@@ -260,11 +259,11 @@ const fetchPosts = async (page: number = 1, options: any = {}) => {
 const fetchTags = async () => {
   isLoadingTags.value = true
   try {
-    availableTags.value = await AdminService.getAllTags()
-    console.log('[CommunityView] Fetched tags:', availableTags.value)
+    availableTags.value = await PostTagService.getAllTags()
+    console.log('[CommunityView] Fetched post tags:', availableTags.value)
   } catch (err) {
-    console.error('[CommunityView] Failed to fetch tags:', err)
-    ElMessage.warning('加载标签失败，但不影响浏览')
+    console.error('[CommunityView] Failed to fetch post tags:', err)
+    ElMessage.warning('加载帖子标签失败，但不影响浏览')
   } finally {
     isLoadingTags.value = false
   }

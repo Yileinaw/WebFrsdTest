@@ -6,7 +6,7 @@ export class FoodShowcaseService {
    * Gets all FoodShowcase items, optionally filtered by search term and tag names.
    * @param options - Optional filtering parameters.
    * @param options.search - A search term to match against title or description.
-   * @param options.tagNames - An array of tag names to filter by (match any).
+   * @param options.tags - A comma-separated string of tag names to filter by (match any).
    * @param options.page - The page number for pagination (1-based).
    * @param options.limit - The number of items per page.
    * @param options.includeTags - Whether to include associated tags in the result.
@@ -14,56 +14,114 @@ export class FoodShowcaseService {
    */
   static async getAllShowcases(options: {
     search?: string;
-    tagNames?: string[]; // Changed from tag to tagNames array
+    tags?: string; // Expect comma-separated string
     page?: number;
     limit?: number;
-    includeTags?: boolean; // Added includeTags option
+    includeTags?: boolean;
   } = {}): Promise<{ items: FoodShowcase[]; totalCount: number }> {
-    // 打印调试信息
-    console.log(`[FoodShowcaseService] 获取美食展示列表，参数:`, options);
+    console.log(`[FoodShowcaseService] Getting showcases with options:`, options);
 
-    const { search, tagNames, page = 1, limit = 10, includeTags = false } = options;
+    const { search, tags, page = 1, limit = 10, includeTags = false } = options;
     const where: Prisma.FoodShowcaseWhereInput = {};
     const skip = (page - 1) * limit;
     const take = limit;
 
-    // Add search condition (case-insensitive search on title, description, and tags)
+    // Parse comma-separated tags string into an array
+    const tagNamesArray = tags
+      ? tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+      : [];
+    console.log(`[FoodShowcaseService] Parsed tag names:`, tagNamesArray);
+
+    // Add search condition (case-insensitive search on title, description, and tag names)
     if (search) {
+      // Apply search filter to title, description, OR associated tag names
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        // 由于模型结构变化，暂时移除标签搜索
-        // 后续需要通过关联表实现标签搜索
+        {
+          title: {
+            contains: search,
+            mode: 'insensitive', // Case-insensitive search
+          },
+        },
+        {
+          description: {
+            contains: search,
+            mode: 'insensitive', // Case-insensitive search
+          },
+        },
+        {
+          // Check if any linked tag's name contains the search term
+          tagLinks: {
+            some: { // 'some' means at least one related record must match
+              foodTag: { // Navigate through the FoodShowcaseTags relation to the FoodTag
+                name: { // Check the name field of the FoodTag
+                  contains: search,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          },
+        },
       ];
+      console.log(`[FoodShowcaseService] Added search filter (title, description, tag name) to where clause:`, where.OR);
     }
 
-    // Add tag condition: Check if the showcase has at least one tag whose name is in the provided list
-    if (tagNames && tagNames.length > 0) {
-      // 获取标签ID
-      const tagIds = await prisma.foodTag.findMany({
+    // Add tag condition: Check if the showcase is linked to at least one tag whose name is in the provided list
+    if (tagNamesArray.length > 0) {
+      console.log(`[FoodShowcaseService] Applying tag filter for names:`, tagNamesArray);
+      // Find the IDs of the tags matching the names
+      const matchingTags = await prisma.foodTag.findMany({
         where: {
           name: {
-            in: tagNames,
-            mode: 'insensitive'
-          }
+            in: tagNamesArray,
+            mode: 'insensitive', // Match tag names case-insensitively
+          },
         },
-        select: { id: true }
+        select: { id: true },
       });
 
-      // 使用标签ID筛选展示
+      const tagIds = matchingTags.map(tag => tag.id);
+      console.log(`[FoodShowcaseService] Found tag IDs for filtering:`, tagIds);
+
       if (tagIds.length > 0) {
-        // 使用关联表筛选
-        // 这里需要根据实际的关联表结构进行调整
+        // Add condition to filter showcases:
+        // It must have at least one entry in 'tagLinks' (the relation field)
+        // where the 'foodTagId' is one of the IDs we found.
+        // Simplify assignment: Directly set where.AND, assuming no other AND conditions need merging currently.
+        where.AND = [
+          {
+            tagLinks: { // Use the correct relation field name from Prisma schema
+              some: {    // 'some' means at least one related record must match
+                foodTagId: { // Filter based on the foreign key in FoodShowcaseTags
+                  in: tagIds,
+                },
+              },
+            },
+          },
+        ];
+        console.log(`[FoodShowcaseService] Set tag filter in where.AND clause using 'tagLinks'`); // Updated log
+      } else {
+        // If tag names were provided but no matching tags exist in the DB,
+        // return no results by setting an impossible condition.
+        console.log(`[FoodShowcaseService] No existing tags found for names: ${tagNamesArray.join(',')}. Returning no results.`);
+        where.id = -1; // Impossible condition
       }
     }
 
-    // 由于模型结构变化，暂时移除标签包含
-    // 后续需要通过关联表实现标签包含
-    const include = undefined;
+    // Build the include object based on the includeTags option
+    const include: Prisma.FoodShowcaseInclude | undefined = includeTags
+      ? {
+          tagLinks: { // Include the join table records via the relation field name
+            include: {
+              foodTag: true, // Include the related FoodTag from the join table record
+            },
+          },
+        }
+      : undefined;
+
+    console.log('[FoodShowcaseService] Include object:', include);
+    console.log(`[FoodShowcaseService] Final Where clause:`, JSON.stringify(where, null, 2));
 
     try {
-      console.log(`[FoodShowcaseService] 执行查询: where=${JSON.stringify(where)}, skip=${skip}, take=${take}, includeTags=${includeTags}`);
-
       // Use transaction to get both items and count efficiently
       const [items, totalCount] = await prisma.$transaction([
         prisma.foodShowcase.findMany({
@@ -72,24 +130,30 @@ export class FoodShowcaseService {
           take,
           orderBy: {
             createdAt: 'desc',
-          }
-          // 移除include参数，因为它是undefined
+          },
+          include, // Pass the dynamically built include object
         }),
-        prisma.foodShowcase.count({ where }) // Count based on the same filter conditions
+        prisma.foodShowcase.count({ where }), // Count based on the same filter conditions
       ]);
 
-      // 确保返回的数据是有效的
-      const safeItems = Array.isArray(items) ? items : [];
-      const safeTotalCount = typeof totalCount === 'number' ? totalCount : 0;
+      console.log(`[FoodShowcaseService] Found ${items.length} items, total count ${totalCount}`);
 
-      console.log(`[FoodShowcaseService] 查询结果: 找到 ${safeItems.length} 条记录，总计 ${safeTotalCount} 条`);
+      // Transform tagLinks to a simple tags array if included
+      const transformedItems = items.map((item: any) => {
+        if (includeTags && item.tagLinks) {
+          const tags = item.tagLinks.map((link: any) => link.foodTag).filter(Boolean);
+          delete item.tagLinks; // Remove the intermediate link table data
+          item.tags = tags; // Add the simplified tags array
+        }
+        return item;
+      });
 
-      return { items: safeItems, totalCount: safeTotalCount };
+      return { items: transformedItems, totalCount };
+
     } catch (error) {
       console.error('[FoodShowcaseService] Error fetching showcases:', error);
-      // 返回空数组而不是抛出异常，确保前端不会崩溃
-      console.log('[FoodShowcaseService] 返回空数组以避免前端崩溃');
-      return { items: [], totalCount: 0 };
+      // Re-throw the error or handle it appropriately
+      throw new Error('Failed to fetch food showcases due to a database error.');
     }
   }
 
@@ -137,8 +201,8 @@ export class FoodShowcaseService {
           // 2. 创建展示项与标签的关联
           await prisma.foodShowcaseTags.create({
             data: {
-              A: newShowcase.id, // 展示项ID
-              B: tag.id          // 标签ID
+              foodShowcaseId: newShowcase.id, // 展示项ID
+              foodTagId: tag.id              // 标签ID
             }
           });
         }
@@ -199,7 +263,7 @@ export class FoodShowcaseService {
       if (tagNames !== undefined) {
         // 2.1 删除所有现有的标签关联
         await prisma.foodShowcaseTags.deleteMany({
-          where: { A: id }
+          where: { foodShowcaseId: id }
         });
 
         // 2.2 如果有新标签，创建新的关联
@@ -215,8 +279,8 @@ export class FoodShowcaseService {
             // 创建展示项与标签的关联
             await prisma.foodShowcaseTags.create({
               data: {
-                A: updatedShowcase.id, // 展示项ID
-                B: tag.id              // 标签ID
+                foodShowcaseId: updatedShowcase.id, // 展示项ID
+                foodTagId: tag.id                // 标签ID
               }
             });
           }

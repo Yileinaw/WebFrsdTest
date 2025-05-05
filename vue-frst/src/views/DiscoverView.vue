@@ -203,13 +203,14 @@ const fetchAvailableTags = async () => {
 // --- Methods ---
 const handleTagClick = (tagName: string) => {
   const index = selectedTags.value.indexOf(tagName);
-  if (index === -1) {
-    selectedTags.value.push(tagName);
+  if (index > -1) {
+    selectedTags.value.splice(index, 1); // Remove tag
   } else {
-    selectedTags.value.splice(index, 1);
+    selectedTags.value.push(tagName); // Add tag
   }
-  searchQuery.value = '';
-  fetchFoodShowcases({ tags: selectedTags.value.length > 0 ? selectedTags.value : undefined });
+  searchQuery.value = ''; // Clear search input when a tag is clicked
+  // console.log('[DiscoverView] Selected tags changed:', selectedTags.value);
+  fetchFoodShowcases({ tags: selectedTags.value, search: undefined }); // Pass selected tags, explicitly no search
 };
 
 const clearTagFilter = () => {
@@ -234,12 +235,6 @@ const handleSearchClear = () => {
   fetchFoodShowcases({}); // Fetch without search or tags
 };
 
-// --- Removed Waterfall specific calculation ---
-// const cardWidth = computed(() => 236);
-
-// --- Removed Helper method for image load ---
-// const onImageLoad = async () => { ... };
-
 // --- API Interaction ---
 const fetchFoodShowcases = async (params: { search?: string; tags?: string[] } = {}) => { // Expect tags array
     if (isLoading.value) return;
@@ -248,15 +243,25 @@ const fetchFoodShowcases = async (params: { search?: string; tags?: string[] } =
     }
     isLoading.value = true;
     error.value = null;
+    // console.log(`[DiscoverView] Fetching showcases with params:`, params);
+
     try {
-        // Call AdminService, request a large limit to simulate fetching "all" for discovery view
-        const response = await AdminService.getFoodShowcases({
-            search: params.search,
-            tags: params.tags, // Pass tags array
-            limit: 100, // Request a larger number of items for discovery
-            page: 1, // Always fetch the first page for simplicity here
-            includeTags: false // Tags might not be needed in discovery view
-        });
+        // Prepare parameters for the API call
+        const finalParams: Record<string, any> = { // Use Record<string, any> for flexibility
+            page: 1, // Assuming you might want pagination later
+            limit: 100 // Fetch a larger batch for masonry layout
+        };
+
+        if (params.search) {
+            finalParams.search = params.search;
+        }
+        // Convert tags array to comma-separated string for backend
+        if (params.tags && params.tags.length > 0) {
+            finalParams.tags = params.tags.join(','); // Convert array to string
+        }
+
+        // Directly use AdminService for fetching
+        const response = await AdminService.getFoodShowcases(finalParams);
         if (import.meta.env.DEV) {
             console.log('[DiscoverView] API Response received:', response);
         }

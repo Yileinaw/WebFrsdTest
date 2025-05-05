@@ -336,18 +336,21 @@ const contentTrendOption = computed(() => {
 
 // 标签分布图表配置
 const tagDistributionOption = computed(() => {
-  if (!dashboardStats.value?.tagDistribution) { // Use tagDistribution
-    return {}; // 返回空对象或者一个基础的加载状态
+  if (!dashboardStats.value || !dashboardStats.value.tagDistribution) {
+    return { title: { text: '加载中...', left: 'center', top: 'center' }, series: [] };
   }
 
-  // 根据选择的类型过滤标签数据
-  const filteredTagData = (dashboardStats.value.tagDistribution || []) // Use tagDistribution
-    .filter((tag: any) => {
-      if (selectedTagType.value === 'all') return true;
-      return tag.type === selectedTagType.value;
-    });
+  const allTagData = dashboardStats.value.tagDistribution || [];
+  let filteredTagData = [];
 
-  // 如果过滤后没有数据，准备一个空状态的配置
+  if (selectedTagType.value === 'food') {
+    filteredTagData = allTagData.filter((tag: any) => tag.type === 'FOOD');
+  } else if (selectedTagType.value === 'post') {
+    filteredTagData = allTagData.filter((tag: any) => tag.type === 'POST');
+  } else { // 'all'
+    filteredTagData = allTagData;
+  }
+
   if (filteredTagData.length === 0) {
     return {
       title: {
@@ -368,25 +371,23 @@ const tagDistributionOption = computed(() => {
   return {
     tooltip: {
       trigger: 'item',
-      formatter: (params: any) => { // 添加类型显示
+      formatter: (params: any) => {
         const { name, value, percent, data } = params;
-        const typeLabel = data.type === 'food' ? '美食' : '帖子';
+        const typeLabel = data.type === 'FOOD' ? '美食' : '帖子';
         return `${name} (${typeLabel})<br/>数量: ${value} (${percent}%)`;
       }
     },
     legend: {
-      // orient: 'vertical', // 在较少标签时，水平可能更好
-      // left: 10,
-      type: 'scroll', // 当标签过多时允许滚动
-      bottom: 10, // 移到底部
+      type: 'scroll',
+      bottom: 10,
       data: filteredTagData.map((item: any) => item.name)
     },
     series: [
       {
         name: '标签分布',
         type: 'pie',
-        radius: ['45%', '65%'], // 调整半径以适应图例
-        center: ['50%', '45%'], // 稍微上移以给图例留空间
+        radius: ['45%', '65%'],
+        center: ['50%', '45%'],
         avoidLabelOverlap: false,
         label: {
           show: false,
@@ -402,11 +403,10 @@ const tagDistributionOption = computed(() => {
         labelLine: {
           show: false
         },
-        // 使用过滤后的数据，并传递类型信息给 formatter
         data: filteredTagData.map((item: any) => ({
           name: item.name,
           value: item.count,
-          type: item.type // 传递类型
+          type: item.type
         }))
       }
     ]
@@ -418,7 +418,6 @@ const viewContent = (row: any) => {
   if (row.type === 'post') {
     router.push(`/posts/${row.id}`);
   } else {
-    // 假设美食图片的查看路径
     router.push(`/discover?id=${row.id}`);
   }
 };
@@ -431,7 +430,6 @@ const makeAdmin = async () => {
     makingAdmin.value = true;
     const result = await AdminService.makeAdmin();
     ElMessage.success(result.message || '您已被设置为管理员');
-    // 清除错误并重新获取数据
     error.value = '';
     await fetchDashboardStats();
   } catch (err: any) {
@@ -452,7 +450,7 @@ const fetchWithRetry = async () => {
     if (retryCount.value < maxRetries) {
       retryCount.value++;
       console.log(`重试获取仪表盘数据 (第${retryCount.value}次)`);
-      setTimeout(fetchWithRetry, 1000); // 等待1秒后重试
+      setTimeout(fetchWithRetry, 1000);
     }
   }
 };

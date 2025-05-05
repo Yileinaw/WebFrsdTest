@@ -29,9 +29,9 @@ export class AdminService {
           SELECT
             ft.id,
             ft.name,
-            CAST(COUNT(fst."B") AS INTEGER) as count -- Count related showcases
+            CAST(COUNT(fst."foodTagId") AS INTEGER) as count -- Count related showcases using the correct column
           FROM "FoodTag" ft
-          LEFT JOIN "_FoodShowcaseTags" fst ON ft.id = fst."A" -- Join with relation table
+          LEFT JOIN "FoodShowcaseTags" fst ON ft.id = fst."foodTagId" -- Use correct table and column names
           GROUP BY ft.id, ft.name -- Group by tag to count per tag
           ORDER BY ft.name
         `,
@@ -41,7 +41,7 @@ export class AdminService {
             pt.name,
             CAST(COUNT(ptg."B") AS INTEGER) as count -- Count related posts
           FROM "PostTag" pt
-          LEFT JOIN "_PostTags" ptg ON pt.id = ptg."A" -- Join with relation table
+          LEFT JOIN "_PostTags" ptg ON pt.id = ptg."B" -- Corrected: Join on PostTag ID (B)
           GROUP BY pt.id, pt.name -- Group by tag to count per tag
           ORDER BY pt.name
         `

@@ -288,10 +288,16 @@ const confirmCreate = async () => {
     }
 };
 
-// 切换标签类型
-const handleTagTypeChange = (type: string) => {
-  activeTagType.value = type;
-  fetchTags();
+// --- 切换标签类型 ---
+// 修改函数签名以匹配 el-radio-group @change 事件类型
+const handleTagTypeChange = (type: string | number | boolean | undefined) => {
+  // 添加类型守卫，确保只处理字符串类型的值
+  if (typeof type === 'string') {
+    activeTagType.value = type;
+    fetchTags(); // 重新获取对应类型的标签
+  } else {
+    console.warn('[TagManagementView] Unexpected type received for tag type change:', type);
+  }
 };
 
 // --- Lifecycle Hooks ---

@@ -45,11 +45,11 @@ export const FoodTagService = {
      */
     async updateTag(id: number, name: string): Promise<Tag> {
         try {
-            const response = await http.put<Tag>(`/api/food-tags/${id}`, { name });
+            const response = await http.put<Tag>(`/food-tags/${id}`, { name });
             return response.data;
-        } catch (error) {
+        } catch (error: any) {
             console.error(`[FoodTagService] Error updating tag ${id}:`, error);
-            throw error;
+            throw new Error(error.response?.data?.message || `更新美食标签 ${id} 失败`);
         }
     },
 
@@ -58,13 +58,12 @@ export const FoodTagService = {
      * @param id 标签ID
      * @returns 删除是否成功
      */
-    async deleteTag(id: number): Promise<boolean> {
+    async deleteTag(id: number): Promise<void> {
         try {
-            await http.delete(`/api/food-tags/${id}`);
-            return true;
-        } catch (error) {
+            await http.delete(`/food-tags/${id}`);
+        } catch (error: any) {
             console.error(`[FoodTagService] Error deleting tag ${id}:`, error);
-            return false;
+            throw new Error(error.response?.data?.message || `删除美食标签 ${id} 失败`);
         }
     }
 };

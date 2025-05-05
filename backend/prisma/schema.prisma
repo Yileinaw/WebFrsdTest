@@ -117,6 +117,10 @@ model FoodTag {
   id      Int     @id @default(autoincrement())
   name    String  @unique
   isFixed Boolean @default(false)
+  // Direct M-N relation field
+  showcases   FoodShowcase[] @relation("ShowcaseToTag")
+  // Relation field linking back from the join table model entries
+  showcaseLinks FoodShowcaseTags[] @relation("LinkFromTag")
 }
 
 model Favorite {
@@ -131,15 +135,43 @@ model Favorite {
 }
 
 model FoodShowcase {
-  id          Int      @id @default(autoincrement())
+  id          Int        @id @default(autoincrement())
   imageUrl    String
   title       String?
   description String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime   @default(now())
 
-  @@index([createdAt])
-  @@index([title])
-  @@index([description])
+  // Direct M-N relation field (used for filtering)
+  tags        FoodTag[]  @relation("ShowcaseToTag")
+  // Relation field linking back from the join table model entries
+  tagLinks    FoodShowcaseTags[] @relation("LinkFromShowcase")
+ 
+  // Relation field to the explicit join table (optional but can be useful)
+  // tagLinks    FoodShowcaseTags[] @relation("FoodShowcaseToTags")
+}
+
+// Explicit Join Table for FoodShowcase <-> FoodTag Many-to-Many
+model FoodShowcaseTags {
+  foodShowcaseId Int
+  foodTagId      Int
+ 
+  // Define relations to the connected models
+  // Use the dedicated relation names linking back to the required fields on main models
+  foodShowcase   FoodShowcase @relation("LinkFromShowcase", fields: [foodShowcaseId], references: [id], onDelete: Cascade)
+  foodTag        FoodTag      @relation("LinkFromTag", fields: [foodTagId], references: [id], onDelete: Cascade)
+ 
+  // Define composite primary key
+  @@id([foodShowcaseId, foodTagId])
+}
+
+model PostTags {
+  A    Int
+  B    Int
+  Post Post @relation(fields: [A], references: [id], onDelete: Cascade)
+
+  @@unique([A, B], map: "_PostTags_AB_unique")
+  @@index([B], map: "_PostTags_B_index")
+  @@map("_PostTags")
 }
 
 model PasswordResetCode {
@@ -177,23 +209,4 @@ model Follows {
   @@id([followerId, followingId])
   @@index([followerId])
   @@index([followingId])
-}
-
-model FoodShowcaseTags {
-  A Int
-  B Int
-
-  @@unique([A, B], map: "_FoodShowcaseTags_AB_unique")
-  @@index([B], map: "_FoodShowcaseTags_B_index")
-  @@map("_FoodShowcaseTags")
-}
-
-model PostTags {
-  A    Int
-  B    Int
-  Post Post @relation(fields: [A], references: [id], onDelete: Cascade)
-
-  @@unique([A, B], map: "_PostTags_AB_unique")
-  @@index([B], map: "_PostTags_B_index")
-  @@map("_PostTags")
 }

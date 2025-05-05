@@ -79,7 +79,7 @@ export const AdminService = {
         limit?: number;
         includeTags?: boolean;
         search?: string;
-        tags?: string[];
+        tags?: string;
     } = {}): Promise<PaginatedFoodShowcaseResponse> {
         try {
             const { page = 1, limit = 10, includeTags = true, search, tags } = params;
@@ -93,7 +93,7 @@ export const AdminService = {
                 queryParams.append('search', search);
             }
             if (tags && tags.length > 0) {
-                queryParams.append('tags', tags.join('|'));
+                queryParams.append('tags', tags);
             }
 
             const response = await http.get<PaginatedFoodShowcaseResponse>(`/food-showcase?${queryParams.toString()}`);

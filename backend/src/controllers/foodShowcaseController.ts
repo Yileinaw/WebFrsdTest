@@ -7,59 +7,45 @@ import path from 'path'; // Import path module for extension extraction
 
 // 获取所有 FoodShowcase 记录 (支持筛选和分页)
 export const getAllFoodShowcases = async (req: Request, res: Response) => {
-  try {
-    // 打印请求信息以便于调试
-    console.log(`[FoodShowcaseController] 收到请求: ${req.method} ${req.originalUrl}`);
-    console.log(`[FoodShowcaseController] 查询参数:`, req.query);
+    console.log('[FoodShowcaseController] Received request for getAllShowcases');
+    console.log('[FoodShowcaseController] Query params:', req.query);
 
-    // Extract search, tags, page, and limit query parameters
-    const search = req.query.search as string | undefined;
-    // Expect tags as a pipe-separated string (e.g., "tag1|tag2|tag3")
-    const tagsQuery = req.query.tags as string | undefined;
-    const tagNames = tagsQuery ? tagsQuery.split('|').map(tag => tag.trim()).filter(Boolean) : undefined;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const includeTags = req.query.includeTags === 'true';
+    try {
+        // Extract and validate query parameters
+        const search = req.query.search as string | undefined;
+        const tags = req.query.tags as string | undefined; // Get tags directly as string
+        const page = parseInt(req.query.page as string, 10) || 1;
+        const limit = parseInt(req.query.limit as string, 10) || 10;
+        // Default includeTags to true if not specified or invalid
+        const includeTagsParam = req.query.includeTags as string | undefined;
+        const includeTags = includeTagsParam === undefined || includeTagsParam === 'true'; // Default to true
 
-    console.log(`[FoodShowcaseController] 解析后的参数: search='${search}', tags=${tagNames?.join(',')}, page=${page}, limit=${limit}, includeTags=${includeTags}`);
+        console.log(`[FoodShowcaseController] Parsed params: search=${search}, tags=${tags}, page=${page}, limit=${limit}, includeTags=${includeTags}`);
 
-    // Pass the parsed tagNames array to the service
-    const { items, totalCount } = await FoodShowcaseService.getAllShowcases({
-      search,
-      tagNames, // Use the parsed array
-      page,
-      limit,
-      includeTags // Pass includeTags option
-    });
+        // Prepare options for the service call
+        const options = {
+            search,
+            tags, // Pass the tags string directly
+            page,
+            limit,
+            includeTags
+        };
 
-    // 检查返回的数据
-    console.log(`[FoodShowcaseController] 服务返回数据: items.length=${items?.length || 0}, totalCount=${totalCount}`);
+        // Call the service method with the prepared options
+        const result = await FoodShowcaseService.getAllShowcases(options);
 
-    // 确保 items 是数组
-    const safeItems = Array.isArray(items) ? items : [];
+        console.log(`[FoodShowcaseController] Service returned ${result.items.length} items, total ${result.totalCount}`);
 
-    // Calculate total pages
-    const totalPages = Math.ceil(totalCount / limit);
-
-    // Return paginated response structure expected by frontend
-    const response = {
-      items: safeItems,
-      totalCount,
-      page,
-      totalPages
-    };
-
-    console.log(`[FoodShowcaseController] 响应数据结构: keys=${Object.keys(response).join(',')}`);
-    res.json(response);
-  } catch (error) {
-    console.error('[FoodShowcaseController] Error fetching food showcases:', error);
-    // Distinguish between expected errors (like invalid input) and server errors if needed
-    if (error instanceof Error && error.message.includes('Failed to retrieve')) {
-         res.status(500).json({ message: error.message });
-    } else {
-        res.status(500).json({ message: '获取美食展示数据时发生内部错误' });
+        res.status(200).json(result);
+    } catch (error) {
+        console.error('[FoodShowcaseController] Error fetching food showcases:', error);
+        // Distinguish between expected errors (like invalid input) and server errors if needed
+        if (error instanceof Error && error.message.includes('Failed to retrieve')) {
+             res.status(500).json({ message: error.message });
+        } else {
+            res.status(500).json({ message: '获取美食展示数据时发生内部错误' });
+        }
     }
-  }
 };
 
 // 新增: 处理创建 FoodShowcase 的请求 (包括图片上传到 Supabase)
@@ -161,6 +147,16 @@ export const updateShowcaseById = async (req: AuthenticatedRequest, res: Respons
         const { title, description, tags } = req.body;
         let imageUrl: string | undefined = undefined; // Initialize imageUrl as undefined
 
+        // Parse tags into tagNames array
+        let tagNames: string[] = [];
+        if (typeof tags === 'string') {
+            tagNames = tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
+        } else if (Array.isArray(tags)) {
+            // Filter out non-string values just in case
+            tagNames = tags.filter(tag => typeof tag === 'string').map(tag => tag.trim()).filter(Boolean);
+        }
+        // console.log(`[FoodShowcaseController] Parsed tagNames for update: ${tagNames.join(',')}`);
+
         const bucketName = process.env.SUPABASE_BUCKET_NAME;
         if (!bucketName) {
             console.error('[FoodShowcaseController] Supabase bucket name not configured in .env');
@@ -208,21 +204,26 @@ export const updateShowcaseById = async (req: AuthenticatedRequest, res: Respons
             // For now, we are just uploading the new one.
         }
 
-        // Parse tags
-        let tagNames: string[] = [];
-        if (typeof tags === 'string') {
-            tagNames = tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
-        } else if (Array.isArray(tags)) {
-            tagNames = tags.filter(tag => typeof tag === 'string');
-        }
-         // console.log(`[FoodShowcaseController] Updating ${showcaseId} with title: ${title}, desc: ${description}, tags: ${tagNames.join(',')}, image URL: ${imageUrl ?? ' (no change)'}`);
+        // Explicitly define the type for dataToUpdate
+        const dataToUpdate: {
+            title?: string;
+            description?: string;
+            imageUrl?: string; // Conditionally include image URL
+            tagNames?: string[]; // Array of tag names
+        } = {};
 
-        const updatedShowcase = await FoodShowcaseService.updateShowcase(showcaseId, {
-            title,
-            description,
-            imageUrl, // Pass the new Supabase URL if a new image was uploaded, otherwise undefined
-            tagNames // Pass the parsed tag names
-        });
+        // Assign properties conditionally
+        if (title !== undefined) dataToUpdate.title = title;
+        if (description !== undefined) dataToUpdate.description = description;
+        if (imageUrl !== undefined) dataToUpdate.imageUrl = imageUrl; // Only add if new image was uploaded
+
+        // Always include tagNames, even if empty, so the service knows to update (potentially remove all)
+        dataToUpdate.tagNames = tagNames;
+
+        const updatedShowcase = await FoodShowcaseService.updateShowcase(
+            showcaseId,
+            dataToUpdate
+        );
 
         if (!updatedShowcase) {
             return res.status(404).json({ message: `Showcase with ID ${showcaseId} not found.` });
