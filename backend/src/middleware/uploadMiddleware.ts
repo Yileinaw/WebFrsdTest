@@ -50,4 +50,13 @@ export const uploadPostImage = multer({
   }
 }).single('image'); // Expecting the file input field name to be 'image'
 
+// Create Multer instance specifically for single website logo uploads
+export const uploadLogoImage = multer({
+  storage: memoryStorage, // Reuse memory storage
+  fileFilter: imageFileFilter,
+  limits: {
+    fileSize: 1024 * 1024 * 2 // Limit logo size to 2MB
+  }
+}).single('logo'); // Expecting the file input field name to be 'logo'
+
 // ... potentially other exports or logic ... 

@@ -12,7 +12,7 @@ interface AuthorInfo {
 
 // Define a type for Post that includes the AuthorInfo
 // This helps ensure type safety throughout the process
-interface PostWithAuthor extends Omit<Post, 'authorId'> { 
+type PostWithAuthor = Omit<Post, 'authorId'> & {
     author: AuthorInfo | null; 
     likesCount?: number;
     commentsCount?: number;
@@ -106,6 +106,8 @@ export class FavoriteService {
                        createdAt: true,
                        updatedAt: true,
                        isShowcase: true, // Ensure isShowcase is selected
+                       status: true,      // <-- 添加 status
+                       deletedAt: true,   // <-- 添加 deletedAt
                        author: { // Select author details
                            select: { id: true, name: true, avatarUrl: true }
                        },
@@ -154,7 +156,9 @@ export class FavoriteService {
                     isLiked: !!(postData.likes && postData.likes.length > 0),
                     isFavorited: true,
                     isShowcase: postData.isShowcase,
-                    viewCount: postData.viewCount ?? 0
+                    viewCount: postData.viewCount ?? 0,
+                    status: postData.status,
+                    deletedAt: postData.deletedAt,
                 };
                 return processedPost;
             })

@@ -1,6 +1,6 @@
 import http from '@/http';
 // Assuming FoodShowcasePreview and Tag are correctly defined and exported from models.ts
-import type { FoodShowcasePreview, Tag } from '@/types/models';
+import type { FoodShowcasePreview, Tag, Post, PostStatus, Role } from '@/types/models'; 
 import { ElMessage } from 'element-plus';
 
 interface AdminShowcaseListResponse extends Array<FoodShowcasePreview> {}
@@ -68,6 +68,55 @@ interface AdminRoleCheckResponse {
     isAdmin: boolean;
     isModerator: boolean;
     hasAdminAccess: boolean;
+}
+
+// 定义帖子列表的分页响应接口
+interface PaginatedPostsResponse {
+    posts: Post[]; // 使用 Post 类型
+    currentPage: number;
+    totalPages: number;
+    totalPosts: number;
+}
+
+// 定义获取帖子列表的参数接口
+interface GetPostsParams {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: PostStatus | 'ALL'; // 允许特定状态或 'ALL'
+}
+
+// --- User Management Interfaces ---
+// Interface for User data returned by the API (excluding sensitive info)
+interface UserSafe {
+  id: number;
+  username: string;
+  email: string;
+  role: Role;
+  createdAt: string;
+}
+
+// Interface for the response structure of getUsers
+interface GetUsersResponse {
+  users: UserSafe[];
+  total: number;
+}
+
+// Interface for the parameters of getUsers
+interface GetUsersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  role?: Role | ''; // Allow empty string or Role enum for 'All'
+}
+
+// Define System Info Response Type
+interface SystemInfoResponse {
+  nodeVersion: string;
+  platform: string;
+  osType: string;
+  osRelease: string;
+  // Add other fields here if the backend returns more info
 }
 
 // Export the service object
@@ -329,4 +378,99 @@ export const AdminService = {
             throw new Error(message);
         }
     },
-};
+
+    // --- 帖子管理 (Admin Post Management) --- //
+
+    /**
+     * 获取帖子列表 (管理员)
+     * Calls GET /api/admin/posts
+     */
+    async getPosts(params: GetPostsParams = {}): Promise<PaginatedPostsResponse> {
+        try {
+            const queryParams = new URLSearchParams();
+            if (params.page) queryParams.append('page', String(params.page));
+            if (params.limit) queryParams.append('limit', String(params.limit));
+            if (params.search) queryParams.append('search', params.search);
+            if (params.status) queryParams.append('status', params.status);
+
+            const response = await http.get<PaginatedPostsResponse>(`/admin/posts?${queryParams.toString()}`);
+            // 注意：后端返回的数据结构可能需要调整以匹配 PaginatedPostsResponse
+            // 例如，如果后端直接返回 { posts: [], total: 100 }，则需要转换
+            // 这里假设后端返回的结构与 PaginatedPostsResponse 一致
+            return response.data;
+        } catch (error: any) {
+            console.error('[AdminService] 获取帖子列表失败:', error.response || error);
+            ElMessage.error('获取帖子列表失败');
+            throw new Error('获取帖子列表失败');
+        }
+    },
+
+    /**
+     * 删除指定帖子 (管理员 - 软删除)
+     * Calls DELETE /api/admin/posts/:id
+     */
+    async deletePost(postId: number): Promise<{ message: string }> {
+        try {
+            const response = await http.delete<{ message: string }>(`/admin/posts/${postId}`);
+            ElMessage.success(response.data.message || '帖子删除成功');
+            return response.data;
+        } catch (error: any) {
+            console.error(`[AdminService] 删除帖子 ${postId} 失败:`, error.response || error);
+            ElMessage.error(error.response?.data?.message || '删除帖子失败');
+            throw new Error('删除帖子失败');
+        }
+    },
+
+    // --- 用户管理 (Admin User Management) --- //
+    /**
+     * Fetches users for the admin panel with pagination and filtering.
+     * Calls GET /api/admin/users
+     * @param params - Optional parameters for page, limit, search, role.
+     */
+    async getUsers(params: GetUsersParams = {}): Promise<GetUsersResponse> {
+        const { page = 1, limit = 10, search, role } = params;
+        const queryParams = new URLSearchParams();
+        queryParams.append('page', String(page));
+        queryParams.append('limit', String(limit));
+        if (search) {
+            queryParams.append('search', search);
+        }
+        if (role) {
+            queryParams.append('role', role);
+        }
+
+        try {
+            console.log(`[AdminService] Fetching users with params: ${queryParams.toString()}`); // Log request
+            const response = await http.get<GetUsersResponse>(`/admin/users?${queryParams.toString()}`);
+            console.log('[AdminService] Raw response data from backend:', response.data); // Log raw response
+
+            return response.data;
+
+        } catch (error: any) {
+            console.error('[AdminService] Failed to fetch users:', error.response || error);
+            ElMessage.error('获取用户列表失败，请检查网络或联系管理员');
+            return { users: [], total: 0 }; // Return empty state on failure
+        }
+    },
+
+    // --- New Function for System Info --- //
+    /**
+     * 获取后端系统信息
+     * Calls GET /api/admin/system-info
+     */
+    async getSystemInfo(): Promise<SystemInfoResponse> {
+        try {
+            // The base URL in http.ts likely includes /api, so we call /admin/system-info
+            console.log('[AdminService] Fetching system info...');
+            const response = await http.get<SystemInfoResponse>('/admin/system-info');
+            console.log('[AdminService] System info fetched:', response.data);
+            return response.data;
+        } catch (error: any) {
+            console.error('[AdminService] 获取系统信息失败:', error.response || error);
+            const message = error.response?.data?.message || '获取系统信息失败，请稍后重试。';
+            ElMessage.error(message); // Show error message to the user
+            throw new Error(message); // Rethrow to allow component-level handling if needed
+        }
+    },
+
+}; // End of AdminService object

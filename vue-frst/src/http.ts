@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useUserStore } from './stores/modules/user';
+import router from './router';
 
 // 创建 Axios 实例
 const http = axios.create({
@@ -15,34 +16,31 @@ if (import.meta.env.DEV) {
 // 请求拦截器
 http.interceptors.request.use(
     (config) => {
-        // 从 Pinia store 获取 token
         const userStore = useUserStore();
-        const token = userStore.token;
+        const storeToken = userStore.token;
+        let tokenSource = 'None'; // Track the source
 
-        // 如果 Token 存在，则添加到请求头
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-            // 在非生产环境下输出调试信息
-            if (import.meta.env.DEV) {
-                console.log('[HTTP] 添加认证头');
-            }
+        if (storeToken) {
+            config.headers.Authorization = `Bearer ${storeToken}`;
+            tokenSource = 'Pinia Store';
         } else {
-            // 尝试从 localStorage 获取 Token 作为备选
             const localToken = localStorage.getItem('authToken');
             if (localToken) {
                 config.headers.Authorization = `Bearer ${localToken}`;
-                // 在非生产环境下输出调试信息
-                if (import.meta.env.DEV) {
-                    console.log('[HTTP] 从localStorage添加认证头');
-                }
+                tokenSource = 'localStorage';
             }
+        }
+
+        // 在非生产环境下输出详细调试信息
+        if (import.meta.env.DEV) {
+            console.log(`[HTTP Request Interceptor] Sending request to: ${config.url}. Token source: ${tokenSource}. Has Auth Header: ${!!config.headers.Authorization}`);
         }
 
         return config;
     },
     (error) => {
         // 处理请求错误
-        console.error('Request interceptor error:', error);
+        console.error('[HTTP Request Interceptor] Error:', error);
         return Promise.reject(error);
     }
 );
@@ -57,7 +55,7 @@ http.interceptors.response.use(
         // 处理响应错误
         // 在非生产环境下输出详细错误信息
         if (import.meta.env.DEV) {
-            console.error('Response interceptor error:', error.response || error.message);
+            console.error('Response interceptor error:', error.response?.status, error.message);
         }
 
         // 全局错误处理逻辑
@@ -66,19 +64,35 @@ http.interceptors.response.use(
 
             // 处理 401 Unauthorized (认证失败)
             if (status === 401) {
-                if (import.meta.env.DEV) {
-                    console.error('Unauthorized access - possibly invalid token.');
-                }
-                // 获取 userStore 实例
                 const userStore = useUserStore();
-                // 清除用户信息和 token
-                userStore.logout();
+                const currentRoute = router.currentRoute.value;
 
-                // 如果需要跳转到登录页，可以在这里实现
-                // 注意：这里暂时不实现自动跳转，避免循环重定向
-                // 如果需要跳转，可以引入 router 并使用 router.push('/login')
+                if (import.meta.env.DEV) {
+                    console.error('[HTTP 401 Interceptor] Unauthorized access. Current route:', currentRoute.fullPath);
+                }
 
-                // 返回特定错误信息
+                // 只有当当前路由不是登录页时才执行清除和跳转
+                if (currentRoute.name !== 'Login') {
+                     if (import.meta.env.DEV) {
+                        console.log('[HTTP 401 Interceptor] Clearing user state and redirecting to Login.');
+                     }
+                    // 清除用户信息和 token
+                    userStore.logout();
+                    // 跳转到登录页，并传递原始路径以便登录后跳回
+                    router.push({
+                        name: 'Login',
+                        query: { redirect: currentRoute.fullPath }
+                    });
+                } else {
+                    // 如果在登录页本身收到 401 (例如，尝试用旧 token 访问需要登录的接口)
+                    // 确保状态也被清除了
+                     if (import.meta.env.DEV) {
+                        console.warn('[HTTP 401 Interceptor] Unauthorized on Login page. Ensuring state is cleared.');
+                     }
+                    userStore.logout();
+                }
+
+                // 返回特定错误信息，标记为认证错误
                 error.isAuthError = true;
             }
 

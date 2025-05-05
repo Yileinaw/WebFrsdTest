@@ -70,3 +70,16 @@ export const AuthMiddleware = async (req: AuthenticatedRequest, res: Response, n
         }
     }
 };
+
+// 新增：检查用户是否为管理员的中间件
+export const isAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    // 确保此中间件在 AuthMiddleware 之后运行
+    // 将比较改为不区分大小写
+    if (req.userRole?.toLowerCase() === 'admin') { 
+        console.log(`[isAdmin] 权限检查通过: 用户ID ${req.userId} 是管理员`);
+        next(); // 用户是管理员，继续处理请求
+    } else {
+        console.log(`[isAdmin] 权限检查失败: 用户ID ${req.userId}, 角色 ${req.userRole} 不是管理员`);
+        res.status(403).json({ message: 'Forbidden: Admin access required' }); // 用户不是管理员，返回 403 Forbidden
+    }
+};

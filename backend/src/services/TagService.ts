@@ -1,14 +1,14 @@
 import prisma from '../db';
-import { Tag } from '@prisma/client';
+import { PostTag } from '@prisma/client';
 
 export class TagService {
     /**
      * Gets all tags from the database.
-     * @returns A promise resolving to an array of Tag items.
+     * @returns A promise resolving to an array of PostTag items.
      */
-    static async getAllTags(): Promise<Tag[]> {
+    static async getAllTags(): Promise<PostTag[]> {
         try {
-            const tags = await prisma.tag.findMany({
+            const tags = await prisma.postTag.findMany({
                 orderBy: { name: 'asc' } // Order alphabetically
             });
             return tags;
@@ -22,11 +22,11 @@ export class TagService {
      * Updates the name of a non-fixed tag.
      * @param id The ID of the tag to update.
      * @param name The new name for the tag.
-     * @returns A promise resolving to the updated Tag object, or null if not found or fixed.
+     * @returns A promise resolving to the updated PostTag object, or null if not found or fixed.
      */
-    static async updateTag(id: number, name: string): Promise<Tag | null> {
+    static async updateTag(id: number, name: string): Promise<PostTag | null> {
         try {
-            const existingTag = await prisma.tag.findUnique({
+            const existingTag = await prisma.postTag.findUnique({
                 where: { id },
             });
 
@@ -35,7 +35,7 @@ export class TagService {
                 return null;
             }
 
-            const updatedTag = await prisma.tag.update({
+            const updatedTag = await prisma.postTag.update({
                 where: { id },
                 data: { name },
             });
@@ -53,7 +53,7 @@ export class TagService {
      */
     static async deleteTag(id: number): Promise<boolean> {
         try {
-            const existingTag = await prisma.tag.findUnique({
+            const existingTag = await prisma.postTag.findUnique({
                 where: { id },
             });
 
@@ -63,7 +63,7 @@ export class TagService {
             }
             
             // TODO: Consider handling relations? Prisma might cascade or restrict.
-            await prisma.tag.delete({ 
+            await prisma.postTag.delete({ 
                 where: { id },
             });
             return true;
@@ -78,17 +78,17 @@ export class TagService {
      * Creates a new tag.
      * Assumes new tags are always custom (isFixed = false based on schema default).
      * @param name The name of the tag to create.
-     * @returns A promise resolving to the newly created Tag object.
+     * @returns A promise resolving to the newly created PostTag object.
      */
-    static async createTag(name: string): Promise<Tag> {
+    static async createTag(name: string): Promise<PostTag> {
         try {
             // Add check for existing tag name to prevent duplicates (optional but recommended)
-            const existing = await prisma.tag.findUnique({ where: { name } });
+            const existing = await prisma.postTag.findUnique({ where: { name } });
             if (existing) {
                 throw new Error(`标签 "${name}" 已存在`);
             }
 
-            const newTag = await prisma.tag.create({
+            const newTag = await prisma.postTag.create({
                 data: { 
                     name,
                     // isFixed will use the default value (false) from the schema

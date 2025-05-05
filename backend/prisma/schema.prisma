@@ -45,6 +45,8 @@ model Post {
   imageUrl      String?        @unique
   isShowcase    Boolean        @default(false)
   viewCount     Int            @default(0)
+  deletedAt     DateTime?
+  status        PostStatus     @default(PUBLISHED)
   comments      Comment[]
   favoritedBy   Favorite[]
   likes         Like[]
@@ -55,6 +57,7 @@ model Post {
   likedBy       User[]         @relation("PostLikes")
 
   @@index([authorId])
+  @@index([status])
 }
 
 model Like {
@@ -114,13 +117,11 @@ model PostTag {
 }
 
 model FoodTag {
-  id      Int     @id @default(autoincrement())
-  name    String  @unique
-  isFixed Boolean @default(false)
-  // Direct M-N relation field
-  showcases   FoodShowcase[] @relation("ShowcaseToTag")
-  // Relation field linking back from the join table model entries
+  id            Int                @id @default(autoincrement())
+  name          String             @unique
+  isFixed       Boolean            @default(false)
   showcaseLinks FoodShowcaseTags[] @relation("LinkFromTag")
+  showcases     FoodShowcase[]     @relation("ShowcaseToTag")
 }
 
 model Favorite {
@@ -135,32 +136,21 @@ model Favorite {
 }
 
 model FoodShowcase {
-  id          Int        @id @default(autoincrement())
+  id          Int                @id @default(autoincrement())
   imageUrl    String
   title       String?
   description String?
-  createdAt   DateTime   @default(now())
-
-  // Direct M-N relation field (used for filtering)
-  tags        FoodTag[]  @relation("ShowcaseToTag")
-  // Relation field linking back from the join table model entries
+  createdAt   DateTime           @default(now())
   tagLinks    FoodShowcaseTags[] @relation("LinkFromShowcase")
- 
-  // Relation field to the explicit join table (optional but can be useful)
-  // tagLinks    FoodShowcaseTags[] @relation("FoodShowcaseToTags")
+  tags        FoodTag[]          @relation("ShowcaseToTag")
 }
 
-// Explicit Join Table for FoodShowcase <-> FoodTag Many-to-Many
 model FoodShowcaseTags {
   foodShowcaseId Int
   foodTagId      Int
- 
-  // Define relations to the connected models
-  // Use the dedicated relation names linking back to the required fields on main models
   foodShowcase   FoodShowcase @relation("LinkFromShowcase", fields: [foodShowcaseId], references: [id], onDelete: Cascade)
   foodTag        FoodTag      @relation("LinkFromTag", fields: [foodTagId], references: [id], onDelete: Cascade)
- 
-  // Define composite primary key
+
   @@id([foodShowcaseId, foodTagId])
 }
 
@@ -209,4 +199,22 @@ model Follows {
   @@id([followerId, followingId])
   @@index([followerId])
   @@index([followingId])
+}
+
+/// 帖子状态枚举
+enum PostStatus {
+  PUBLISHED
+  PENDING
+  DELETED
+}
+
+// Setting model for website configuration
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique // e.g., "siteTitle", "logoUrl", "footerCopyright"
+  value     String   @db.Text // Use Text type for longer values
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings") // Map to 'settings' table
 }

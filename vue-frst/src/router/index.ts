@@ -17,6 +17,9 @@ import VerifyEmailView from '@/views/auth/VerifyEmailView.vue';
 // Ensure guards import is commented out if it causes errors
 // import { requireAuth, requireAdmin } from './guards'
 
+// Import the new User Management component
+const UserManagementView = () => import('@/views/admin/UserManagementView.vue');
+
 const routes: Array<RouteRecordRaw> = [
   {
     path: '/',
@@ -180,13 +183,14 @@ const routes: Array<RouteRecordRaw> = [
       {
         path: 'posts',
         name: 'AdminPosts',
-        component: UnderDevelopment
+        component: () => import('@/views/admin/PostManagementView.vue'),
+        meta: { requiresAuth: true, isAdmin: true, title: '帖子管理' }
       },
       {
         path: 'users',
         name: 'AdminUsers',
-        component: UnderDevelopment,
-        meta: { requiresAuth: true, isAdmin: true }
+        component: UserManagementView, // Use the actual component
+        meta: { requiresAuth: true, isAdmin: true, title: '用户管理' } // Add title
       },
       {
         path: 'tags',
@@ -197,12 +201,18 @@ const routes: Array<RouteRecordRaw> = [
       {
         path: 'settings',
         name: 'AdminSettings',
-        component: UnderDevelopment,
-        meta: { requiresAuth: true, isAdmin: true }
+        component: () => import('@/views/admin/WebsiteSettings.vue'),
+        meta: { requiresAuth: true, isAdmin: true, title: '网站设置' }
       },
       {
-        path: 'other',
-        name: 'AdminOther',
+        path: 'other-management', // Route path: /admin/other-management
+        name: 'AdminOtherManagement', // Unique route name
+        component: () => import('@/views/admin/OtherManagement.vue'), // Lazy load the component
+        meta: { requiresAuth: true, isAdmin: true, title: '其他管理' } // Metadata for title and potentially guards
+      },
+      {
+        path: ':pathMatch(.*)*', // Catches all unmatched paths under /admin
+        name: 'AdminNotFound',
         component: UnderDevelopment
       }
     ]

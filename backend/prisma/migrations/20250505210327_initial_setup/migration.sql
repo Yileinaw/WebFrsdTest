@@ -1,3 +1,6 @@
+-- CreateEnum
+CREATE TYPE "PostStatus" AS ENUM ('PUBLISHED', 'PENDING', 'DELETED');
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" SERIAL NOT NULL,
@@ -27,6 +30,8 @@ CREATE TABLE "Post" (
     "imageUrl" TEXT,
     "isShowcase" BOOLEAN NOT NULL DEFAULT false,
     "viewCount" INTEGER NOT NULL DEFAULT 0,
+    "deletedAt" TIMESTAMP(3),
+    "status" "PostStatus" NOT NULL DEFAULT 'PUBLISHED',
 
     CONSTRAINT "Post_pkey" PRIMARY KEY ("id")
 );
@@ -154,6 +159,17 @@ CREATE TABLE "Follows" (
 );
 
 -- CreateTable
+CREATE TABLE "settings" (
+    "id" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "settings_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "_Collections" (
     "A" INTEGER NOT NULL,
     "B" INTEGER NOT NULL
@@ -191,6 +207,9 @@ CREATE UNIQUE INDEX "Post_imageUrl_key" ON "Post"("imageUrl");
 
 -- CreateIndex
 CREATE INDEX "Post_authorId_idx" ON "Post"("authorId");
+
+-- CreateIndex
+CREATE INDEX "Post_status_idx" ON "Post"("status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Like_postId_userId_key" ON "Like"("postId", "userId");
@@ -251,6 +270,9 @@ CREATE INDEX "Follows_followerId_idx" ON "Follows"("followerId");
 
 -- CreateIndex
 CREATE INDEX "Follows_followingId_idx" ON "Follows"("followingId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "settings_key_key" ON "settings"("key");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "_Collections_AB_unique" ON "_Collections"("A", "B");

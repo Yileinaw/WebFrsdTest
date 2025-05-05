@@ -1,7 +1,8 @@
-import express, { Response } from 'express';
+import express from 'express';
 import { AdminController } from '../controllers/AdminController';
-import { AuthMiddleware, AuthenticatedRequest } from '../middleware/AuthMiddleware';
+import { AuthMiddleware, isAdmin, AuthenticatedRequest } from '../middleware/AuthMiddleware';
 import { AdminMiddleware } from '../middleware/AdminMiddleware';
+import AdminUserController from '../controllers/AdminUserController';
 import prisma from '../db';
 
 const router = express.Router();
@@ -14,7 +15,7 @@ router.use(AdminMiddleware);
 router.get('/dashboard/stats', AdminController.getDashboardStats);
 
 // 检查当前用户的角色和权限
-router.get('/check-role', (req: AuthenticatedRequest, res: Response) => {
+router.get('/check-role', (req: AuthenticatedRequest, res: express.Response) => {
     const userId = req.userId;
     const userRole = req.userRole;
 
@@ -30,7 +31,7 @@ router.get('/check-role', (req: AuthenticatedRequest, res: Response) => {
 });
 
 // 用户角色管理（只允许 ADMIN 角色使用）
-router.post('/set-role/:userId', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/set-role/:userId', async (req: AuthenticatedRequest, res: express.Response) => {
     try {
         // 验证当前用户是否为 ADMIN
         if (req.userRole !== 'ADMIN') {
@@ -63,5 +64,19 @@ router.post('/set-role/:userId', async (req: AuthenticatedRequest, res: Response
         res.status(500).json({ message: '设置用户角色时出错' });
     }
 });
+
+// User Management Routes
+router.get('/users', isAdmin, AdminUserController.getUsers);
+
+// --- New Routes for "Other" Section ---
+
+// 系统信息
+router.get('/system-info', AdminController.getSystemInfo);
+
+// 清除缓存 (占位符)
+router.post('/clear-cache', AdminController.clearCache);
+
+// 获取活动日志 (占位符)
+router.get('/activity-logs', AdminController.getActivityLogs);
 
 export default router;

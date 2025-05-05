@@ -24,8 +24,23 @@ export const useUserStore = defineStore('user', () => {
     // --- State --- 
     // 使用 ref 定义状态属性
     const token = ref(localStorage.getItem('authToken') || null) // 尝试从 localStorage 读取初始 token
-    // Use the specific type for currentUser
-    const currentUser = ref<CurrentUserType>(JSON.parse(localStorage.getItem('currentUserInfo') || 'null')) // 尝试读取用户信息，明确 User 类型
+    
+    // Wrap currentUser initialization in try-catch
+    let initialUser: CurrentUserType = null;
+    try {
+        const storedUserInfo = localStorage.getItem('currentUserInfo');
+        if (storedUserInfo) {
+            initialUser = JSON.parse(storedUserInfo) as CurrentUserType;
+            console.log('[UserStore Init] Successfully parsed currentUserInfo from localStorage:', initialUser);
+        } else {
+            console.log('[UserStore Init] No currentUserInfo found in localStorage.');
+        }
+    } catch (error) {
+        console.error('[UserStore Init] Failed to parse currentUserInfo from localStorage:', error);
+        // Optionally remove corrupted data
+        // localStorage.removeItem('currentUserInfo'); 
+    }
+    const currentUser = ref<CurrentUserType>(initialUser) // 使用解析后的或 null 初始化
 
     // --- Getters --- 
     // 使用 computed 定义 getters

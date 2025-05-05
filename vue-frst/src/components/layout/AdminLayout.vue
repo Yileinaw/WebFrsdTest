@@ -38,9 +38,9 @@
             <el-icon><Setting /></el-icon>
             <span>网站设置</span>
           </el-menu-item>
-          <el-menu-item index="/admin/other">
+          <el-menu-item index="/admin/other-management">
             <el-icon><More /></el-icon>
-            <span>其他</span>
+            <span>其他管理</span>
           </el-menu-item>
         </el-menu>
       </el-aside>
