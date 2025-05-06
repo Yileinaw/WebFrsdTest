@@ -89,18 +89,29 @@
             >
               {{ tag }}
             </el-tag>
-            <el-input
-              v-if="inputVisible"
-              ref="tagInputRef"
-              v-model="inputValue"
-              class="tag-input"
+            
+            <!-- Updated tag input using el-select -->
+            <el-select
+              v-if="selectedTags.length < 5"
+              v-model="selectedTags"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择预设标签或创建新标签"
               size="small"
-              @keyup.enter="handleInputConfirm"
-              @blur="handleInputConfirm"
-            />
-            <el-button v-else class="button-new-tag" size="small" @click="showInput">
-              + 添加标签
-            </el-button>
+              style="width: 240px; margin-left: 10px; vertical-align: top;"
+              class="tag-select-create-view"
+            >
+              <el-option
+                v-for="item in presetTags"
+                :key="item.id" 
+                :label="item.name"
+                :value="item.name"
+              />
+            </el-select>
+            <span v-else style="font-size: 12px; color: #909399; margin-left: 10px; vertical-align: top;">最多添加5个标签</span>
+
             <div class="tag-tip">添加标签可以让更多人发现你的帖子</div>
           </el-form-item>
         </el-form>
@@ -127,38 +138,52 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick, onMounted } from 'vue'
+import { ref, reactive, nextTick, onMounted, computed } from 'vue'
 import {
   ElForm, ElFormItem, ElInput, ElButton, ElMessage,
-  ElUpload, ElImage, ElTag, ElIcon
+  ElUpload, ElImage, ElTag, ElIcon, ElSelect, ElOption
 } from 'element-plus'
+import type { FormInstance, FormRules, UploadFile, UploadRawFile } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import type { FormInstance, FormRules, UploadProps, UploadRawFile } from 'element-plus'
-import { PostService } from '@/services/PostService'
-import { PostTagService } from '@/services/PostTagService' // 导入帖子标签服务
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
+import { PostService } from '@/services/PostService'
+import http from '@/http';
 
 const router = useRouter()
 const userStore = useUserStore()
 
-// 表单相关
 const postFormRef = ref<FormInstance>()
 const postForm = reactive({
   title: '',
   content: '',
 })
 
-// 图片上传相关
+// Image upload state
 const selectedFile = ref<UploadRawFile | null>(null)
 const imagePreviewUrl = ref<string | null>(null)
 const uploadError = ref<string | null>(null)
 
-// 标签相关
+// Tag related state
 const selectedTags = ref<string[]>([])
-const inputVisible = ref(false)
-const inputValue = ref('')
-const tagInputRef = ref<InstanceType<typeof ElInput>>()
+interface Tag {
+  id: number;
+  name: string;
+  isFixed?: boolean;
+}
+const allAvailableTags = ref<Tag[]>([]);
+const presetTags = computed(() => {
+  return allAvailableTags.value.filter(tag => tag.isFixed === true);
+});
+
+const fetchAvailableTags = async () => {
+  try {
+    const response = await http.get<Tag[]>('/tags'); 
+    allAvailableTags.value = Array.isArray(response.data) ? response.data : [];
+  } catch (error) {
+    ElMessage.error('获取可用标签列表失败');
+  }
+};
 
 // 其他状态
 const isSubmitting = ref(false)
@@ -233,28 +258,6 @@ const removeImage = () => {
   imagePreviewUrl.value = null
 }
 
-// 标签相关方法
-const showInput = () => {
-  inputVisible.value = true
-  nextTick(() => {
-    tagInputRef.value?.input?.focus()
-  })
-}
-
-const handleInputConfirm = () => {
-  if (inputValue.value) {
-    if (selectedTags.value.length >= 5) {
-      ElMessage.warning('最多添加5个标签')
-    } else if (selectedTags.value.includes(inputValue.value)) {
-      ElMessage.warning('标签已存在')
-    } else {
-      selectedTags.value.push(inputValue.value)
-    }
-  }
-  inputVisible.value = false
-  inputValue.value = ''
-}
-
 const removeTag = (tag: string) => {
   selectedTags.value = selectedTags.value.filter(t => t !== tag)
 }
@@ -276,8 +279,9 @@ const submitPost = async () => {
 
     // 添加标签
     if (selectedTags.value.length > 0) {
-      // 后端接收tags作为字符串数组或逗号分隔的字符串
-      formData.append('tags', selectedTags.value.join(','))
+      selectedTags.value.forEach(tag => {
+        formData.append('tags', tag); 
+      });
     }
 
     // 添加图片
@@ -309,6 +313,7 @@ onMounted(() => {
     ElMessage.warning('请先登录再发布帖子')
     router.push('/login')
   }
+  fetchAvailableTags();
 })
 </script>
 
@@ -419,16 +424,6 @@ onMounted(() => {
 
 .tag-item {
   margin-right: 10px;
-  margin-bottom: 10px;
-}
-
-.tag-input {
-  width: 100px;
-  margin-right: 10px;
-  vertical-align: bottom;
-}
-
-.button-new-tag {
   margin-bottom: 10px;
 }
 

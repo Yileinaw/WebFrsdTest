@@ -18,14 +18,6 @@
           </div>
         </template>
       </el-image>
-      
-      <!-- 悬浮在封面上的标签 -->
-      <div class="floating-tags" v-if="post.tags && post.tags.length">
-        <el-tag size="small" v-for="tag in post.tags.slice(0, 2)" :key="tag.id" type="info" class="tag-item">
-          {{ tag.name }}
-        </el-tag>
-        <span v-if="post.tags.length > 2" class="more-tags">+{{ post.tags.length - 2 }}</span>
-      </div>
     </div>
     
     <!-- 内容区域 -->
@@ -51,6 +43,14 @@
       <div class="post-body">
         <h3 class="post-title" @click="goToPostDetail">{{ post.title }}</h3>
         <p class="post-text" v-if="post.content" @click="goToPostDetail">{{ truncateText(post.content, 120) }}</p>
+      </div>
+
+      <!-- 新增的标签区域 -->
+      <div class="post-tags" v-if="post.tags && post.tags.length">
+        <el-tag size="small" v-for="tag in post.tags.slice(0, 3)" :key="tag.id" type="info" class="tag-item">
+          {{ tag.name }}
+        </el-tag>
+        <span v-if="post.tags.length > 3" class="more-tags">+{{ post.tags.length - 3 }}</span>
       </div>
       
       <!-- 互动数据统计 -->
@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits, ref, computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElAvatar, ElButton, ElImage, ElTag, ElIcon, ElMessage, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus';
 import { Star, ChatDotSquare, CollectionTag, MoreFilled, Picture, Share } from '@element-plus/icons-vue';
@@ -297,30 +297,6 @@ const handleCommand = (command: string) => {
         font-size: 32px;
       }
     }
-    
-    .floating-tags {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      display: flex;
-      gap: 8px;
-      z-index: 1;
-      
-      .tag-item {
-        background-color: rgba(0, 0, 0, 0.6);
-        color: #fff;
-        border: none;
-      }
-      
-      .more-tags {
-        background-color: rgba(0, 0, 0, 0.6);
-        color: #fff;
-        padding: 0 8px;
-        border-radius: 12px;
-        font-size: 12px;
-        line-height: 20px;
-      }
-    }
   }
   
   .card-content {
@@ -366,6 +342,7 @@ const handleCommand = (command: string) => {
     }
     
     .post-body {
+      margin-bottom: 10px;
       .post-title {
         margin: 0 0 8px;
         font-size: 1.2rem;
@@ -386,11 +363,31 @@ const handleCommand = (command: string) => {
         cursor: pointer;
       }
     }
+
+    .post-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+
+      .tag-item {
+        background-color: #f0f2f5;
+        border-color: transparent;
+        color: #555;
+      }
+
+      .more-tags {
+        color: #909399;
+        font-size: 12px;
+        align-self: center;
+        margin-left: 4px;
+      }
+    }
     
     .post-stats {
       display: flex;
       align-items: center;
-      margin-top: 8px;
+      margin-top: 0;
       
       .stat-item {
         display: flex;

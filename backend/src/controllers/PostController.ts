@@ -110,30 +110,43 @@ export class PostController {
             // 解析查询参数
             const page = parseInt(req.query.page as string) || undefined;
             const limit = parseInt(req.query.limit as string) || undefined;
-            const sortBy = req.query.sortBy as string || undefined;
+            const sortBy = req.query.sortBy as 'createdAt' | 'viewCount' | 'likesCount' | 'commentsCount' | undefined;
             const search = req.query.search as string || undefined;
             const showcase = req.query.showcase === 'true' ? true : undefined;
+            let tagsQueryParam = req.query.tags; // This could be string, string[], or undefined
+            let tagsArray: string[] | undefined = undefined;
+
+            if (typeof tagsQueryParam === 'string') {
+                tagsArray = [tagsQueryParam];
+            } else if (Array.isArray(tagsQueryParam)) {
+                // Ensure all elements are strings, filter out any non-string elements just in case
+                tagsArray = tagsQueryParam.filter(tag => typeof tag === 'string') as string[];
+            } // if undefined, tagsArray remains undefined
+
             const currentUserId = req.userId;
 
-            // 处理标签筛选
-            let tags: string[] | undefined = undefined;
-            if (req.query.tags) {
-                if (Array.isArray(req.query.tags)) {
-                    tags = req.query.tags as string[];
-                } else if (typeof req.query.tags === 'string') {
-                    tags = (req.query.tags as string).split(',').map(tag => tag.trim()).filter(Boolean);
-                }
-            }
-
-            const { posts, totalCount } = await PostService.getAllPosts({
+            const serviceOptions: {
+                page?: number;
+                limit?: number;
+                authorId?: number; // Assuming authorId might be passed in req.query too
+                currentUserId?: number | null;
+                sortBy?: 'createdAt' | 'viewCount' | 'likesCount' | 'commentsCount';
+                sortOrder?: 'asc' | 'desc';
+                filter?: 'all' | 'published' | 'showcase';
+                searchQuery?: string;
+                tags?: string[]; // <-- NEW: expecting an array of tags
+            } = {
                 page,
                 limit,
                 sortBy,
-                search,
-                showcase,
-                tags,
-                currentUserId
-            });
+                searchQuery: search,
+                currentUserId,
+                // Map showcase to filter option
+                filter: showcase ? 'showcase' : (req.query.filter as 'all' | 'published' | undefined || 'published'), // Default to 'published' if no specific filter
+                tags: tagsArray, // <-- NEW
+            };
+
+            const { posts, totalCount } = await PostService.getAllPosts(serviceOptions);
 
             res.status(200).json({ posts, totalCount });
         } catch (error: any) {
@@ -275,6 +288,17 @@ export class PostController {
             }
             // --- End Image Upload/Removal ---
 
+            // Parse tags if provided
+            let parsedTagNames: string[] | undefined = undefined;
+            if (tags !== undefined) { // Check if 'tags' key was present in the body
+                if (typeof tags === 'string') {
+                    parsedTagNames = tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
+                } else if (Array.isArray(tags)) {
+                    // Ensure all elements are strings, filter out others just in case
+                    parsedTagNames = tags.filter(tag => typeof tag === 'string');
+                }
+            }
+
             // Build update data for the service
             const updateData: { title?: string; content?: string; imageUrl?: string | null; tagNames?: string[] } = {};
             if (title !== undefined) updateData.title = title;
@@ -283,16 +307,8 @@ export class PostController {
             if (newImageUrl !== undefined) {
                 updateData.imageUrl = newImageUrl;
             }
-            // Parse tags if provided
-             if (tags !== undefined) {
-                 let tagNames: string[] = [];
-                 if (typeof tags === 'string') {
-                     tagNames = tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
-                 } else if (Array.isArray(tags)) {
-                     tagNames = tags.filter(tag => typeof tag === 'string');
-                 }
-                 updateData.tagNames = tagNames;
-             }
+            // Pass the parsed tag names
+            updateData.tagNames = parsedTagNames;
 
             // If only tags are updated, updateData might be empty apart from tagNames
             if (Object.keys(updateData).length === 0) {
@@ -412,6 +428,7 @@ export class PostController {
                                 const url = new URL(oldImageUrl);
                                 const pathSegments = url.pathname.split('/');
                                 const bnIndex = pathSegments.findIndex(s => s === bucketName);
+                                // Check if it's in the post-images folder
                                 if (bnIndex > -1 && pathSegments.length > bnIndex + 1 && pathSegments[bnIndex+1] === 'post-images') {
                                     oldSupabasePathToDelete = pathSegments.slice(bnIndex + 1).join('/');
                                 }

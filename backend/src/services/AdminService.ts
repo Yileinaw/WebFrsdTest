@@ -41,7 +41,7 @@ export class AdminService {
             pt.name,
             CAST(COUNT(ptg."B") AS INTEGER) as count -- Count related posts
           FROM "PostTag" pt
-          LEFT JOIN "_PostTags" ptg ON pt.id = ptg."B" -- Corrected: Join on PostTag ID (B)
+          LEFT JOIN "_PostTagsRelation" ptg ON pt.id = ptg."B" -- Corrected: Join table name and on PostTag ID (B)
           GROUP BY pt.id, pt.name -- Group by tag to count per tag
           ORDER BY pt.name
         `

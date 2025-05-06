@@ -29,11 +29,7 @@ export class CommentController {
                 return;
             }
 
-            const newComment = await PostService.createComment(postId, {
-                text: text.trim(),
-                authorId: userId,
-                parentId: parentId
-            });
+            const newComment = await PostService.createComment(postId, text.trim(), userId);
 
             res.status(201).json({ message: 'Comment created successfully', comment: newComment });
 

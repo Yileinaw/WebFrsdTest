@@ -14,6 +14,7 @@ import foodTagRouter from './routes/FoodTagRoutes';
 import adminRouter from './routes/AdminRoutes'; // Import admin routes
 import adminPostRoutes from './routes/AdminPostRoutes'; // <-- 新增导入
 import settingsRoutes from './routes/SettingsRoutes'; // <-- Import SettingsRoutes
+import tagRoutes from './routes/TagRoutes'; // <-- Import TagRoutes
 import { errorHandler } from './middleware/ErrorHandlingMiddleware';
 import { initializeMailer } from './utils/mailer'; // <-- 导入邮件初始化函数
 // import morgan from 'morgan'; // Removed morgan import
@@ -128,6 +129,7 @@ app.use('/api/food-tags', foodTagRouter); // 挂载美食标签路由
 app.use('/api/admin', adminRouter); // Mount admin routes
 app.use('/api/admin/posts', adminPostRoutes); // <-- 新增挂载
 app.use('/api/settings', settingsRoutes); // <-- Mount SettingsRoutes
+app.use('/api/tags', tagRoutes); // <-- Mount TagRoutes
 
 // --- 添加错误日志中间件 ---
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
@@ -189,6 +191,7 @@ app.use('*', (req: Request, res: Response, next: NextFunction) => {
       url.startsWith('/users/') ||
       url.startsWith('/uploads/') ||
       url.startsWith('/settings/') ||
+      url.startsWith('/tags/') ||
       url.includes('.')) {
     return next();
   }

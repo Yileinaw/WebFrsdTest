@@ -52,7 +52,7 @@ model Post {
   likes         Like[]
   notifications Notification[]
   author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  PostTags      PostTags[]
+  tags          PostTag[]      @relation("PostTagsRelation")
   collectedBy   User[]         @relation("Collections")
   likedBy       User[]         @relation("PostLikes")
 
@@ -114,6 +114,8 @@ model PostTag {
   id      Int     @id @default(autoincrement())
   name    String  @unique
   isFixed Boolean @default(false)
+  posts   Post[]  @relation("PostTagsRelation")
+
 }
 
 model FoodTag {
@@ -152,16 +154,6 @@ model FoodShowcaseTags {
   foodTag        FoodTag      @relation("LinkFromTag", fields: [foodTagId], references: [id], onDelete: Cascade)
 
   @@id([foodShowcaseId, foodTagId])
-}
-
-model PostTags {
-  A    Int
-  B    Int
-  Post Post @relation(fields: [A], references: [id], onDelete: Cascade)
-
-  @@unique([A, B], map: "_PostTags_AB_unique")
-  @@index([B], map: "_PostTags_B_index")
-  @@map("_PostTags")
 }
 
 model PasswordResetCode {

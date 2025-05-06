@@ -1,14 +1,12 @@
-// src/services/PostService.ts
-import prisma from '../db';
-import { Post, Prisma, Like, User, Comment, Notification, Favorite, PostTag, PostTags } from '@prisma/client';
+import { Prisma, Post, Like, Comment, Favorite, PostStatus, User } from '@prisma/client'; // Added User for author type
+import prisma from '../db'; // Corrected import path
 
-// Define the Post structure including relational data for consistency
-// Match this with frontend Post type in types/models.ts
-interface PostWithRelations {
+// Define frontend expected post structure
+export interface PostWithRelations {
     id: number;
     title: string;
     content: string | null;
-    imageUrl?: string | null;
+    imageUrl: string | null;
     createdAt: Date;
     updatedAt: Date;
     authorId: number;
@@ -16,65 +14,53 @@ interface PostWithRelations {
         id: number;
         name: string | null;
         avatarUrl?: string | null;
-        isFollowing?: boolean;
+        isFollowing: boolean;
     };
-    tags?: { id: number; name: string }[]; // 标签信息（从PostTag和PostTags关联表中获取）
-    isShowcase?: boolean; // 是否精选内容
+    tags: { id: number; name: string }[]; // Will be empty for now
+    isShowcase: boolean;
     likesCount: number;
     commentsCount: number;
     favoritesCount: number;
-    // Optional based on current user context
-    isLiked?: boolean;
-    isFavorited?: boolean;
-    // These are used internally for calculations, don't expose directly
-    _count?: {
-        likes: number;
-        comments: number;
-        favoritedBy: number;
-    };
-    likes?: { userId: number }[];
-    favoritedBy?: { userId: number }[];
+    isLiked: boolean;
+    isFavorited: boolean;
+    viewCount?: number;
+    status?: PostStatus;
+    deletedAt?: Date | null;
 }
 
-// Helper type for internal processing, includes temporary fields from Prisma query
-interface PostQueryResult extends Post {
-     author: { id: number; name: string | null; avatarUrl?: string | null; };
-     PostTags?: { A: number; B: number }[]; // 标签关联信息
-     _count: {
-         likes: number;
-         comments: number;
-         favoritedBy: number;
-     };
-    likes?: { userId: number }[];
-    favoritedBy?: { userId: number }[];
+// Define paginated response type
+interface PaginatedPostsResponse {
+    posts: PostWithRelations[];
+    totalCount: number;
 }
 
-// Define CommentWithAuthor type
-interface CommentWithAuthor {
+// Simplified query result type without complex tags
+interface PostQueryResult {
     id: number;
-    text: string;
+    title: string;
+    content: string | null;
+    imageUrl: string | null;
     createdAt: Date;
     updatedAt: Date;
-    // Removed postId, authorId, parentId from this specific type
-    author: {
-        id: number;
-        name: string | null;
-        avatarUrl?: string | null;
-    };
+    authorId: number;
+    isShowcase: boolean;
+    author: { id: number; name: string | null; avatarUrl?: string | null };
+    _count: { likes: number; comments: number; favoritedBy: number };
+    likes?: { userId: number }[];
+    favoritedBy?: { userId: number }[];
+    viewCount?: number; // Kept as it's often useful
+    status?: PostStatus; // Kept for admin/specific queries
+    deletedAt?: Date | null; // Kept for admin/specific queries
+    tags?: { id: number; name: string }[]; // Added for related tags
+    // PostTags is intentionally omitted for this revert
 }
 
-// Define the specific Paginated response type needed for UserProfileView and MyPosts
-// Ensure this matches the structure your backend API actually returns
-interface PaginatedUserPostsResponse {
-    posts: Post[];
-    currentPage: number;
-    totalPages: number;
-    totalPosts: number;
-    totalCount: number; // Ensure totalCount is number
+// Extending the data type for updatePost to include optional tagNames
+interface UpdatePostData extends Partial<Pick<Post, 'title' | 'content' | 'imageUrl' | 'isShowcase' | 'status'>> {
+    tagNames?: string[];
 }
 
 export class PostService {
-    // Helper function to process Prisma query result into PostWithRelations
     private static processPostResult(
         postData: PostQueryResult,
         currentUserId?: number | null,
@@ -83,7 +69,6 @@ export class PostService {
         const isLiked = !!(currentUserId && postData.likes?.length);
         const isFavorited = !!(currentUserId && postData.favoritedBy?.length);
 
-        // Create the final object, removing internal fields
         const result: PostWithRelations = {
             id: postData.id,
             title: postData.title,
@@ -98,463 +83,308 @@ export class PostService {
                 avatarUrl: postData.author.avatarUrl,
                 isFollowing: isFollowingAuthor ?? false,
             },
-            tags: [], // 暂时使用空数组，后续需要实现从PostTags关联表获取标签信息
-            isShowcase: postData.isShowcase, // 添加精选状态
+            tags: postData.tags || [], // Map tags, default to empty array
+            isShowcase: postData.isShowcase,
             likesCount: postData._count.likes,
             commentsCount: postData._count.comments,
             favoritesCount: postData._count.favoritedBy,
             isLiked,
             isFavorited,
+            viewCount: postData.viewCount,
+            status: postData.status,
+            deletedAt: postData.deletedAt,
         };
         return result;
     }
 
-    // 创建帖子 (添加标签处理)
     static async createPost(data: {
         title: string;
-        content: string;
-        authorId: number;
+        content?: string;
         imageUrl?: string;
-        tagNames?: string[]; // <-- 添加 tagNames 到参数类型
+        authorId: number;
+        tagNames?: string[];
+        isShowcase?: boolean;
     }): Promise<PostWithRelations> {
+        const { title, content, imageUrl, authorId, tagNames, isShowcase } = data;
 
-        const createData: Prisma.PostCreateInput = {
-            title: data.title,
-            content: data.content,
-            author: { connect: { id: data.authorId } }, // Connect author by ID
-            imageUrl: data.imageUrl, // Include imageUrl if provided
+        const includeClause: Prisma.PostInclude = {
+            author: { select: { id: true, name: true, avatarUrl: true } },
+            _count: { select: { likes: true, comments: true, favoritedBy: true } },
+            tags: { select: { id: true, name: true } }
         };
 
-        // 如果提供了标签名称，先创建或获取标签，然后在创建帖子后建立关联
-        // 注意：由于模型结构变化，我们需要分两步处理标签
-        // 1. 创建帖子时不处理标签
-        // 2. 创建帖子后，手动创建标签关联
+        let tagOperations: Prisma.PostTagCreateNestedManyWithoutPostsInput | undefined;
+        if (tagNames && tagNames.length > 0) {
+            tagOperations = {
+                connectOrCreate: tagNames.map(name => ({
+                    where: { name },
+                    create: { name, isFixed: false }, // Assuming new tags are not fixed by default
+                })),
+            };
+        }
 
-        const post = await prisma.post.create({
-            data: createData, // Use the constructed createData object
-             select: { // Select all necessary fields for PostQueryResult
-                 id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true,
-                 author: { select: { id: true, name: true, avatarUrl: true } },
-                 PostTags: { select: { A: true, B: true } }, // 包含标签信息
-                 _count: { select: { likes: true, comments: true, favoritedBy: true } }
-             }
+        const postData = await prisma.post.create({
+            data: {
+                title,
+                content,
+                imageUrl,
+                authorId,
+                isShowcase: isShowcase ?? false,
+                tags: tagOperations, // Connect or create tags
+            },
+            include: includeClause // Use the includeClause for the returned object
         });
 
-        // 如果提供了标签名称，手动处理标签关联
-        if (data.tagNames && data.tagNames.length > 0) {
-            // 对每个标签名称，创建或获取标签，然后创建与帖子的关联
-            for (const tagName of data.tagNames) {
-                // 1. 创建或获取标签
-                const tag = await prisma.postTag.upsert({
-                    where: { name: tagName },
-                    update: {}, // 如果存在，不更新任何内容
-                    create: { name: tagName, isFixed: false }
-                });
-
-                // 2. 创建帖子与标签的关联
-                await prisma.postTags.create({
-                    data: {
-                        A: post.id, // 帖子ID
-                        B: tag.id   // 标签ID
-                    }
-                });
-            }
-
-            // 重新获取帖子，包括新创建的标签关联
-            const updatedPost = await prisma.post.findUnique({
-                where: { id: post.id },
-                select: {
-                    id: true, title: true, content: true, imageUrl: true, createdAt: true,
-                    updatedAt: true, authorId: true, isShowcase: true, viewCount: true,
-                    author: { select: { id: true, name: true, avatarUrl: true } },
-                    PostTags: { select: { A: true, B: true } },
-                    _count: { select: { likes: true, comments: true, favoritedBy: true } }
-                }
-            });
-
-            return this.processPostResult(updatedPost as PostQueryResult);
-        }
-
-        return this.processPostResult(post as PostQueryResult);
+        // Since currentUserId is not passed to createPost directly for likes/favorites status,
+        // we process with currentUserId as undefined for now.
+        // The creator of the post naturally hasn't liked/favorited it yet in this transaction.
+        return this.processPostResult(postData as PostQueryResult, undefined, false);
     }
 
-    // 获取所有帖子（分页，排序，可选当前用户ID以判断点赞/收藏状态）
     static async getAllPosts(options: {
-        page?: number;
-        limit?: number;
-        sortBy?: string;
-        search?: string; // 搜索关键词
-        authorId?: number; // Filter by author
-        showcase?: boolean; // 新增: Filter by showcase status
-        tags?: string[]; // 标签筛选
-        currentUserId?: number | null; // Check like/favorite status
-    }): Promise<{ posts: PostWithRelations[]; totalCount: number }> {
-        const { page = 1, limit = 10, sortBy = 'createdAt', search, authorId, showcase, tags, currentUserId } = options;
+        page?: number; limit?: number; authorId?: number;
+        tags?: string[];
+        currentUserId?: number | null; sortBy?: 'createdAt' | 'viewCount' | 'likesCount' | 'commentsCount'; sortOrder?: 'asc' | 'desc';
+        filter?: 'all' | 'published' | 'showcase'; searchQuery?: string;
+    }): Promise<PaginatedPostsResponse> {
+        const { page = 1, limit = 10, authorId, tags, currentUserId, sortBy = 'createdAt', sortOrder = 'desc', filter = 'published', searchQuery } = options;
         const skip = (page - 1) * limit;
-        const orderBy: Prisma.PostOrderByWithRelationInput = {};
-
-        // Handle sorting
-        if (sortBy === 'likesCount') {
-            orderBy.likes = { _count: 'desc' };
-        } else if (sortBy === 'commentsCount') {
-            orderBy.comments = { _count: 'desc' };
-        } else { // Default to createdAt
-            orderBy.createdAt = 'desc';
-        }
-
-        // Dynamic where clause
         const where: Prisma.PostWhereInput = {};
-        if (authorId) {
-            where.authorId = authorId;
-        }
-        if (showcase === true) {
-            where.isShowcase = true;
-        }
 
-        // 添加搜索条件
-        if (search) {
-            where.OR = [
-                { title: { contains: search, mode: 'insensitive' } },
-                { content: { contains: search, mode: 'insensitive' } },
-                // 搜索标签名称 - 需要通过关联表查询
-                // 由于PostTags是关联表，我们需要通过B字段关联到PostTag表
-                // 这里暂时移除标签搜索，后续需要重新实现
+        if (authorId) where.authorId = authorId;
+        if (filter === 'published') where.status = 'PUBLISHED';
+        if (filter === 'showcase') where.isShowcase = true;
 
-            ];
-        }
-
-        // 添加标签筛选条件
-        // 由于PostTags是关联表，我们需要通过B字段关联到PostTag表
-        // 这里暂时移除标签筛选，后续需要重新实现
+        // 按标签名筛选逻辑
         if (tags && tags.length > 0) {
-            // 获取标签ID
-            const tagIds = await prisma.postTag.findMany({
-                where: {
-                    name: {
-                        in: tags,
-                        mode: 'insensitive'
-                    }
-                },
-                select: { id: true }
-            });
-
-            // 使用标签ID筛选帖子
-            if (tagIds.length > 0) {
-                where.PostTags = {
+            const selectedTagName = tags[0]; 
+            if (selectedTagName) { // Ensure the tag name is not empty if array wasn't empty
+                where.tags = { // 'tags' 是 Post 模型中与 PostTag 的关联字段名
                     some: {
-                        B: {
-                            in: tagIds.map(tag => tag.id)
-                        }
-                    }
+                        name: {
+                            equals: selectedTagName, // Use the first tag from the array
+                            mode: 'insensitive', // 不区分大小写匹配
+                        },
+                    },
                 };
             }
         }
 
-        const selectClause: Prisma.PostSelect = { // Define select clause for reusability
-            id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true,
+        if (searchQuery) {
+            // 显式声明 searchConditions 的类型
+            const searchConditions: Prisma.PostWhereInput[] = [
+                { title: { contains: searchQuery, mode: 'insensitive' } },
+                { content: { contains: searchQuery, mode: 'insensitive' } },
+            ];
+            // 如果 where.OR 已存在 (例如被其他条件初始化)，则合并，否则直接赋值
+            if (where.OR) {
+                where.OR = [...where.OR, ...searchConditions];
+            } else {
+                where.OR = searchConditions;
+            }
+        }
+
+        const orderBy: Prisma.PostOrderByWithRelationInput = {};
+        if (sortBy === 'viewCount') orderBy.viewCount = sortOrder;
+        else if (sortBy === 'likesCount') orderBy.likes = { _count: sortOrder };
+        else if (sortBy === 'commentsCount') orderBy.comments = { _count: sortOrder };
+        else orderBy.createdAt = sortOrder;
+
+        const includeClause: Prisma.PostInclude = {
             author: { select: { id: true, name: true, avatarUrl: true } },
-            PostTags: { select: { A: true, B: true } }, // 包含标签信息
             _count: { select: { likes: true, comments: true, favoritedBy: true } },
-             ...(currentUserId && {
-                 likes: { where: { userId: currentUserId }, select: { userId: true } },
-                 favoritedBy: { where: { userId: currentUserId }, select: { userId: true } }
-             })
+            tags: { select: { id: true, name: true } } // Include tags
         };
+
+        if (currentUserId) {
+            includeClause.likes = { where: { userId: currentUserId }, select: { userId: true } };
+            includeClause.favoritedBy = { where: { userId: currentUserId }, select: { userId: true } };
+        }
 
         const postsData = await prisma.post.findMany({
             where,
             skip,
             take: limit,
             orderBy,
-            select: selectClause,
+            include: includeClause // Use the constructed includeClause
         });
 
         const totalCount = await prisma.post.count({ where });
-
-        const posts = postsData.map(p => this.processPostResult(p as PostQueryResult, currentUserId));
-
+        const posts = postsData.map((p: PostQueryResult) => this.processPostResult(p as PostQueryResult, currentUserId));
         return { posts, totalCount };
     }
 
-    // 根据 ID 获取单个帖子
     static async getPostById(postId: number, currentUserId?: number | null): Promise<PostWithRelations | null> {
-        const selectClause: Prisma.PostSelect = { // Reuse select clause
-            id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true,
-            author: { select: { id: true, name: true, avatarUrl: true } },
-            PostTags: { select: { A: true, B: true } }, // 包含标签信息
-            _count: { select: { likes: true, comments: true, favoritedBy: true } },
-             ...(currentUserId && {
-                 likes: { where: { userId: currentUserId }, select: { userId: true } },
-                 favoritedBy: { where: { userId: currentUserId }, select: { userId: true } }
-             })
-        };
-
         const postData = await prisma.post.findUnique({
-            where: { id: postId },
-            select: selectClause
+            where: { id: postId, deletedAt: null }, // Ensure not to fetch soft-deleted posts
+            include: {
+                author: { select: { id: true, name: true, avatarUrl: true } },
+                _count: { select: { likes: true, comments: true, favoritedBy: true } },
+                likes: currentUserId ? { where: { userId: currentUserId }, select: { userId: true } } : undefined,
+                favoritedBy: currentUserId ? { where: { userId: currentUserId }, select: { userId: true } } : undefined,
+                tags: { select: { id: true, name: true } } // Include tags
+            }
         });
 
-        if (!postData) return null;
+        if (!postData) {
+            return null;
+        }
 
         let isFollowingAuthor = false;
         if (currentUserId && postData.authorId && currentUserId !== postData.authorId) {
             const follow = await prisma.follows.findUnique({
-                where: {
-                    followerId_followingId: {
-                        followerId: currentUserId,
-                        followingId: postData.authorId,
-                    },
-                },
+                where: { followerId_followingId: { followerId: currentUserId, followingId: postData.authorId } },
             });
             isFollowingAuthor = !!follow;
         }
-
         return this.processPostResult(postData as PostQueryResult, currentUserId, isFollowingAuthor);
     }
 
-    // 更新帖子 (修正标签处理)
-    static async updatePost(postId: number, data: Partial<{
-        title: string;
-        content: string;
-        imageUrl: string | null;
-        tagNames: string[];
-    }>, userId: number): Promise<PostWithRelations | null> {
+    static async getPostsByUser(userId: number, page: number = 1, limit: number = 10, currentUserId?: number | null): Promise<PaginatedPostsResponse> {
+        const skip = (page - 1) * limit;
+        const selectClause: Prisma.PostSelect = { // Simplified select
+            id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true, viewCount: true, status: true, deletedAt: true,
+            author: { select: { id: true, name: true, avatarUrl: true } },
+            _count: { select: { likes: true, comments: true, favoritedBy: true } },
+            ...(currentUserId && {
+                likes: { where: { userId: currentUserId }, select: { userId: true } },
+                favoritedBy: { where: { userId: currentUserId }, select: { userId: true } }
+            })
+            // No PostTags selection
+        };
 
-        const post = await prisma.post.findUnique({
-            where: { id: postId },
-            select: { authorId: true }
+        const postsData = await prisma.post.findMany({
+            where: { authorId: userId, status: 'PUBLISHED' },
+            skip,
+            take: limit,
+            orderBy: { createdAt: 'desc' },
+            select: selectClause,
         });
 
-        if (!post) return null;
-        if (post.authorId !== userId) {
-            throw new Error('Forbidden: You can only update your own posts');
-        }
+        const totalCount = await prisma.post.count({ where: { authorId: userId, status: 'PUBLISHED' } });
+        const posts = postsData.map((p: PostQueryResult) => this.processPostResult(p as PostQueryResult, currentUserId));
+        return { posts, totalCount };
+    }
 
-        // Build the update payload for Prisma
-        const updatePayload: Prisma.PostUpdateInput = {};
-        if (data.title !== undefined) updatePayload.title = data.title;
-        if (data.content !== undefined) updatePayload.content = data.content;
-        if (data.imageUrl !== undefined) updatePayload.imageUrl = data.imageUrl;
+    static async getFavoritedPostsByUser(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedPostsResponse> {
+        const skip = (page - 1) * limit;
+        const favoriteEntries = await prisma.favorite.findMany({
+            where: { userId },
+            select: { postId: true },
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: limit,
+        });
+        const postIds = favoriteEntries.map((fav: { postId: number }) => fav.postId);
+        if (postIds.length === 0) return { posts: [], totalCount: 0 };
 
-        // 如果提供了标签名称，处理标签更新
-        if (data.tagNames !== undefined) {
-            // 步骤1：删除所有现有标签关联
-            await prisma.postTags.deleteMany({
-                where: { A: postId }
-            });
-
-            // 步骤2：为每个标签创建新的关联
-            for (const tagName of data.tagNames) {
-                // 创建或获取标签
-                const tag = await prisma.postTag.upsert({
-                    where: { name: tagName },
-                    update: {}, // 如果存在，不更新任何内容
-                    create: { name: tagName, isFixed: false }
-                });
-
-                // 创建帖子与标签的关联
-                await prisma.postTags.create({
-                    data: {
-                        A: postId, // 帖子ID
-                        B: tag.id  // 标签ID
-                    }
-                });
-            }
-        }
-
-        // Only proceed if there's something to update
-        if (Object.keys(updatePayload).length === 0) {
-             console.log("[PostService.updatePost] No fields to update.");
-             return this.getPostById(postId, userId);
-        }
-
-        const selectClause: Prisma.PostSelect = {
-            id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true,
+        const selectClause: Prisma.PostSelect = { // Simplified select
+            id: true, title: true, content: true, imageUrl: true, createdAt: true, updatedAt: true, authorId: true, isShowcase: true, viewCount: true, status: true, deletedAt: true,
             author: { select: { id: true, name: true, avatarUrl: true } },
-            PostTags: { select: { A: true, B: true } }, // 包含标签信息
             _count: { select: { likes: true, comments: true, favoritedBy: true } },
-             likes: { where: { userId: userId }, select: { userId: true } },
-             favoritedBy: { where: { userId: userId }, select: { userId: true } }
+            likes: { where: { userId: userId }, select: { userId: true } },
+            favoritedBy: { where: { userId: userId }, select: { userId: true } }
+            // No PostTags selection
         };
+
+        const postsData = await prisma.post.findMany({
+            where: { id: { in: postIds }, status: 'PUBLISHED' }, // Ensure only published posts are shown in favorites too
+            select: selectClause,
+            orderBy: { createdAt: 'desc' } // or some other relevant order
+        });
+        const totalCount = await prisma.favorite.count({ where: { userId } }); // Total favorited posts
+        const posts = postsData.map((p: PostQueryResult) => this.processPostResult(p as PostQueryResult, userId));
+        return { posts, totalCount };
+    }
+
+    static async updatePost(postId: number, data: UpdatePostData, userId: number): Promise<PostWithRelations | null> {
+        const post = await prisma.post.findUnique({ where: { id: postId } });
+        if (!post || post.authorId !== userId) {
+            return null;
+        }
+
+        const includeClause: Prisma.PostInclude = {
+            author: { select: { id: true, name: true, avatarUrl: true } },
+            _count: { select: { likes: true, comments: true, favoritedBy: true } },
+            likes: { where: { userId: userId }, select: { userId: true } }, 
+            favoritedBy: { where: { userId: userId }, select: { userId: true } }, 
+            tags: { select: { id: true, name: true } } 
+        };
+
+        // Prepare tag operations if tagNames are provided
+        let tagUpdateOperations: Prisma.PostUpdateInput['tags'] | undefined;
+        if (data.tagNames !== undefined) { // Check if tagNames is explicitly passed (even if empty array)
+            tagUpdateOperations = {
+                set: [], // Disconnect all existing tags first
+                connectOrCreate: data.tagNames.map(name => ({
+                    where: { name },
+                    create: { name, isFixed: false }, 
+                })),
+            };
+        }
 
         const updatedPostData = await prisma.post.update({
             where: { id: postId },
-            data: updatePayload,
-            select: selectClause
+            data: {
+                title: data.title,
+                content: data.content,
+                imageUrl: data.imageUrl,
+                isShowcase: data.isShowcase,
+                status: data.status,
+                tags: tagUpdateOperations, // Apply tag update operations if defined
+            },
+            include: includeClause, 
         });
-
         return this.processPostResult(updatedPostData as PostQueryResult, userId);
     }
 
-    // 删除帖子
-    static async deletePost(postId: number, userId: number): Promise<Prisma.BatchPayload | null> {
-        // First check if the post exists and belongs to the user
-        const post = await prisma.post.findUnique({
-            where: { id: postId },
-            select: { authorId: true }
-        });
+    static async deletePost(postId: number, userId: number): Promise<Post | null> {
+        const post = await prisma.post.findUnique({ where: { id: postId } });
+        if (!post || post.authorId !== userId) {
+            return null;
+        }
+        return prisma.post.delete({ where: { id: postId } });
+    }
 
-        if (!post) return null; // Indicate not found
-        if (post.authorId !== userId) {
-            throw new Error('Forbidden: You can only delete your own posts');
+    static async createComment(postId: number, text: string, userId: number): Promise<(Comment & { author: { id: number; name: string | null; avatarUrl: string | null; } }) | null> {
+        const post = await prisma.post.findUnique({ where: { id: postId } });
+        if (!post) {
+            return null;
         }
 
-        // If checks pass, proceed with deletion
-        // Use deleteMany to ensure the where condition applies atomically
-        // Note: Prisma cascading deletes should handle related Likes, Comments, Favorites
-        const result = await prisma.post.deleteMany({
-            where: {
-                id: postId,
-                authorId: userId, // Double check ownership during delete
-            }
-        });
-
-        // result.count will be 1 if successful, 0 if not found or ownership check failed
-        return result.count > 0 ? result : null;
-    }
-
-    // Like a post
-    public static async likePost(userId: number, postId: number): Promise<Like | null> {
-        const existingLike = await prisma.like.findUnique({ where: { postId_userId: { postId, userId } } });
-        if (existingLike) return existingLike;
-        try {
-            return await prisma.$transaction(async (tx) => {
-                const newLike = await tx.like.create({ data: { userId, postId } });
-                const postAuthor = await tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
-                if (postAuthor && postAuthor.authorId !== userId) {
-                     await tx.notification.create({ data: { type: 'LIKE', recipientId: postAuthor.authorId, senderId: userId, postId } });
-                }
-                return newLike;
-            });
-        } catch (error) {
-             console.error(`[PostService.likePost] Error liking post ${postId} for user ${userId}:`, error);
-             throw error;
-        }
-    }
-
-    // Unlike a post (No notification needed for unlike)
-    public static async unlikePost(userId: number, postId: number): Promise<Like | null> {
-         try {
-             return await prisma.like.delete({ where: { postId_userId: { postId, userId } } });
-         } catch (error) {
-             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null;
-             console.error(`[PostService.unlikePost] Error unliking post ${postId} for user ${userId}:`, error);
-             throw error;
-         }
-    }
-
-    // Create a new comment or reply (Corrected based on regenerated client)
-    public static async createComment(
-        postId: number,
-        commentData: { text: string; authorId: number; parentId?: number | null }
-    ): Promise<Comment> {
-         const { text, authorId, parentId } = commentData;
-        try {
-            return await prisma.$transaction(async (tx) => {
-                const newComment = await tx.comment.create({
-                    data: {
-                         text,
-                         postId,
-                         authorId,
-                         parentId // This should now be valid
-                    },
-                    include: { author: { select: { id: true, name: true, avatarUrl: true } } }
-                });
-                const post = await tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
-                if (post && post.authorId !== authorId) {
-                     await tx.notification.create({ data: { type: parentId ? 'REPLY' : 'COMMENT', recipientId: post.authorId, senderId: authorId, postId, commentId: newComment.id } });
-                }
-                return newComment;
-            });
-        } catch (error) {
-             console.error(`[PostService.createComment] Error creating comment for post ${postId}:`, error);
-             throw error;
-        }
-    }
-
-    // 获取帖子的所有评论（包括回复）
-    public static async getCommentsByPostId(postId: number): Promise<Comment[]> { // Return full Comment objects
-        try {
-            const comments = await prisma.comment.findMany({
-                where: {
-                    postId: postId,
-                    // Remove parentId: null to fetch ALL comments for the post
-                    // parentId: null
+        return prisma.comment.create({
+            data: {
+                text,
+                postId,
+                authorId: userId,
+            },
+            include: {
+                author: {
+                    select: { id: true, name: true, avatarUrl: true },
                 },
-                 orderBy: { createdAt: 'asc' }, // Keep ordering
-                 include: {
-                    author: { // Include author details
-                        select: { id: true, name: true, avatarUrl: true }
-                    }
-                    // We might need parentId later for nesting, so return full Comment
-                }
-            });
-            // We need the full Comment structure (including parentId) for frontend nesting
-            return comments;
-        } catch (error) {
-            console.error(`Error fetching comments for post ${postId}:`, error);
-            throw new Error('Failed to fetch comments');
-        }
-    }
-
-    // Delete a comment (Remove commentsCount update)
-    public static async deleteComment(commentId: number, userId: number): Promise<Comment | null> {
-        const comment = await prisma.comment.findUnique({
-            where: { id: commentId },
-            select: { authorId: true, post: { select: { authorId: true } } }
+            },
         });
-        if (!comment || (comment.authorId !== userId && comment.post.authorId !== userId)) {
-            throw new Error('Comment not found or permission denied');
-        }
-        try {
-            // Transaction no longer needed just for deleting comment
-            // TODO: Add transaction back if needing to delete related notifications
-            const deletedComment = await prisma.comment.delete({ where: { id: commentId } });
-
-            // Removed post count update
-            // await tx.post.update({ ... data: { commentsCount: { decrement: 1 } } ... });
-
-            return deletedComment;
-        } catch (error) {
-            console.error(`[PostService.deleteComment] Error deleting comment ${commentId}:`, error);
-            throw error;
-        }
     }
 
-    // 收藏帖子
-    public static async favoritePost(userId: number, postId: number): Promise<Favorite | null> {
-        const existingFavorite = await prisma.favorite.findUnique({ where: { userId_postId: { userId, postId } } });
-        if (existingFavorite) { return existingFavorite; }
-
-        try {
-            return await prisma.$transaction(async (tx) => {
-                const newFavorite = await tx.favorite.create({ data: { userId, postId } });
-                const post = await tx.post.findUnique({ where: { id: postId }, select: { authorId: true } });
-                if (post && post.authorId !== userId) {
-                    await tx.notification.create({ data: { type: 'FAVORITE', recipientId: post.authorId, senderId: userId, postId } });
-                }
-                return newFavorite;
-            });
-        } catch (error) {
-             console.error(`[PostService.favoritePost] Error favoring post ${postId} for user ${userId}:`, error);
-             throw error;
-        }
+    static async getCommentsByPostId(postId: number): Promise<(Comment & { author: { id: number; name: string | null; avatarUrl: string | null; } })[]> {
+        return prisma.comment.findMany({
+            where: { postId },
+            include: {
+                author: {
+                    select: { id: true, name: true, avatarUrl: true },
+                },
+            },
+            orderBy: {
+                createdAt: 'asc',
+            },
+        });
     }
 
-    // 取消收藏帖子
-    public static async unfavoritePost(userId: number, postId: number): Promise<Favorite | null> {
-        try {
-            return await prisma.favorite.delete({ where: { userId_postId: { userId, postId } } });
-        } catch (error) {
-             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null;
-             console.error(`[PostService.unfavoritePost] Error unfavoring post ${postId} for user ${userId}:`, error);
-             throw error;
+    static async deleteComment(commentId: number, userId: number): Promise<Comment | null> {
+        const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+        if (!comment || comment.authorId !== userId) {
+            return null;
         }
-    }
-
-    // 获取用户自己的帖子 - Correct return type
-    public static async getMyPosts(userId: number, options: { page?: number, limit?: number } = {}): Promise<{ posts: PostWithRelations[]; totalCount: number }> {
-        // Reuse getAllPosts logic, passing the authorId
-        return this.getAllPosts({ ...options, authorId: userId, currentUserId: userId });
+        return prisma.comment.delete({ where: { id: commentId } });
     }
 }

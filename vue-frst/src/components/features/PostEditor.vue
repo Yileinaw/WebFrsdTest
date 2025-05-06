@@ -25,6 +25,39 @@
           placeholder="分享你的美食故事、食谱或探店心得..."
         ></el-input>
       </el-form-item>
+      <el-form-item label="标签">
+        <el-tag
+          v-for="tag in postForm.tags"
+          :key="tag"
+          closable
+          :disable-transitions="false"
+          @close="handleTagClose(tag)"
+          style="margin-right: 5px; margin-bottom: 5px;"
+        >
+          {{ tag }}
+        </el-tag>
+        <!-- 使用 el-select 替换之前的输入方式 -->
+        <el-select
+          v-if="postForm.tags.length < 5" 
+          v-model="postForm.tags"
+          multiple
+          filterable
+          allow-create
+          default-first-option
+          placeholder="选择或创建标签 (最多5个)"
+          size="small"
+          style="width: 240px; margin-left: 10px; vertical-align: top;"
+          class="tag-select"
+        >
+          <el-option
+            v-for="item in allAvailableTags"
+            :key="item.id"
+            :label="item.name"
+            :value="item.name" 
+          />
+        </el-select>
+        <span v-else style="font-size: 12px; color: #909399; margin-left: 10px; vertical-align: top;">最多添加5个标签</span>
+      </el-form-item>
 
       <!-- Image Upload Section -->
       <el-form-item label="图片">
@@ -73,8 +106,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, defineProps, defineEmits } from 'vue'
-import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage, ElUpload, ElImage } from 'element-plus'
+import { ref, reactive, watch, nextTick, onMounted } from 'vue'
+import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage, ElUpload, ElImage, ElTag, ElSelect, ElOption } from 'element-plus'
 import type { FormInstance, FormRules, UploadProps, UploadRequestOptions, UploadRawFile } from 'element-plus'
 import { PostService } from '@/services/PostService'
 import { useUserStore } from '@/stores/modules/user';
@@ -88,7 +121,7 @@ const postFormRef = ref<FormInstance>()
 const postForm = reactive({
   title: '',
   content: '',
-  // imageUrl: null as string | null // No longer store URL directly
+  tags: [] as string[], // Add tags property
 })
 const selectedFile = ref<UploadRawFile | null>(null); // Store the selected file object
 const imagePreviewUrl = ref<string | null>(null); // For previewing the selected image
@@ -96,10 +129,35 @@ const isSubmitting = ref(false)
 const uploadError = ref<string | null>(null)
 const userStore = useUserStore()
 
-// Reset form when dialog becomes visible
+// --- 新增：标签获取逻辑 ---
+interface Tag {
+  id: number;
+  name: string;
+  isFixed?: boolean; // 假设标签对象可能包含这些属性
+}
+
+const allAvailableTags = ref<Tag[]>([]); // 存储所有可用标签
+
+const fetchAvailableTags = async () => {
+  try {
+    // console.log('[PostEditor] Fetching available tags via http...');
+    const response = await http.get<{ tags: Tag[], totalCount: number }>('/tags'); 
+    allAvailableTags.value = response.data.tags || [];
+    // console.log('[PostEditor] Available tags fetched:', allAvailableTags.value);
+  } catch (error) {
+    console.error('Failed to fetch available tags:', error);
+    ElMessage.error('获取标签列表失败'); 
+  }
+};
+
+onMounted(() => {
+  fetchAvailableTags(); // 组件挂载后获取标签
+});
+
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     resetForm();
+    fetchAvailableTags(); // 每次对话框打开时也重新获取一下标签，确保最新
   }
 })
 
@@ -111,6 +169,7 @@ const formRules = reactive<FormRules>({
 const resetForm = () => {
   postForm.title = ''
   postForm.content = ''
+  postForm.tags = []; // Reset tags
   // postForm.imageUrl = null // Remove
   selectedFile.value = null; // Reset file
   imagePreviewUrl.value = null; // Reset preview
@@ -203,6 +262,13 @@ const submitPost = async () => {
         const formData = new FormData();
         formData.append('title', postForm.title);
         formData.append('content', postForm.content);
+
+        // Append tags if any
+        if (postForm.tags.length > 0) {
+          postForm.tags.forEach(tag => {
+            formData.append('tags', tag); // Backend expects 'tags' as field name for array
+          });
+        }
         
         // --- Remove File and FormData Logs --- 
         // console.log('[PostEditor] selectedFile.value:', selectedFile.value);
@@ -235,11 +301,36 @@ const submitPost = async () => {
     }
   })
 }
+
+const handleTagClose = (tag: string) => {
+  postForm.tags.splice(postForm.tags.indexOf(tag), 1)
+}
 </script>
 
 <style scoped lang="scss">
 .post-editor-dialog {
   // Add specific styles for the dialog if needed
+}
+
+.el-form-item .el-tag + .el-tag {
+  margin-left: 10px;
+}
+.el-form-item .button-new-tag {
+  margin-left: 10px;
+  height: 32px;
+  line-height: 30px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.el-form-item .el-input--small { 
+  width: 90px;
+  margin-left: 10px;
+  vertical-align: bottom;
+}
+
+.tag-select .el-select__tags .el-tag { 
+  margin-right: 5px;
+  margin-bottom: 2px; 
 }
 
 .image-uploader .el-upload {
@@ -272,4 +363,4 @@ const submitPost = async () => {
     gap: 10px;
     width: 150px; /* Container width */
 }
-</style> 
+</style>

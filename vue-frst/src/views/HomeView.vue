@@ -31,7 +31,7 @@
       >
         <el-carousel-item v-for="post in featuredPosts" :key="post.id">
            <!-- Wrap FoodCard in a div for potential styling/sizing -->
-           <div class="carousel-card-wrapper">
+           <div class="carousel-card-wrapper" @click="handleFeaturedItemClick(post.id)">
                 <FoodCard :post="post" class="featured-post-card" />
            </div>
         </el-carousel-item>
@@ -106,6 +106,16 @@ const navigateToCreatePost = () => {
     return;
   }
   router.push({ name: 'CreatePost' });
+};
+
+// 点击热门推荐项
+const handleFeaturedItemClick = (showcaseId: number) => {
+  if (showcaseId) {
+    router.push({ path: '/discover', hash: `#showcase-${showcaseId}` });
+    if (import.meta.env.DEV) {
+      console.log(`[HomeView] Navigating to /discover#showcase-${showcaseId}`);
+    }
+  }
 };
 
 const fetchFeaturedPosts = async () => {

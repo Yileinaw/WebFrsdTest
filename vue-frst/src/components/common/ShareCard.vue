@@ -72,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits, ref, computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElCard, ElAvatar, ElButton, ElMessage, ElIcon, ElImage, ElTooltip } from 'element-plus'; // Added ElImage
 import { Star, ChatDotSquare, CollectionTag, MoreFilled, Picture } from '@element-plus/icons-vue'; // Added Picture
