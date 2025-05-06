@@ -207,6 +207,7 @@ import {
   Picture, Document, User, Star, ArrowUp, ArrowDown, RefreshRight
 } from '@element-plus/icons-vue';
 import { AdminService } from '@/services/AdminService';
+import { useUserStore } from '@/stores/modules/user'; // Added import
 // 自定义日期格式化函数
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
@@ -246,6 +247,7 @@ const dashboardStats = ref<any>(null);
 const selectedTagType = ref('all');
 const isDev = import.meta.env.DEV;
 const makingAdmin = ref(false);
+const userStore = useUserStore(); // Get user store instance
 
 // 获取仪表盘数据
 const fetchDashboardStats = async () => {
@@ -426,9 +428,16 @@ const viewContent = (row: any) => {
 const makeAdmin = async () => {
   if (!isDev) return;
 
+  const userId = userStore.currentUser?.id;
+  if (!userId) {
+    ElMessage.error('无法获取当前用户ID，请确保您已登录。');
+    return;
+  }
+
   try {
     makingAdmin.value = true;
-    const result = await AdminService.makeAdmin();
+    // Pass the current user's ID to makeUserAdmin
+    const result = await AdminService.makeUserAdmin(userId); 
     ElMessage.success(result.message || '您已被设置为管理员');
     error.value = '';
     await fetchDashboardStats();

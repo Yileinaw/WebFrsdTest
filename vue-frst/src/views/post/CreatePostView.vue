@@ -141,9 +141,10 @@
 import { ref, reactive, nextTick, onMounted, computed } from 'vue'
 import {
   ElForm, ElFormItem, ElInput, ElButton, ElMessage,
-  ElUpload, ElImage, ElTag, ElIcon, ElSelect, ElOption
+  ElUpload, ElImage, ElTag, ElIcon, ElSelect, ElOption,
+  type UploadProps, type UploadFile, type UploadFiles // 新增 UploadProps 和 UploadFile 类型导入
 } from 'element-plus'
-import type { FormInstance, FormRules, UploadFile, UploadRawFile } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
@@ -160,7 +161,7 @@ const postForm = reactive({
 })
 
 // Image upload state
-const selectedFile = ref<UploadRawFile | null>(null)
+const selectedFile = ref<File | null>(null)
 const imagePreviewUrl = ref<string | null>(null)
 const uploadError = ref<string | null>(null)
 
@@ -207,45 +208,48 @@ const goBack = () => {
 }
 
 // 图片上传处理
-const handleFileChange: UploadProps['onChange'] = (uploadFile) => {
-  if (uploadFile.status === 'ready') {
-    const rawFile = uploadFile.raw
-    if (!rawFile) {
-      console.error('No raw file found in uploadFile.')
-      return
-    }
+const handleFileChange: UploadProps['onChange'] = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
+  uploadError.value = null // 重置错误
+  const rawFile = uploadFile.raw // 获取原始 File 对象
 
-    const isImage = rawFile.type.startsWith('image/')
-    const isLt5M = rawFile.size / 1024 / 1024 < 5
-    uploadError.value = null // 重置错误
-
-    if (!isImage) {
-      ElMessage.error('请上传图片格式文件!')
-      return
+  if (!rawFile) {
+    uploadError.value = '无法获取原始文件，请重试。'
+    // 清理文件列表以允许用户重新选择相同的文件（如果需要）
+    // uploadList.value = []; // 如果你有一个 el-upload 的 file-list ref
+    if (uploadFiles.length > 0 && uploadFiles[uploadFiles.length -1].uid === uploadFile.uid) {
+        // 这是一个简化的移除方式，更好的方式是如果el-upload有ref，调用其abort或remove方法
+        // 或者直接操作绑定的 fileList (如果使用了 :file-list)
     }
-    if (!isLt5M) {
-      ElMessage.error('图片大小不能超过 5MB!')
-      return
-    }
+    return
+  }
 
-    // 验证通过
-    selectedFile.value = rawFile
+  // 文件类型和大小验证
+  const isImage = rawFile.type.startsWith('image/')
+  const isLt5M = rawFile.size / 1024 / 1024 < 5
+  if (!isImage) {
+    ElMessage.error('请上传图片格式文件!')
+    return
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!')
+    return
+  }
 
-    try {
-      // 如果存在之前的预览URL，释放它
-      if (imagePreviewUrl.value) {
-        URL.revokeObjectURL(imagePreviewUrl.value)
-      }
-      const newPreviewUrl = URL.createObjectURL(rawFile)
-      imagePreviewUrl.value = newPreviewUrl
-    } catch (e) {
-      console.error('Error creating object URL:', e)
-      uploadError.value = '生成图片预览失败'
-      selectedFile.value = null
-      imagePreviewUrl.value = null
+  // 验证通过
+  selectedFile.value = rawFile
+
+  try {
+    // 如果存在之前的预览URL，释放它
+    if (imagePreviewUrl.value) {
+      URL.revokeObjectURL(imagePreviewUrl.value)
     }
-  } else if (uploadFile.status === 'fail') {
-    ElMessage.error('文件选择失败，请重试')
+    const newPreviewUrl = URL.createObjectURL(rawFile)
+    imagePreviewUrl.value = newPreviewUrl
+  } catch (e) {
+    console.error('Error creating object URL:', e)
+    uploadError.value = '生成图片预览失败'
+    selectedFile.value = null
+    imagePreviewUrl.value = null
   }
 }
 

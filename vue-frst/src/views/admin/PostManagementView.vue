@@ -16,8 +16,10 @@
           <el-select v-model="filters.status" placeholder="选择状态" clearable @change="fetchPosts">
             <el-option label="全部" value="ALL"></el-option>
             <el-option label="已发布" value="PUBLISHED"></el-option>
-            <el-option label="待审核" value="PENDING"></el-option>
-            <el-option label="已删除" value="DELETED"></el-option>
+            <el-option label="待审核" value="PENDING_REVIEW"></el-option>
+            <el-option label="已删除" value="ARCHIVED"></el-option>
+            <el-option label="草稿" value="DRAFT"></el-option>
+            <el-option label="已拒绝" value="REJECTED"></el-option>
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -57,7 +59,7 @@
               size="small" 
               type="danger" 
               @click="handleDelete(row)" 
-              :disabled="row.status === 'DELETED'"
+              :disabled="row.status === 'ARCHIVED'"
               :icon="Delete"
             >
               删除
@@ -101,7 +103,7 @@ const pagination = reactive({
 });
 const filters = reactive({
   search: '',
-  status: 'ALL' as PostStatus | 'ALL' 
+  status: 'ALL' as PostStatus | 'ALL' | undefined 
 });
 
 // --- Methods --- 
@@ -114,7 +116,7 @@ const fetchPosts = async () => {
       page: pagination.currentPage,
       limit: pagination.limit,
       search: filters.search || undefined, 
-      status: filters.status 
+      status: (filters.status === 'ALL' || !filters.status) ? undefined : filters.status 
     });
     posts.value = response.posts;
     pagination.totalPosts = response.totalPosts;
@@ -135,7 +137,7 @@ const handlePageChange = (newPage: number) => {
 // Handle delete button click
 const handleDelete = (post: Post) => {
   ElMessageBox.confirm(
-    `确定要删除帖子 "${post.title}" (ID: ${post.id})吗？此操作会将帖子状态标记为 DELETED。`,
+    `确定要删除帖子 "${post.title}" (ID: ${post.id})吗？此操作会将帖子状态标记为 ARCHIVED。`,
     '确认删除',
     {
       confirmButtonText: '确定删除',
@@ -169,8 +171,10 @@ const translateStatus = (status: PostStatus | undefined): string => {
   if (!status) return '未知';
   switch (status) {
     case 'PUBLISHED': return '已发布';
-    case 'PENDING': return '待审核';
-    case 'DELETED': return '已删除';
+    case 'PENDING_REVIEW': return '待审核';
+    case 'ARCHIVED': return '已删除';
+    case 'DRAFT': return '草稿';
+    case 'REJECTED': return '已拒绝';
     default: return status;
   }
 };
@@ -180,8 +184,10 @@ const getStatusTagType = (status: PostStatus | undefined): 'success' | 'warning'
   if (!status) return 'info';
   switch (status) {
     case 'PUBLISHED': return 'success';
-    case 'PENDING': return 'warning';
-    case 'DELETED': return 'danger';
+    case 'PENDING_REVIEW': return 'warning';
+    case 'ARCHIVED': return 'danger';
+    case 'DRAFT': return 'info';
+    case 'REJECTED': return 'danger';
     default: return 'info';
   }
 };

@@ -111,7 +111,7 @@ interface GetUsersParams {
 }
 
 // Define System Info Response Type
-interface SystemInfoResponse {
+export interface SystemInfoResponse {
   nodeVersion: string;
   platform: string;
   osType: string;

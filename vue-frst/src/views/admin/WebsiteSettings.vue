@@ -16,7 +16,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="版权信息" prop="copyright">
-              <el-input v-model="settings.copyright" placeholder="例如：© 2024 您的网站名称"></el-input>
+              <el-input v-model="settings.copyright" placeholder="例如： 2024 您的网站名称"></el-input>
             </el-form-item>
           </el-col>
         </el-row>
@@ -110,13 +110,15 @@ const resolvedLogoUrl = computed(() => {
     return url;
   }
   
-  // Ensure baseURL ends with a slash if it exists, otherwise handle potentially empty baseURL
-  const apiBaseUrl = (http.defaults.baseURL || '').endsWith('/') ? http.defaults.baseURL : `${http.defaults.baseURL || ''}/`;
-  // Remove 'api/' part more robustly
-  const staticBaseUrl = apiBaseUrl.replace(/api\/$/, ''); 
+  // Ensure baseURL is a string and ends with a slash
+  const baseUrlSource: string = http.defaults.baseURL || ''; // Default to empty string if undefined
+  const apiBaseUrlResolved: string = baseUrlSource.endsWith('/') ? baseUrlSource : `${baseUrlSource}/`;
+
+  // Remove 'api/' part more robustly from the resolved apiBaseUrl
+  const staticBaseUrl = apiBaseUrlResolved.replace(/api\/?$/, ''); // Ensure 'api/' or 'api' at the end is removed
   const relativeUrl = url.startsWith('/') ? url.substring(1) : url; // Remove leading slash if present
   const finalUrl = `${staticBaseUrl}uploads/${relativeUrl}`; // Assuming uploads are served from /uploads relative to static base
-  console.log('[resolvedLogoUrl] Original:', url, 'API Base:', apiBaseUrl, 'Static Base:', staticBaseUrl, 'Resolved:', finalUrl);
+  console.log('[resolvedLogoUrl] Original:', url, 'API Base Source:', baseUrlSource, 'Resolved API Base:', apiBaseUrlResolved, 'Static Base:', staticBaseUrl, 'Resolved:', finalUrl);
   return finalUrl;
 });
 

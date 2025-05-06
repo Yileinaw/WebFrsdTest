@@ -127,7 +127,14 @@ export interface PostPreview {
 export interface Tag {
   id?: number; // Optional ID
   name: string;
+  isFixed?: boolean; // 新增 isFixed 属性
 }
+
+// 定义用户角色类型
+export type Role = 'ADMIN' | 'MODERATOR' | 'USER';
+
+// 定义帖子状态类型
+export type PostStatus = 'PUBLISHED' | 'DRAFT' | 'ARCHIVED' | 'PENDING_REVIEW' | 'REJECTED';
 
 // 默认头像响应接口
 export interface DefaultAvatarsResponse {

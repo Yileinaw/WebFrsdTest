@@ -75,7 +75,7 @@
                   <el-skeleton-item variant="image" style="width: 100%; height: 180px; border-radius: 12px 12px 0 0; margin-bottom: 10px;" />
                   <div style="padding: 14px;">
                     <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                      <el-skeleton-item variant="avatar" style="margin-right: 10px;" />
+                      <el-skeleton-item variant="circle" style="margin-right: 10px;" />
                       <div style="width: 60%;">
                         <el-skeleton-item variant="text" style="width: 70%; margin-bottom: 4px;" />
                         <el-skeleton-item variant="text" style="width: 40%;" />

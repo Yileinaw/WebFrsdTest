@@ -190,7 +190,7 @@ const loadPostData = async () => {
     postForm.value = {
       id: response.post.id,
       title: response.post.title,
-      content: response.post.content,
+      content: response.post.content ?? '', // Use ?? to provide '' if null
       imageUrl: response.post.imageUrl
     }
 

@@ -89,6 +89,7 @@ import { ElTable, ElTableColumn, ElPagination, ElButton, ElInput, ElSelect, ElOp
 import { Search, Plus } from '@element-plus/icons-vue'; // 引入 Plus 图标
 import dayjs from 'dayjs';
 import { AdminService } from '@/services/AdminService';
+import type { Role } from '@/types/models'; // Import Role type
 
 interface User {
   id: number;
@@ -104,7 +105,7 @@ const totalUsers = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(10);
 const searchQuery = ref('');
-const selectedRole = ref<string | null>(null);
+const selectedRole = ref<Role | ''>(''); // Update type definition
 const loading = ref(false);
 
 // 获取用户列表
@@ -112,12 +113,18 @@ const fetchUsers = async (page = currentPage.value) => {
   loading.value = true;
   currentPage.value = page;
   try {
-    const response = await AdminService.getUsers({
+    const params: { page: number; pageSize: number; search?: string; role?: Role | '' } = {
       page: currentPage.value,
-      limit: pageSize.value,
-      search: searchQuery.value || undefined,
-      role: selectedRole.value || undefined,
-    });
+      pageSize: pageSize.value,
+    };
+    if (searchQuery.value) {
+      params.search = searchQuery.value;
+    }
+    if (selectedRole.value) { // 修改点2: 只有当 selectedRole.value 不为空字符串时，才传递 role
+      params.role = selectedRole.value;
+    }
+
+    const response = await AdminService.getUsers(params);
     if (response && response.users) {
       users.value = response.users;
       totalUsers.value = response.total;
@@ -153,18 +160,18 @@ const formatDateTime = (dateTime: string | Date) => {
 };
 
 // 根据角色获取 Tag 类型
-const getRoleTagType = (role: string): 'success' | 'warning' | 'info' | 'danger' | '' => {
-  switch (role?.toUpperCase()) {
+const getRoleTagType = (role: string): 'success' | 'warning' | 'info' | 'danger' => {
+  switch (role) {
     case 'ADMIN': return 'success';
     case 'MODERATOR': return 'warning';
-    case 'USER': return 'info';
-    default: return '';
+    case 'USER': return 'success';
+    default: return 'info'; // Changed from '' to 'info'
   }
 };
 
 // 格式化角色显示名称 (中文)
 const formatRole = (role: string): string => {
-   switch (role?.toUpperCase()) {
+   switch (role) {
     case 'ADMIN': return '管理员';
     case 'MODERATOR': return '版主';
     case 'USER': return '用户';

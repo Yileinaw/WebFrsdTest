@@ -384,7 +384,7 @@ const fetchShowcases = async () => {
       page: currentPage.value,
       limit: pageSize.value,
       search: searchQuery.value || undefined, // Send undefined if empty
-      tags: selectedTags.value.length > 0 ? selectedTags.value : undefined, // Send undefined if empty
+      tags: selectedTags.value.length > 0 ? selectedTags.value.join(',') : undefined, // Convert to comma-separated string
       includeTags: true // Always include tags for display
     });
 
@@ -562,7 +562,7 @@ const handleBulkDelete = async () => {
       { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
     );
     const idsToDelete = selectedRows.value.map(row => row.id);
-    const result = await AdminService.deleteFoodShowcasesBulk(idsToDelete);
+    const result = await AdminService.bulkDeleteFoodShowcases(idsToDelete);
     ElMessage.success(`成功批量删除 ${result.count} 项!`);
     await fetchShowcases();
     await fetchStats(); // Refresh stats
