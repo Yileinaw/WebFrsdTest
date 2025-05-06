@@ -47,10 +47,22 @@
 
     <!-- 3. Results Section (Masonry/CSS Columns) -->
     <section class="results-section container">
-      <!-- Loading Indicator -->
-      <div v-if="isLoading" class="loading-indicator">加载中...</div>
-      <!-- CSS Masonry Container -->
-      <div v-if="!isLoading && foodShowcases.length > 0" class="masonry-container">
+      <!-- Loading Indicator / Skeleton Screen -->
+      <div v-if="isLoading && foodShowcases.length === 0" class="skeleton-container masonry-container">
+        <div v-for="n in 9" :key="n" class="masonry-item skeleton-item">
+          <el-skeleton style="width: 100%;" animated>
+            <template #template>
+              <el-skeleton-item variant="image" style="width: 100%; height: 200px;" />
+              <div style="padding: 10px 5px;">
+                <el-skeleton-item variant="p" style="width: 70%; margin-bottom: 5px;" />
+                <el-skeleton-item variant="text" style="width: 40%;" />
+              </div>
+            </template>
+          </el-skeleton>
+        </div>
+      </div>
+      <!-- Actual Content -->
+      <div v-else-if="!isLoading && foodShowcases.length > 0" class="masonry-container">
         <!-- Loop through items, get index -->
         <div
           v-for="(item, index) in foodShowcases"
@@ -79,7 +91,7 @@
          v-if="!isLoading && foodShowcases.length === 0 && !error"
          :description="emptyStateDescription"
        />
-       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
+       <el-alert v-if="error && foodShowcases.length === 0" :title="error" type="error" show-icon :closable="false" />
     </section>
 
     <!-- Lightbox remains unchanged -->
@@ -110,7 +122,7 @@ import { getImageUrl } from '@/utils/imageUrl'; // Assuming you have a utility f
 import VueEasyLightbox from 'vue-easy-lightbox';
 import 'vue-easy-lightbox/dist/external-css/vue-easy-lightbox.css'; // Import CSS
 // Add necessary Element Plus components
-import { ElInput, ElButton, ElIcon, ElEmpty, ElAlert } from 'element-plus';
+import { ElInput, ElButton, ElIcon, ElEmpty, ElAlert, ElSkeleton, ElSkeletonItem } from 'element-plus';
 import { Search as SearchIcon, Close as CloseIcon } from '@element-plus/icons-vue';
 
 const route = useRoute();
@@ -383,10 +395,9 @@ onMounted(() => {
   padding: 20px 0; // Padding for the results area
 }
 
-.loading-indicator {
-  text-align: center;
-  padding: 40px;
-  font-size: 1.2rem;
+.skeleton-container .masonry-item {
+  background-color: #fff; // Or your card background color
+  border: 1px solid #e0e0e0; // Optional: if your cards have borders
 }
 
 .masonry-container {
@@ -398,50 +409,59 @@ onMounted(() => {
 
 .masonry-item {
   /* Ensure old break-inside is definitely removed */
-  margin-bottom: 20px; /* Space below each item */
+  margin-bottom: var(--masonry-gap, 15px); /* Use CSS var for gap */
   position: relative; // Needed for overlay positioning
   overflow: hidden; // Keep overlay contained
-  border-radius: 8px; // Optional: rounded corners for items
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); // Optional: subtle shadow
-  width: 100%; // Make item fill grid cell width
+  border-radius: 12px; // Slightly larger radius for a softer look
+  background-color: #fff; // Ensure card has a background
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.05); // Softer, layered shadow
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
-  img.food-image {
-    display: block; // Remove extra space below image
-    width: 100%; // Make image fill the item width
-    height: auto; // Maintain aspect ratio
-    border-radius: 8px 8px 0 0; // Round top corners if needed
-    transition: transform 0.3s ease; // Smooth zoom effect on hover
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.07); // Enhanced shadow on hover
   }
+}
 
-  &:hover img.food-image {
-      transform: scale(1.05); // Slight zoom on hover
+.food-image {
+  display: block; // Remove extra space below image
+  width: 100%;
+  height: auto; // Maintain aspect ratio
+  object-fit: cover; // Cover the area, might crop
+  border-radius: 12px 12px 0 0; // Match top corners of the card if overlay is only at bottom
+  // If image is the full card, then border-radius: 12px;
+  background-color: #f0f0f0; // Placeholder color while image loads
+}
+
+.image-info-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0; // Ensure it spans full width
+  padding: 12px 15px; // Increased padding
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0,0,0,0.6) 50%, transparent 100%); // Stronger, taller gradient
+  color: white;
+  opacity: 0;
+  transform: translateY(10px); // Start slightly lower for entry animation
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-sizing: border-box;
+  border-bottom-left-radius: 12px; // Match card radius
+  border-bottom-right-radius: 12px; // Match card radius
+
+  h4 {
+    margin: 0;
+    font-size: 0.95rem; // Slightly larger font
+    font-weight: 600; // Bolder title
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
   }
+}
 
-  .image-info-overlay {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0)); // Gradient background
-    color: white;
-    padding: 20px 10px 10px 10px; // Padding (more top padding for gradient)
-    opacity: 0; // Hidden by default
-    transition: opacity 0.3s ease;
-    border-radius: 0 0 8px 8px; // Match item rounding
-
-    h4 {
-      margin: 0 0 5px 0; // Spacing for title
-      font-size: 1rem;
-      font-weight: bold;
-      white-space: nowrap; // Prevent title wrap
-      overflow: hidden;
-      text-overflow: ellipsis; // Add ellipsis if title is too long
-    }
-  }
-
-  &:hover .image-info-overlay {
-      opacity: 1; // Show overlay on hover
-  }
+.masonry-item:hover .image-info-overlay {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* --- Common styles --- */

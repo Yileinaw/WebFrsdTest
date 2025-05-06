@@ -59,7 +59,41 @@
       <section class="posts-list-section">
         <!-- 加载状态 -->
         <div v-if="isLoading" class="loading-state">
-          <el-skeleton :rows="10" animated />
+          <el-row :gutter="24"> 
+            <el-col 
+              v-for="n in (pagination.pageSize > 8 ? 8 : pagination.pageSize)" 
+              :key="n" 
+              :xs="24" 
+              :sm="12" 
+              :md="8" 
+              :lg="(activeTab === 'featured' && featuredPosts.length > 0) ? 6 : 8"
+              :xl="(activeTab === 'featured' && featuredPosts.length > 0) ? 6 : 6"
+              style="margin-bottom: 20px;" 
+            >
+              <el-skeleton style="width: 100%;" animated>
+                <template #template>
+                  <el-skeleton-item variant="image" style="width: 100%; height: 180px; border-radius: 12px 12px 0 0; margin-bottom: 10px;" />
+                  <div style="padding: 14px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                      <el-skeleton-item variant="avatar" style="margin-right: 10px;" />
+                      <div style="width: 60%;">
+                        <el-skeleton-item variant="text" style="width: 70%; margin-bottom: 4px;" />
+                        <el-skeleton-item variant="text" style="width: 40%;" />
+                      </div>
+                    </div>
+                    <el-skeleton-item variant="p" style="width: 100%; margin-bottom: 8px;" />
+                    <el-skeleton-item variant="text" style="width: 80%; margin-bottom: 4px;" />
+                    <el-skeleton-item variant="text" style="width: 90%; margin-bottom: 12px;" />
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f0f0f0; padding-top:10px;">
+                      <el-skeleton-item variant="text" style="width: 20%;" />
+                      <el-skeleton-item variant="text" style="width: 20%;" />
+                      <el-skeleton-item variant="text" style="width: 20%;" />
+                    </div>
+                  </div>
+                </template>
+              </el-skeleton>
+            </el-col>
+          </el-row>
         </div>
   
         <!-- 错误状态 -->

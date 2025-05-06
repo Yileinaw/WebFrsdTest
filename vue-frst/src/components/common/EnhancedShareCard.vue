@@ -1,5 +1,5 @@
 <template>
-  <div class="enhanced-share-card" :class="{ 'has-image': !!post.imageUrl, 'is-featured': isFeatured }">
+  <div class="enhanced-share-card" :class="{ 'has-image': !!post.imageUrl, 'is-featured': isFeatured }" @click="goToPostDetail">
     <!-- 封面图区域 -->
     <div class="card-cover" v-if="post.imageUrl">
       <el-image
@@ -10,11 +10,13 @@
         @click="goToPostDetail"
       >
         <template #placeholder>
-          <div class="image-placeholder">加载中...</div>
+          <div class="image-placeholder">
+            <el-icon :size="30"><Picture /></el-icon>
+          </div>
         </template>
         <template #error>
           <div class="image-placeholder">
-            <el-icon><Picture /></el-icon>
+            <el-icon :size="30"><Picture /></el-icon> <span>加载失败</span>
           </div>
         </template>
       </el-image>
@@ -44,7 +46,7 @@
         <h3 class="post-title" @click="goToPostDetail">{{ post.title }}</h3>
         <p class="post-text" v-if="post.content" @click="goToPostDetail">{{ truncateText(post.content, 120) }}</p>
       </div>
-
+      
       <!-- 新增的标签区域 -->
       <div class="post-tags" v-if="post.tags && post.tags.length">
         <el-tag size="small" v-for="tag in post.tags.slice(0, 3)" :key="tag.id" type="info" class="tag-item">
@@ -89,7 +91,7 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElAvatar, ElButton, ElImage, ElTag, ElIcon, ElMessage, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus';
-import { Star, ChatDotSquare, CollectionTag, MoreFilled, Picture, Share } from '@element-plus/icons-vue';
+import { Star, ChatDotSquare, CollectionTag, MoreFilled, Picture } from '@element-plus/icons-vue';
 import type { Post, PostPreview } from '@/types/models';
 import { useUserStore } from '@/stores/modules/user';
 import { PostService } from '@/services/PostService';
@@ -240,225 +242,198 @@ const handleCommand = (command: string) => {
 <style scoped lang="scss">
 .enhanced-share-card {
   position: relative;
-  border-radius: 12px;
-  background-color: #fff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  transition: all 0.3s ease;
-  margin-bottom: 20px;
-  
+  display: flex;
+  flex-direction: column;
+  background-color: #fff; 
+  border-radius: 12px;   
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.05); 
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden; 
+  margin-bottom: 20px; 
+
   &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.07); 
   }
-  
+
   &.has-image {
-    display: flex;
-    flex-direction: column;
+    // Specific styles if needed when an image is present
   }
-  
+
   &.is-featured {
-    border: 2px solid #ff9800;
-    
-    .card-cover {
-      height: 280px;
-    }
-    
-    .post-title {
-      font-size: 1.4rem;
-    }
+    // Example: Potentially larger shadow or different border
+    // box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.08);
   }
-  
-  .card-cover {
-    position: relative;
-    height: 220px;
-    overflow: hidden;
-    
-    .cover-image {
-      width: 100%;
-      height: 100%;
-      transition: transform 0.5s ease;
-    }
-    
-    &:hover .cover-image {
-      transform: scale(1.05);
-    }
-    
+}
+
+.card-cover {
+  width: 100%;
+  max-height: 250px; 
+  overflow: hidden;
+  border-top-left-radius: 12px; 
+  border-top-right-radius: 12px; 
+  cursor: pointer; 
+
+  .cover-image {
+    width: 100%;
+    height: 100%; 
+    object-fit: cover;
+    display: block; 
+
     .image-placeholder {
+      display: flex;
+      justify-content: center;
+      align-items: center;
       width: 100%;
       height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: #f5f7fa;
-      color: #909399;
-      
-      .el-icon {
-        font-size: 32px;
-      }
-    }
-  }
-  
-  .card-content {
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    
-    .author-info {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      
-      .author-avatar {
-        cursor: pointer;
-        border: 2px solid transparent;
-        transition: border-color 0.3s;
-        
-        &:hover {
-          border-color: var(--el-color-primary);
-        }
-      }
-      
-      .author-details {
-        display: flex;
-        flex-direction: column;
-        
-        .author-name {
-          font-weight: 600;
-          color: #303133;
-          cursor: pointer;
-          
-          &:hover {
-            color: var(--el-color-primary);
-          }
-        }
-        
-        .post-time {
-          font-size: 12px;
-          color: #909399;
-        }
-      }
-    }
-    
-    .post-body {
-      margin-bottom: 10px;
-      .post-title {
-        margin: 0 0 8px;
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: #303133;
-        cursor: pointer;
-        
-        &:hover {
-          color: var(--el-color-primary);
-        }
-      }
-      
-      .post-text {
-        margin: 0;
-        font-size: 14px;
-        color: #606266;
-        line-height: 1.6;
-        cursor: pointer;
-      }
-    }
-
-    .post-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 12px;
-
-      .tag-item {
-        background-color: #f0f2f5;
-        border-color: transparent;
-        color: #555;
-      }
-
-      .more-tags {
-        color: #909399;
-        font-size: 12px;
-        align-self: center;
-        margin-left: 4px;
-      }
-    }
-    
-    .post-stats {
-      display: flex;
-      align-items: center;
-      margin-top: 0;
-      
-      .stat-item {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        margin-right: 20px;
-        padding: 6px 10px;
-        border-radius: 20px;
-        cursor: pointer;
-        transition: all 0.2s;
-        
-        &:hover {
-          background-color: #f5f7fa;
-        }
-        
-        &.is-active {
-          color: var(--el-color-primary);
-        }
-        
-        .el-icon {
-          font-size: 16px;
-        }
-        
-        span {
-          font-size: 14px;
-        }
-      }
-      
-      .more-actions {
-        margin-left: auto;
-        
-        .more-btn {
-          padding: 6px;
-          border-radius: 50%;
-          
-          &:hover {
-            background-color: #f5f7fa;
-          }
-          
-          .el-icon {
-            font-size: 16px;
-          }
-        }
-      }
+      background-color: #f0f0f0; 
+      color: #ccc;
+      font-size: 1rem;
     }
   }
 }
 
-// 响应式调整
-@media (max-width: 768px) {
-  .enhanced-share-card {
-    .card-cover {
-      height: 180px;
-    }
-    
-    &.is-featured .card-cover {
-      height: 220px;
-    }
-    
-    .card-content {
-      padding: 12px;
-      
-      .post-body .post-title {
-        font-size: 1.1rem;
+.card-content {
+  padding: 15px 20px; 
+  flex-grow: 1; 
+  display: flex;
+  flex-direction: column;
+}
+
+.author-info {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+
+  .author-avatar {
+    cursor: pointer;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+
+  .author-details {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+    .author-name {
+      font-weight: 600;
+      color: var(--el-text-color-primary);
+      cursor: pointer;
+      &:hover {
+        text-decoration: underline;
       }
-      
-      .post-stats .stat-item {
-        margin-right: 12px;
-        padding: 4px 8px;
+    }
+    .post-time {
+      color: var(--el-text-color-secondary);
+    }
+  }
+}
+
+.post-body {
+  margin-bottom: 12px;
+  flex-grow: 1; 
+
+  .post-title {
+    font-size: 1.1rem; 
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    color: var(--el-text-color-primary);
+    cursor: pointer;
+    line-height: 1.4;
+    // For multi-line ellipsis (if desired, more complex CSS needed)
+    display: -webkit-box;
+    -webkit-line-clamp: 2; 
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:hover {
+      color: var(--el-color-primary);
+    }
+  }
+
+  .post-text {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--el-text-color-regular);
+    margin: 0;
+    // For multi-line ellipsis
+    display: -webkit-box;
+    -webkit-line-clamp: 3; 
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.post-tags {
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  .tag-item {
+    cursor: default; 
+  }
+  .more-tags {
+    font-size: 0.75rem;
+    color: var(--el-text-color-secondary);
+    align-self: center;
+  }
+}
+
+.post-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; 
+  padding-top: 10px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  margin-top: auto; 
+
+  .stat-item {
+    display: flex;
+    align-items: center;
+    color: var(--el-text-color-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: color 0.2s ease;
+
+    .el-icon {
+      margin-right: 5px;
+      font-size: 1.1rem;
+    }
+
+    &:hover,
+    &.is-active {
+      color: var(--el-color-primary);
+    }
+    // Prevent interaction if liking/favoriting is in progress (optional)
+    // &.is-loading {
+    //   pointer-events: none;
+    //   opacity: 0.7;
+    // }
+  }
+
+  .more-actions {
+    .more-btn {
+      color: var(--el-text-color-secondary);
+      padding: 0; 
+      min-height: auto;
+      &:hover {
+        color: var(--el-color-primary);
       }
     }
+    .el-icon {
+      font-size: 1.2rem;
+    }
+  }
+}
+
+// Ensure ElDropdown menu items are styled nicely if not already globally
+.el-dropdown-menu__item {
+  font-size: 0.9rem;
+  i, .el-icon {
+    margin-right: 8px;
   }
 }
 </style>
