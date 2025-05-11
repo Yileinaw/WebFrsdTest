@@ -790,10 +790,139 @@ export class UserController {
     }
 
     // 发送密码重置码
-    public static async sendPasswordResetCode(req: AuthenticatedRequest, res: Response, next: NextFunction) { /* ... */ }
+    public static async sendPasswordResetCode(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+       try {
+           const userId = req.userId;
+           if (!userId) {
+               return res.status(401).json({ message: '用户未授权' });
+           }
+
+           const user = await prisma.user.findUnique({ where: { id: userId } });
+           if (!user || !user.email) { // 确保用户存在且有邮箱
+               return res.status(404).json({ message: '未找到用户或用户邮箱信息不完整' });
+           }
+
+           const code = crypto.randomInt(100000, 999999).toString();
+           const expiresAt = new Date();
+           expiresAt.setMinutes(expiresAt.getMinutes() + CODE_EXPIRATION_MINUTES);
+
+           // 清除该用户旧的密码重置码 (如果有)
+           await prisma.passwordResetCode.deleteMany({ where: { userId: user.id } });
+
+           // 创建新的密码重置码
+           await prisma.passwordResetCode.create({
+               data: {
+                   code: code,
+                   userId: user.id,
+                   expiresAt: expiresAt,
+               }
+           });
+
+           const mailSubject = '修改您的账户密码';
+           const mailText = `您正在尝试修改密码。您的验证码是： ${code}\n\n该验证码将在 ${CODE_EXPIRATION_MINUTES} 分钟后过期。如果您没有进行此操作，请忽略此邮件。`;
+           const mailHtml = `<p>您正在尝试修改密码。您的验证码是： <strong>${code}</strong></p><p>该验证码将在 <strong>${CODE_EXPIRATION_MINUTES} 分钟</strong>后过期。如果您没有进行此操作，请忽略此邮件。</p>`;
+
+           const mailSent = await sendMail({
+               to: user.email,
+               subject: mailSubject,
+               text: mailText,
+               html: mailHtml,
+           });
+
+           if (!mailSent) {
+               console.error(`[UserController.sendPasswordResetCode] 邮件发送失败给 ${user.email}`);
+               // 即便邮件发送失败，从安全角度考虑，不应向客户端明确指示邮件发送环节的问题
+               // 但应记录详细日志，以便排查
+               // 可以考虑返回一个通用成功消息，避免泄露过多内部状态，或根据具体策略返回错误
+               // 此处为了明确，我们返回500，但生产环境可能需要更细致的处理
+               return res.status(500).json({ message: '发送验证码邮件时发生内部错误' });
+           }
+            if (typeof mailSent === 'string' && mailSent.includes('ethereal.email')) {
+                console.log(`[UserController.sendPasswordResetCode] Ethereal preview URL: ${mailSent}`);
+            }
+
+           res.status(200).json({ message: '验证码已发送至您的注册邮箱，请注意查收。' });
+
+       } catch (error) {
+           console.error('[UserController.sendPasswordResetCode] Error:', error);
+           res.status(500).json({ message: '发送验证码过程中发生错误' });
+       }
+    }
 
     // 修改密码
-    public static async changePassword(req: AuthenticatedRequest, res: Response, next: NextFunction) { /* ... */ }
+    public static async changePassword(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+       try {
+           const userId = req.userId;
+           if (!userId) {
+               return res.status(401).json({ message: '用户未授权' });
+           }
+
+           const { oldPassword, newPassword, confirmPassword, code } = req.body;
+
+           if (!oldPassword || !newPassword || !confirmPassword || !code) {
+               return res.status(400).json({ message: '缺少必要的字段 (oldPassword, newPassword, confirmPassword, code)' });
+           }
+
+           if (newPassword !== confirmPassword) {
+               return res.status(400).json({ message: '新密码和确认密码不匹配' });
+           }
+
+           if (newPassword.length < 6) { // 与 AuthController.resetPassword 保持一致
+               return res.status(400).json({ message: '新密码长度至少需要6位' });
+           }
+
+           const user = await prisma.user.findUnique({ where: { id: userId } });
+           if (!user) {
+               // 理论上不应发生，因为 userId 来自认证token
+               return res.status(404).json({ message: '未找到用户' });
+           }
+
+           // 1. 校验旧密码
+           const isOldPasswordValid = await bcrypt.compare(oldPassword, user.password);
+           if (!isOldPasswordValid) {
+               return res.status(400).json({ message: '旧密码不正确' });
+           }
+
+           // 2. 校验验证码
+           const resetCodeRecord = await prisma.passwordResetCode.findUnique({
+               where: {
+                   // Prisma v2.20.0 及以上版本支持这种方式查找复合唯一键
+                   // 确保你的 schema.prisma 中 PasswordResetCode 模型有 @@unique([userId, code])
+                   // 如果没有，或者版本较低，你可能需要用 findFirst + where: { userId: user.id, code: code }
+                   userId_code: {
+                       userId: user.id,
+                       code: code
+                   }
+               }
+           });
+
+           if (!resetCodeRecord) {
+               return res.status(400).json({ message: '无效的验证码' });
+           }
+
+           const now = new Date();
+           if (now > resetCodeRecord.expiresAt) {
+               await prisma.passwordResetCode.delete({ where: { id: resetCodeRecord.id } }); // 删除过期的验证码
+               return res.status(400).json({ message: '验证码已过期，请重新请求' });
+           }
+
+           // 3. 更新密码
+           const hashedNewPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+           await prisma.user.update({
+               where: { id: user.id },
+               data: { password: hashedNewPassword }
+           });
+
+           // 4. 删除已使用的验证码
+           await prisma.passwordResetCode.delete({ where: { id: resetCodeRecord.id } });
+
+           res.status(200).json({ message: '密码修改成功' });
+
+       } catch (error) {
+           console.error('[UserController.changePassword] Error:', error);
+           res.status(500).json({ message: '修改密码过程中发生错误' });
+       }
+    }
 
     // 获取所有用户
     public static async getAllUsers(req: Request, res: Response): Promise<any> {

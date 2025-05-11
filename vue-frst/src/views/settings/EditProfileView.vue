@@ -183,12 +183,9 @@ const changePasswordHandler = async () => {
         const payload: ChangePasswordPayload = {
           oldPassword: passwordForm.oldPassword,
           newPassword: passwordForm.newPassword,
+          confirmPassword: passwordForm.confirmPassword,
           code: passwordForm.code,
-          // confirmPassword is only for front-end validation, not sent to backend
-          confirmPassword: '', // Added to satisfy type, but backend ignores it
         }
-        // Ensure confirmPassword is removed if backend doesn't expect it
-        delete (payload as any).confirmPassword
 
         const response = await UserService.changePassword(payload)
         ElMessage.success(response.message || '密码修改成功')
